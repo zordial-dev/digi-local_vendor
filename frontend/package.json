@@ -1,5 +1,5 @@
 {
-  "name": "digilocal-venders",
+  "name": "digi-local_vendor",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {

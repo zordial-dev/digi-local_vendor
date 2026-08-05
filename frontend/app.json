@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "DigiLocal Vendor Terminal",
-    "slug": "digilocal-vendor",
+    "name": "DigiLocal Vendor",
+    "slug": "digi-local_vendor",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",

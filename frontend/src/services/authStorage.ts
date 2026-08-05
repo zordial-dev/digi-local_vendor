@@ -10,11 +10,54 @@ try {
 const CRED_KEY = 'digilocal_vender_credentials';
 const VENDOR_KEY = 'digilocal_vender_user';
 const API_URL_KEY = 'digilocal_vender_api_url';
+const ACCESS_TOKEN_KEY = 'digilocal_vendor_access_token';
+const REFRESH_TOKEN_KEY = 'digilocal_vendor_refresh_token';
 
 export interface SavedCredentials {
   email: string;
   pass: string;
   vendorId?: number;
+}
+
+// Token Storage
+export async function saveTokens(accessToken: string, refreshToken?: string): Promise<void> {
+  try {
+    if (Platform.OS !== 'web' && SecureStore && typeof SecureStore.setItemAsync === 'function') {
+      if (accessToken) await SecureStore.setItemAsync(ACCESS_TOKEN_KEY, accessToken);
+      if (refreshToken) await SecureStore.setItemAsync(REFRESH_TOKEN_KEY, refreshToken);
+    } else if (typeof localStorage !== 'undefined') {
+      if (accessToken) localStorage.setItem(ACCESS_TOKEN_KEY, accessToken);
+      if (refreshToken) localStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+    }
+  } catch (e) {
+    console.error('Failed to save auth tokens:', e);
+  }
+}
+
+export async function getAccessToken(): Promise<string | null> {
+  try {
+    if (Platform.OS !== 'web' && SecureStore && typeof SecureStore.getItemAsync === 'function') {
+      return await SecureStore.getItemAsync(ACCESS_TOKEN_KEY);
+    } else if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(ACCESS_TOKEN_KEY);
+    }
+  } catch (e) {
+    console.error('Failed to read access token:', e);
+  }
+  return null;
+}
+
+export async function getRefreshToken(): Promise<string | null> {
+  try {
+    if (Platform.OS !== 'web' && SecureStore && typeof SecureStore.getItemAsync === 'function') {
+      return await SecureStore.getItemAsync(REFRESH_TOKEN_KEY);
+    } else if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(REFRESH_TOKEN_KEY);
+    }
+  } catch (e) {
+    console.error('Failed to read refresh token:', e);
+  }
+  return null;
 }
 
 export async function saveCredentials(email: string, pass: string, vendorId?: number): Promise<void> {
@@ -111,9 +154,13 @@ export async function clearSavedCredentials(): Promise<void> {
     if (Platform.OS !== 'web' && SecureStore && typeof SecureStore.deleteItemAsync === 'function') {
       await SecureStore.deleteItemAsync(CRED_KEY);
       await SecureStore.deleteItemAsync(VENDOR_KEY);
+      await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
+      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
     } else if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(CRED_KEY);
       localStorage.removeItem(VENDOR_KEY);
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
     }
   } catch (e) {
     console.error('Failed to clear vendor credentials:', e);

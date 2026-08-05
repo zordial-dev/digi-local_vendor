@@ -24,6 +24,7 @@ import {
   Eye,
   EyeOff,
   UserCheck,
+  User,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -34,6 +35,7 @@ import {
   Shield,
   KeyRound,
   ChevronDown,
+  ChevronRight,
   Camera,
   Image as ImageIcon
 } from 'lucide-react-native';
@@ -136,6 +138,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [agreedToTerms, setAgreedToTerms] = useState(true);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showRegSuccessModal, setShowRegSuccessModal] = useState(false);
+  const [registeredVendor, setRegisteredVendor] = useState<any>(null);
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotStep, setForgotStep] = useState<1 | 2 | 3>(1);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -339,11 +343,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         gst_number: gst.trim().toUpperCase() || undefined
       });
 
-      setSuccessMsg('Vendor registration successful! You can now log in.');
       if (rememberMe) {
         await saveCredentials(email.trim().toLowerCase(), cleanPassword, res.vendor_id);
       }
-      onLoginSuccess(res.vendor);
+      setRegisteredVendor(res.vendor);
+      setShowRegSuccessModal(true);
     } catch (err: any) {
       setError(err.message || 'Registration failed. Please check your details.');
     } finally {
@@ -424,23 +428,52 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       <ScrollView
         contentContainerStyle={[
           styles.scrollContainer,
-          mode === 'register' && {
-            paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 4 : 16,
-          }
+          { paddingTop: mode === 'login' ? (Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 16 : 40) : (Platform.OS === 'android' ? (StatusBar.currentHeight || 20) : 0) }
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* Heading Section */}
-        <View style={[styles.headingSection, mode === 'register' && { alignItems: 'center', marginBottom: 8, marginTop: -4 }]}>
-          <Text style={[styles.mainTitle, mode === 'register' && { fontSize: 26, letterSpacing: -0.4, textAlign: 'center' }]} numberOfLines={1}>
-            {mode === 'login' ? 'Vendor Login' : 'Vendor Registration'}
-          </Text>
-          {mode === 'login' ? (
-            <Text style={styles.mainSubtitle}>
-              Welcome back ! Login to your vendor account
-            </Text>
-          ) : null}
+        <View style={[styles.headingSection, mode === 'login' ? { marginBottom: 40, marginTop: 0 } : { marginBottom: 4, marginTop: 4 }]}>
+          {mode === 'register' ? (
+            <View style={styles.headerRowAligned}>
+              <TouchableOpacity
+                style={styles.backButtonInline}
+                onPress={() => {
+                  if (regStep === 3) setRegStep(2);
+                  else if (regStep === 2) setRegStep(1);
+                  else {
+                    setMode('login');
+                    setError('');
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <ArrowLeft size={22} color="#055726" strokeWidth={2.4} />
+              </TouchableOpacity>
+
+              <Text style={styles.mainTitleRegisterInline} numberOfLines={1}>
+                Vendor Registration
+              </Text>
+
+              <View style={{ width: 28 }} />
+            </View>
+          ) : (
+            <View style={{ alignItems: 'center', width: '100%', marginBottom: 12 }}>
+              {/* Top DigiLocal Logo Badge */}
+              <View style={styles.topLogoBadge}>
+                <Image
+                  source={require('../../assets/images/icon.png')}
+                  style={{ width: 54, height: 54, borderRadius: 14 }}
+                  resizeMode="contain"
+                />
+              </View>
+              <Text style={styles.mainTitleCentered}>Vendor Login</Text>
+              <Text style={styles.mainSubtitleCentered}>
+                Welcome back! Login to your vendor account
+              </Text>
+            </View>
+          )}
 
           {/* Stepper Progress Bar for Registration */}
           {mode === 'register' ? (
@@ -515,6 +548,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               {/* Mobile Number / Email ID */}
               <Text style={styles.inputLabel}>Mobile Number / Email ID</Text>
               <View style={styles.inputWrapper}>
+                <User color="#055726" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter mobile number or email id"
@@ -530,8 +564,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               ) : null}
 
               {/* Password */}
-              <Text style={[styles.inputLabel, { marginTop: 24 }]}>Password</Text>
+              <Text style={[styles.inputLabel, { marginTop: 20, marginBottom: 8 }]}>Password</Text>
               <View style={styles.inputWrapper}>
+                <Lock color="#055726" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
                 <TextInput
                   style={[styles.input, { paddingVertical: 0 }]}
                   placeholder="Enter your password"
@@ -544,7 +579,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   onChangeText={setPassword}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon} activeOpacity={0.7}>
-                  {showPassword ? <EyeOff color="#6B7280" size={20} /> : <Eye color="#6B7280" size={20} />}
+                  {showPassword ? <EyeOff color="#1F2937" size={20} /> : <Eye color="#1F2937" size={20} />}
                 </TouchableOpacity>
               </View>
               {isPasswordInvalid ? (
@@ -570,7 +605,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
               {/* Login Button */}
               <TouchableOpacity
-                style={styles.submitButton}
+                style={[styles.submitButton, mode === 'login' && { marginTop: 32 }]}
                 onPress={handleLogin}
                 disabled={loading}
                 activeOpacity={0.9}
@@ -978,26 +1013,71 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           )}
         </View>
 
-        {/* Footer Account Switch Line */}
+        {/* Divider & Registration Switch Line (Login Mode) */}
         {mode === 'login' ? (
-          <View style={styles.footerRow}>
-            <Text style={styles.footerGrayText}>
-              Don't have a Vendor Account?{' '}
-              <Text
-                style={styles.footerGreenLink}
-                onPress={() => {
-                  setMode('register');
-                  setRegStep(1);
-                  setError('');
-                  setSuccessMsg('');
-                }}
-              >
-                Register as Vendor
-              </Text>
-            </Text>
+          <View style={styles.loginFooterContainer}>
+            {/* Horizontal Divider with "or" */}
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
+            <Text style={styles.dontHaveText}>Don't have a Vendor Account?</Text>
+            
+            <TouchableOpacity
+              style={styles.registerLinkRow}
+              onPress={() => {
+                setMode('register');
+                setRegStep(1);
+                setError('');
+                setSuccessMsg('');
+              }}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.registerLinkText}>Register as Vendor</Text>
+              <ChevronRight size={18} color="#055726" strokeWidth={2.5} style={{ marginLeft: 2 }} />
+            </TouchableOpacity>
           </View>
         ) : null}
       </ScrollView>
+
+      {/* Registration Success Modal */}
+      <Modal transparent animationType="fade" visible={showRegSuccessModal} onRequestClose={() => {}}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { alignItems: 'center', paddingVertical: 32, paddingHorizontal: 24 }]}>
+            {/* Confetti & Green Check Badge */}
+            <View style={styles.successBadgeOuter}>
+              <View style={styles.confettiDot1} />
+              <View style={styles.confettiDot2} />
+              <View style={styles.confettiDot3} />
+              <View style={styles.confettiDot4} />
+              <View style={styles.successBadgeCircle}>
+                <Check size={36} color="#FFFFFF" strokeWidth={3.5} />
+              </View>
+            </View>
+
+            <Text style={styles.regSuccessTitle}>Registration Successful!</Text>
+            
+            <Text style={styles.regSuccessDesc}>
+              Your vendor account has been created successfully. You can now manage your shop and start selling.
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.modalDoneBtn, { width: '100%', marginTop: 24 }]}
+              onPress={() => {
+                setShowRegSuccessModal(false);
+                if (registeredVendor) {
+                  onLoginSuccess(registeredVendor);
+                }
+              }}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.modalDoneBtnText}>Continue to Dashboard</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Terms & Conditions Modal */}
       <Modal transparent animationType="slide" visible={showTermsModal} onRequestClose={() => setShowTermsModal(false)}>
@@ -1193,19 +1273,107 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 24,
   },
-  mainTitle: {
-    fontSize: 42,
+  topLogoBadge: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#E8F2EA',
+    borderWidth: 1,
+    borderColor: '#D4E6D9',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  mainTitleCentered: {
+    fontSize: 32,
     fontWeight: '800',
     color: '#055726',
     letterSpacing: -0.6,
-    marginBottom: 10,
+    marginBottom: 6,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
+  },
+  mainSubtitleCentered: {
+    fontSize: 13.5,
+    color: '#6B7280',
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
+  },
+  loginFooterContainer: {
+    width: '100%',
+    maxWidth: 420,
+    alignItems: 'center',
+    marginTop: 28,
+    marginBottom: 20,
+  },
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '80%',
+    marginBottom: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#D1E2D6',
+  },
+  dividerText: {
+    marginHorizontal: 12,
+    fontSize: 13,
+    color: '#055726',
+    fontWeight: '600',
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
+  },
+  dontHaveText: {
+    fontSize: 13.5,
+    color: '#6B7280',
+    marginBottom: 6,
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
+  },
+  registerLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  registerLinkText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#055726',
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
+  },
+  headerRowAligned: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    marginBottom: 8,
+  },
+  backButtonInline: {
+    paddingVertical: 4,
+    paddingRight: 8,
+  },
+  mainTitleRegisterInline: {
+    flex: 1,
+    fontSize: 23,
+    fontWeight: '800',
+    color: '#055726',
+    letterSpacing: -0.4,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
+  },
+  mainTitle: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#055726',
+    letterSpacing: -0.6,
+    marginBottom: 12,
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
   },
   mainSubtitle: {
     fontSize: 14,
     color: '#6B7280',
-    marginTop: 22,
-    paddingLeft: 4,
+    marginTop: 0,
+    paddingLeft: 2,
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
   },
 
@@ -1312,10 +1480,10 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 10,
-    marginTop: 14,
+    marginBottom: 8,
+    marginTop: 0,
     alignSelf: 'flex-start',
-    paddingLeft: 6,
+    paddingLeft: 4,
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
   },
   inputWrapper: {
@@ -1481,6 +1649,81 @@ const styles = StyleSheet.create({
   },
 
   /* Summary Card for Step 3 */
+  successBadgeOuter: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 100,
+    height: 100,
+    marginBottom: 20,
+  },
+  successBadgeCircle: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#055726',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#055726',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
+  },
+  confettiDot1: {
+    position: 'absolute',
+    top: 4,
+    left: 12,
+    width: 8,
+    height: 8,
+    borderRadius: 2,
+    backgroundColor: '#D97706',
+    transform: [{ rotate: '45deg' }],
+  },
+  confettiDot2: {
+    position: 'absolute',
+    top: 10,
+    right: 14,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#15803D',
+  },
+  confettiDot3: {
+    position: 'absolute',
+    bottom: 8,
+    left: 16,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: '#9CA3AF',
+  },
+  confettiDot4: {
+    position: 'absolute',
+    bottom: 12,
+    right: 18,
+    width: 8,
+    height: 8,
+    borderRadius: 2,
+    backgroundColor: '#D97706',
+    transform: [{ rotate: '25deg' }],
+  },
+  regSuccessTitle: {
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#055726',
+    marginBottom: 12,
+    textAlign: 'center',
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
+  },
+  regSuccessDesc: {
+    fontSize: 14,
+    color: '#374151',
+    textAlign: 'center',
+    lineHeight: 22,
+    paddingHorizontal: 8,
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
+  },
   termsCheckRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1558,8 +1801,8 @@ const styles = StyleSheet.create({
   },
   forgotPasswordRow: {
     alignSelf: 'flex-end',
-    marginTop: 8,
-    marginBottom: 20,
+    marginTop: 14,
+    marginBottom: 0,
   },
   forgotPasswordText: {
     fontSize: 13,
@@ -1591,7 +1834,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 36,
-    paddingTop: 16,
     paddingBottom: 24,
   },
   footerGrayText: {

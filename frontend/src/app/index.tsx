@@ -90,7 +90,7 @@ export default function App() {
 
   // Alarm & Order alert state
   const [activeAlarmOrder, setActiveAlarmOrder] = useState<VendorOrder | null>(null);
-  const knownOrderIdsRef = useRef<Set<number>>(new Set());
+  const knownOrderIdsRef = useRef<Set<string | number>>(new Set());
   const isFirstLoadRef = useRef(true);
 
   const theme = Colors.light;
@@ -108,7 +108,7 @@ export default function App() {
       // Detect newly placed orders for alarm trigger
       if (!isFirstLoadRef.current) {
         const newlyPlaced = newOrders.find(
-          o => o.status === 'PLACED' && !knownOrderIdsRef.current.has(o.order_id)
+          o => (o.status === 'PLACED' || o.status === 'PENDING') && !knownOrderIdsRef.current.has(o.order_id)
         );
 
         if (newlyPlaced) {
@@ -121,7 +121,7 @@ export default function App() {
       }
 
       // Update known order IDs set
-      const idsSet = new Set<number>();
+      const idsSet = new Set<string | number>();
       newOrders.forEach(o => idsSet.add(o.order_id));
       knownOrderIdsRef.current = idsSet;
 
@@ -199,7 +199,7 @@ export default function App() {
     setCurrentUser(null);
   };
 
-  const handleAcceptAlarmOrder = async (orderId: number) => {
+  const handleAcceptAlarmOrder = async (orderId: string | number) => {
     if (!currentUser) return;
     await stopAlarmSound();
     setActiveAlarmOrder(null);
@@ -225,7 +225,7 @@ export default function App() {
       phone_number: '+91 9876543210',
       address: 'Flat 402, Block B, ' + (currentUser?.society_name || 'Greenwood Residency'),
       order_timestamp: new Date().toISOString(),
-      status: 'PLACED',
+      status: 'PENDING',
       total_amount: '349.00',
       items: [
         {

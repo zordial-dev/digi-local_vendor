@@ -22,7 +22,7 @@ import { VendorOrder } from '../services/apiService';
 
 interface AlarmOverlayProps {
   order: VendorOrder | null;
-  onAccept: (orderId: number) => void;
+  onAccept: (orderId: string | number) => void;
   onMute: () => void;
   isDarkMode?: boolean;
 }
@@ -154,7 +154,7 @@ export const AlarmOverlay: React.FC<AlarmOverlayProps> = ({
                 <View key={idx} style={styles.itemRow}>
                   <Text style={styles.itemQty}>{it.quantity}x</Text>
                   <Text style={styles.itemName}>{it.item_name}</Text>
-                  <Text style={styles.itemPrice}>₹{it.item_total}</Text>
+                  <Text style={styles.itemPrice}>₹{(it.item_total || (it.price ? Number(it.price) * it.quantity : 0))}</Text>
                 </View>
               ))}
             </ScrollView>

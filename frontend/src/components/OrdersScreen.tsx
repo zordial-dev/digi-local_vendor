@@ -71,7 +71,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
 }) => {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  const [updatingId, setUpdatingId] = useState<number | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | number | null>(null);
 
   // Custom Alert Popup State
   const [alertState, setAlertState] = useState<CustomAlertState>({
@@ -85,7 +85,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
     setAlertState({ visible: true, title, message, type, onConfirm });
   };
 
-  const handleStatusUpdate = async (orderId: number, newStatus: 'ACCEPTED' | 'COMPLETED' | 'CANCELLED') => {
+  const handleStatusUpdate = async (orderId: string | number, newStatus: any) => {
     setUpdatingId(orderId);
     try {
       await updateOrderStatusApi(vendorId, orderId, newStatus);
@@ -110,14 +110,14 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
     const matchesStatus = statusFilter === 'ALL' || o.status === statusFilter;
     const matchesQuery = searchQuery.trim() === '' ||
       o.customer_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      o.phone_number.includes(searchQuery) ||
+      (o.phone_number || o.phone || '').includes(searchQuery) ||
       String(o.order_id).includes(searchQuery);
     return matchesStatus && matchesQuery;
   });
 
-  const newOrdersCount = orders.filter(o => o.status === 'PLACED').length;
+  const newOrdersCount = orders.filter(o => (o.status === 'PLACED' || o.status === 'PENDING')).length;
   const acceptedOrdersCount = orders.filter(o => o.status === 'ACCEPTED').length;
-  const completedOrdersCount = orders.filter(o => o.status === 'COMPLETED').length;
+  const completedOrdersCount = orders.filter(o => (o.status === 'COMPLETED' || o.status === 'DELIVERED')).length;
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -256,7 +256,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
         renderItem={({ item: order }) => {
           const badge = getStatusBadge(order.status);
           const isUpdating = updatingId === order.order_id;
-          const timeAgo = formatElapsedTime(order.order_timestamp);
+          const timeAgo = formatElapsedTime(order.order_timestamp || '');
 
           return (
             <View style={styles.orderCard}>
@@ -273,7 +273,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
                   </View>
 
                   <Text style={styles.orderDateText} numberOfLines={1}>
-                    {new Date(order.order_timestamp).toLocaleString([], {
+                    {new Date(order.order_timestamp || Date.now()).toLocaleString([], {
                       month: 'short',
                       day: 'numeric',
                       hour: '2-digit',
@@ -301,7 +301,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
 
                   <TouchableOpacity
                     style={styles.callBtn}
-                    onPress={() => handleCallCustomer(order.phone_number)}
+                    onPress={() => handleCallCustomer(order.phone_number || order.phone || '')}
                     activeOpacity={0.85}
                   >
                     <Phone size={12} color="#18281F" style={{ marginRight: 4 }} />
@@ -356,7 +356,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
                     <ActivityIndicator size="small" color="#C4A066" />
                   ) : (
                     <>
-                      {order.status === 'PLACED' && (
+                      {(order.status === 'PLACED' || order.status === 'PENDING') && (
                         <View style={styles.btnGroupRow}>
                           <TouchableOpacity
                             style={[styles.btn, styles.btnDecline]}
@@ -400,10 +400,10 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
                         </View>
                       )}
 
-                      {(order.status === 'COMPLETED' || order.status === 'CANCELLED') && (
+                      {((order.status === 'COMPLETED' || order.status === 'DELIVERED') || order.status === 'CANCELLED') && (
                         <View style={styles.finishedBadge}>
                           <Text style={styles.finishedBadgeText}>
-                            {order.status === 'COMPLETED' ? 'ORDER DELIVERED SUCCESSFULLY' : 'ORDER CANCELLED'}
+                            {(order.status === 'COMPLETED' || order.status === 'DELIVERED') ? 'ORDER DELIVERED SUCCESSFULLY' : 'ORDER CANCELLED'}
                           </Text>
                         </View>
                       )}
