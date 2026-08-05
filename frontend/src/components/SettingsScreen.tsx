@@ -446,12 +446,32 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
   const [savingSettings, setSavingSettings] = useState(false);
 
   const handleSaveStoreConfigs = async () => {
+    const cleanPhone = phone.trim();
+    const cleanGst = gstNum.trim().toUpperCase();
+
+    if (cleanPhone) {
+      const phoneRegex = /^[6-9]\d{9}$/;
+      if (!phoneRegex.test(cleanPhone)) {
+        showAlert('Invalid Phone', 'Phone number must be a valid 10-digit number starting with 6, 7, 8, or 9.', 'warning');
+        return;
+      }
+    }
+
+    if (cleanGst) {
+      const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+      const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+      if (!panRegex.test(cleanGst) && !gstRegex.test(cleanGst)) {
+        showAlert('Invalid PAN/GST', 'Please enter a valid 10-character PAN No. (e.g. ABCDE1234F) or 15-character GST No. (e.g. 22AAAAA0000A1Z5).', 'warning');
+        return;
+      }
+    }
+
     setSavingSettings(true);
     try {
       await updateStoreSettingsApi(vendor.vendor_id, {
         store_name: vendor.store_name,
-        phone_number: phone.trim(),
-        gst_number: gstNum.trim(),
+        phone_number: cleanPhone,
+        gst_number: cleanGst,
         opening_timing: openTime.trim(),
         closing_timing: closeTime.trim(),
         gst_percentage: parseFloat(gstPercent) || 0,
@@ -626,14 +646,24 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
         <Text style={styles.configLabel}>WhatsApp / Phone Number</Text>
         <TextInput
           style={[styles.configInput, { color: '#111827' }]}
-          value={phone} onChangeText={setPhone}
+          value={phone}
+          onChangeText={(t) => {
+            const digitsOnly = t.replace(/[^0-9]/g, '');
+            const validStart = digitsOnly.replace(/^[^6-9]+/, '');
+            setPhone(validStart.slice(0, 10));
+          }}
+          keyboardType="number-pad"
+          maxLength={10}
           placeholder="e.g. 9876543210" placeholderTextColor="#9CA3AF"
         />
-        <Text style={styles.configLabel}>GSTIN Registration Number</Text>
+        <Text style={styles.configLabel}>PAN / GSTIN Registration Number</Text>
         <TextInput
           style={[styles.configInput, { color: '#111827' }]}
-          value={gstNum} onChangeText={setGstNum}
-          placeholder="e.g. 07AAACR12341Z5" placeholderTextColor="#9CA3AF"
+          value={gstNum}
+          onChangeText={(t) => setGstNum(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15))}
+          autoCapitalize="characters"
+          maxLength={15}
+          placeholder="e.g. 22AAAAA0000A1Z5 / ABCDE1234F" placeholderTextColor="#9CA3AF"
         />
 
         <Text style={styles.sectionHeading}>2. Operating Timings</Text>

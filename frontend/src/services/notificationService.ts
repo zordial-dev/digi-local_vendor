@@ -4,17 +4,19 @@ import { Audio } from 'expo-av';
 import { VendorOrder } from './apiService';
 import Constants from 'expo-constants';
 
-// Configure notification handling behaviour
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-    priority: Notifications.AndroidNotificationPriority.MAX,
-  }),
-});
+// Configure notification handling behaviour safely
+try {
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      priority: Notifications.AndroidNotificationPriority.MAX,
+    }),
+  });
+} catch (_) {}
 
 let alarmSoundObject: Audio.Sound | null = null;
 

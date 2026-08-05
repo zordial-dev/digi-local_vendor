@@ -10,21 +10,29 @@ const getInitialApiUrl = () => {
     return envUrl;
   }
 
-  if (Platform.OS === 'web') {
-    return 'http://localhost:5000/api';
-  }
+  // Extract Expo Metro server host IP dynamically across Expo SDK versions for Mobile (Expo Go)
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    (Constants as any).manifest?.debuggerHost ||
+    (Constants as any).manifest2?.extra?.expoGo?.developerModule ||
+    (Constants as any).manifest2?.extra?.expoClient?.hostUri ||
+    Constants.linkingUri ||
+    (Constants as any).experienceUrl;
 
-  // Extract Expo Metro server host IP
-  const hostUri = Constants.expoConfig?.hostUri || (Constants as any).manifest?.debuggerHost;
   if (hostUri) {
-    const ip = hostUri.split(':')[0];
-    if (ip && ip !== 'localhost' && ip !== '127.0.0.1') {
-      return `http://${ip}:5000/api`;
+    const match = String(hostUri).match(/(?:exp:\/\/|http:\/\/|https:\/\/)?([^:/]+)/);
+    const hostOrIp = match ? match[1] : null;
+    if (hostOrIp && /^(\d{1,3}\.){3}\d{1,3}$/.test(hostOrIp) && hostOrIp !== '127.0.0.1') {
+      return `http://${hostOrIp}:5005/api`;
     }
   }
 
-  // Use local WiFi IP directly — works when phone & PC are on same WiFi (Expo Go testing)
-  return 'http://172.25.12.195:5000/api';
+  if (Platform.OS === 'web') {
+    return 'http://localhost:5005/api';
+  }
+
+  // Active Wi-Fi subnet IP fallback for Expo Go mobile
+  return 'http://172.25.12.156:5005/api';
 };
 
 let currentApiUrl = getInitialApiUrl();
@@ -45,34 +53,65 @@ export const setApiBaseUrl = (url: string) => {
 
 export const getApiBaseUrl = () => currentApiUrl;
 
-// Safe Fetch Helper — Bypasses localtunnel warning HTML pages & safely parses responses
-const safeFetch = async (url: string, options: RequestInit = {}) => {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'Bypass-Tunnel-Reminder': 'true',
-    'bypass-tunnel-reminder': 'true',
-    ...((options.headers as Record<string, string>) || {})
-  };
+export const getApiHost = () => {
+  return currentApiUrl.replace(/\/api\/?$/, '');
+};
 
-  const res = await fetch(url, { ...options, headers });
-  const contentType = res.headers.get('content-type') || '';
+export const formatMediaUrl = (url?: string): string => {
+  if (!url) return '';
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
 
-  let data: any = {};
-  if (contentType.includes('application/json')) {
-    data = await res.json();
-  } else {
-    const rawText = await res.text();
-    if (!res.ok) {
-      throw new Error(`Server returned status ${res.status}. Ensure backend is active.`);
+  if (Platform.OS !== 'web') {
+    const host = getApiHost();
+    if (url.startsWith('/')) {
+      return `${host}${url}`;
     }
-    try {
-      data = JSON.parse(rawText);
-    } catch (_) {
-      data = { message: rawText };
-    }
+    return url.replace(/http:\/\/(localhost|127\.0\.0\.1):5005/g, host);
   }
+  return url;
+};
 
-  return { res, data };
+// Safe Fetch Helper — Bypasses localtunnel warning & includes 6s timeout to prevent hanging on launch
+const safeFetch = async (url: string, options: RequestInit = {}) => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+  try {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'Bypass-Tunnel-Reminder': 'true',
+      'bypass-tunnel-reminder': 'true',
+      ...((options.headers as Record<string, string>) || {})
+    };
+
+    const res = await fetch(url, { ...options, headers, signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    const contentType = res.headers.get('content-type') || '';
+
+    let data: any = {};
+    if (contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      const rawText = await res.text();
+      if (!res.ok) {
+        throw new Error(`Server returned status ${res.status}. Ensure backend is active.`);
+      }
+      try {
+        data = JSON.parse(rawText);
+      } catch (_) {
+        data = { message: rawText };
+      }
+    }
+
+    return { res, data };
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error('Network request timed out. Please verify your backend server is running on port 5005.');
+    }
+    throw err;
+  }
 };
 
 export interface VendorUser {
@@ -212,9 +251,34 @@ export async function registerVendorApi(payload: {
   }
 }
 
-export async function fetchSocietiesApi(): Promise<Society[]> {
+export async function resetPasswordApi(email: string, newPassword?: string): Promise<{ message: string }> {
   try {
-    const { res, data } = await safeFetch(`${getApiBaseUrl()}/societies`);
+    const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({
+        email: email.trim().toLowerCase(),
+        new_password: newPassword ? newPassword.trim() : undefined
+      })
+    });
+
+    if (!res.ok) {
+      throw new Error(data.error || 'Password reset request failed.');
+    }
+    return data;
+  } catch (err: any) {
+    if (err.name === 'TypeError' || err.message?.includes('fetch')) {
+      throw new Error(`Server connection failed (${getApiBaseUrl()}). Ensure backend server is active.`);
+    }
+    throw err;
+  }
+}
+
+export async function fetchSocietiesApi(searchQuery?: string): Promise<Society[]> {
+  try {
+    const url = searchQuery && searchQuery.trim() !== ''
+      ? `${getApiBaseUrl()}/societies?search=${encodeURIComponent(searchQuery.trim())}`
+      : `${getApiBaseUrl()}/societies`;
+    const { res, data } = await safeFetch(url);
     if (!res.ok) return [];
     return Array.isArray(data) ? data : [];
   } catch (err) {

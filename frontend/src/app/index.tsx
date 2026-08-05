@@ -41,6 +41,8 @@ import {
 } from '../services/notificationService';
 
 // Screens & Overlays
+import { SplashScreenComponent } from '../components/SplashScreen';
+import { WelcomeLandingScreen } from '../components/WelcomeLandingScreen';
 import { LoginScreen } from '../components/LoginScreen';
 import { OrdersScreenComponent } from '../components/OrdersScreen';
 import { MenuScreenComponent } from '../components/MenuScreen';
@@ -50,12 +52,23 @@ import { StoreDigitalCardModal } from '../components/StoreDigitalCardModal';
 import { CustomAlertModal, CustomAlertState, AlertType } from '../components/CustomAlertModal';
 
 export default function App() {
-  const insets = useSafeAreaInsets();
+  const rawInsets = useSafeAreaInsets();
+  const insets = rawInsets || { top: 0, bottom: 0, left: 0, right: 0 };
+  const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [currentUser, setCurrentUser] = useState<VendorUser | null>(null);
+  const [showLogin, setShowLogin] = useState(false);
   const [currentTab, setCurrentTab] = useState<'menu' | 'orders' | 'settings'>('menu');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showDigitalCard, setShowDigitalCard] = useState(false);
+
+  // Initial Splash Screen Display Timer (Fast 800ms transition)
+  useEffect(() => {
+    const splashTimer = setTimeout(() => {
+      setIsSplashVisible(false);
+    }, 800);
+    return () => clearTimeout(splashTimer);
+  }, []);
 
   // Custom Alert Popup State
   const [alertState, setAlertState] = useState<CustomAlertState>({
@@ -118,18 +131,25 @@ export default function App() {
     }
   };
 
-  // Auto-restore saved API URL & vendor login session on App launch
+  // Auto-restore saved API URL & Vendor user session on App launch
   useEffect(() => {
     async function restoreSession() {
-      const savedUrl = await getSavedApiBaseUrlStorage();
-      if (savedUrl) {
-        console.log(`[App] Restored custom API URL: ${savedUrl}`);
-        setApiBaseUrl(savedUrl);
-      }
-      const savedVendor = await getSavedVendorUser();
-      if (savedVendor) {
-        console.log(`[App] Auto-logging into saved vendor account: ${savedVendor.store_name} (${savedVendor.email})`);
-        setCurrentUser(savedVendor);
+      try {
+        const savedUrl = await getSavedApiBaseUrlStorage();
+        if (savedUrl) {
+          console.log(`[App] Restored custom API URL: ${savedUrl}`);
+          setApiBaseUrl(savedUrl);
+        }
+        const savedVendor = await getSavedVendorUser();
+        if (savedVendor && typeof savedVendor === 'object') {
+          const vendorData: VendorUser = savedVendor.vendor || savedVendor;
+          if (vendorData && vendorData.vendor_id && vendorData.store_name) {
+            console.log(`[App] Restored vendor session: ${vendorData.store_name}`);
+            setCurrentUser(vendorData);
+          }
+        }
+      } catch (e) {
+        console.error('[App] Failed restoring session:', e);
       }
     }
     restoreSession();
@@ -144,6 +164,8 @@ export default function App() {
         console.log(`[App] Registered Expo Push Token: ${token}`);
         updateVendorPushTokenApi(currentUser.vendor_id, token);
       }
+    }).catch(err => {
+      console.log('[App] Push token registration skipped:', err);
     });
 
     loadDashboardData(currentUser.vendor_id);
@@ -164,6 +186,8 @@ export default function App() {
         console.log(`[App] Push Token registered on login: ${token}`);
         updateVendorPushTokenApi(vendor.vendor_id, token);
       }
+    }).catch(err => {
+      console.log('[App] Push token registration skipped:', err);
     });
   };
 
@@ -171,6 +195,7 @@ export default function App() {
     await clearSavedCredentials();
     await stopAlarmSound();
     setActiveAlarmOrder(null);
+    setShowLogin(false);
     setCurrentUser(null);
   };
 
@@ -229,15 +254,33 @@ export default function App() {
     await playAlarmSound();
   };
 
-  // If not logged in, render DigiCafe-styled Login / Registration screen
+  // Render Splash Screen on initial app open
+  if (isSplashVisible) {
+    return <SplashScreenComponent />;
+  }
+
+  // If not logged in, render Welcome Landing Screen or Login / Registration screen
   if (!currentUser) {
+    if (!showLogin) {
+      return (
+        <WelcomeLandingScreen
+          onGetStarted={() => setShowLogin(true)}
+          onLogin={() => setShowLogin(true)}
+        />
+      );
+    }
+
     return (
       <LoginScreen
         onLoginSuccess={handleLoginSuccess}
+        onBackToWelcome={() => setShowLogin(false)}
         isDarkMode={false}
       />
     );
   }
+
+  const storeNameDisplay = (currentUser?.store_name || 'VENDOR').toUpperCase();
+  const storeAvatarInitial = storeNameDisplay.charAt(0);
 
   return (
     <View style={[styles.safeArea, { paddingTop: insets.top }]}>
@@ -252,14 +295,14 @@ export default function App() {
           activeOpacity={0.85}
         >
           <Text style={styles.headerAvatarText}>
-            {currentUser.store_name.charAt(0).toUpperCase()}
+            {storeAvatarInitial}
           </Text>
         </TouchableOpacity>
 
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerSubtitle} numberOfLines={1}>DIGILOCAL VENDOR TERMINAL</Text>
           <Text style={styles.headerTitle} numberOfLines={1}>
-            {currentUser.store_name.toUpperCase()}
+            {storeNameDisplay}
           </Text>
         </View>
 

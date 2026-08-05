@@ -1,45 +1,59 @@
 import { Platform } from 'react-native';
 
-export const APP_LOGO_URL = process.env.EXPO_PUBLIC_APP_LOGO || 'https://imgh.in/host/ucila6';
+export const APP_LOGO_URL = 'https://i.postimg.cc/HWbyVhCN/Green-and-Gold-D-Basket-Logo.png';
+
+// Official Brand Color Palette System
+export const BrandTheme = {
+  warmOffWhite: '#EDEDE4',       // Primary Page Canvas & Hero Container Background
+  creamCanvas: '#F7F4EE',        // Primary Cards & Container Backgrounds
+  forestGreen: '#34533C',        // Primary Bento Containers & Header Frame
+  darkForestGreen: '#18281F',    // Deep Dark Text & Primary Focal Areas
+  obsidianDarkGreen: '#0B1610',  // Footer & Vendor Portal Dark Card Background
+  warmTanGold: '#C4A066',        // Accent & Highlights, Arrow Icons, Active Accents
+  accentYellowGold: '#E6C35C',   // Gold Accents & Active Badges
+  mutedSageText: '#6B7C70',      // Secondary Subtitles, Captions & Metadata
+  sandBorder: '#E4DCC9',         // Soft Card Borders & Dividers
+  emeraldGreen: '#059669',       // Verified Store Badges & Online Indicators
+};
 
 export const Colors = {
   light: {
-    primary: '#18281F',           // Dark Forest Green
-    primaryCard: '#243A2D',       // Translucent Dark Green
-    background: '#F8F5EE',        // Soft Warm Ivory Cream
-    backgroundElement: '#EFE8D8', // Warm Sand Surface (alias)
-    backgroundSelected: '#E4DCC9',// Soft Warm Sand (alias)
-    surface: '#EFE8D8',           // Warm Sand Surface
-    card: '#FFFFFF',              // Pure White
-    text: '#18281F',              // Deep Dark Espresso
-    textSecondary: '#6B7C70',     // Muted Sage Taupe
-    cardBorder: '#E4DCC9',        // Soft Warm Sand
-    accent: '#C4A066',            // Warm Tan Gold
-    gold: '#C4A066',              // Warm Tan Gold
-    success: '#1E3A29',           // Active / Grocery Green
+    primary: BrandTheme.forestGreen,
+    primaryCard: BrandTheme.darkForestGreen,
+    background: BrandTheme.warmOffWhite,
+    backgroundElement: BrandTheme.creamCanvas,
+    backgroundSelected: BrandTheme.sandBorder,
+    surface: BrandTheme.creamCanvas,
+    card: BrandTheme.creamCanvas,
+    text: BrandTheme.darkForestGreen,
+    textSecondary: BrandTheme.mutedSageText,
+    cardBorder: BrandTheme.sandBorder,
+    accent: BrandTheme.warmTanGold,
+    gold: BrandTheme.warmTanGold,
+    success: BrandTheme.emeraldGreen,
     successBg: '#E8F2EA',
-    warning: '#8C6B38',           // Pending / Bakery Gold
+    warning: '#8C6B38',
     warningBg: '#F9EFE2',
-    danger: '#B91C1C',            // Error / Rejected Red
+    danger: '#B91C1C',
     dangerBg: '#FEE2E2',
-    info: '#2C5282',              // Info Blue
+    info: '#2C5282',
     infoBg: '#EBF3F9',
   },
   dark: {
-    primary: '#18281F',
-    primaryCard: '#243A2D',
-    background: '#121F18',
-    backgroundElement: '#1E3227',
-    backgroundSelected: '#2E4738',
-    surface: '#1E3227',
-    card: '#18281F',
-    text: '#F8F5EE',
-    textSecondary: '#94A69A',
-    cardBorder: '#2E4738',
-    accent: '#C4A066',
-    gold: '#C4A066',
-    success: '#34D399',
-    successBg: 'rgba(52, 211, 153, 0.15)',
+    primary: BrandTheme.forestGreen,
+    primaryCard: BrandTheme.obsidianDarkGreen,
+    background: BrandTheme.obsidianDarkGreen,
+    backgroundElement: BrandTheme.darkForestGreen,
+    backgroundSelected: BrandTheme.forestGreen,
+    surface: BrandTheme.darkForestGreen,
+    card: BrandTheme.darkForestGreen,
+    text: BrandTheme.creamCanvas,
+    textSecondary: BrandTheme.mutedSageText,
+    cardBorder: BrandTheme.sandBorder,
+    accent: BrandTheme.warmTanGold,
+    gold: BrandTheme.accentYellowGold,
+    success: BrandTheme.emeraldGreen,
+    successBg: 'rgba(5, 150, 105, 0.15)',
     warning: '#FBBF24',
     warningBg: 'rgba(251, 191, 36, 0.15)',
     danger: '#F87171',
@@ -64,23 +78,4 @@ export const Fonts = Platform.select({
     rounded: 'normal',
     mono: 'monospace',
   },
-  web: {
-    sans: 'var(--font-sans)',
-    serif: 'var(--font-serif)',
-    rounded: 'var(--font-rounded)',
-    mono: 'var(--font-mono)',
-  },
 });
-
-export const Spacing = {
-  half: 2,
-  one: 4,
-  two: 8,
-  three: 16,
-  four: 24,
-  five: 32,
-  six: 64,
-} as const;
-
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
-export const MaxContentWidth = 800;

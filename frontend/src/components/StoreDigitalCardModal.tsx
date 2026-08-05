@@ -10,6 +10,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { X, Store, Building, Mail, Phone, ExternalLink, QrCode } from 'lucide-react-native';
+import { DigiLocalLogo } from './DigiLocalLogo';
 import { VendorUser } from '../services/apiService';
 import { getApiBaseUrl } from '../services/apiService';
 
@@ -66,7 +67,7 @@ export const StoreDigitalCardModal: React.FC<StoreDigitalCardModalProps> = ({
               <View style={styles.qrCardTopBand}>
                 <View style={styles.qrCardLogoRow}>
                   <View style={styles.qrLogoBox}>
-                    <Store size={20} color="#FFFFFF" />
+                    <DigiLocalLogo size={32} primaryColor="#074E36" goldColor="#E6B741" />
                   </View>
                   <View>
                     <Text style={styles.qrCardBrandLabel}>DIGILOCAL</Text>

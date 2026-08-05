@@ -5,17 +5,15 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "digilocalvendor",
-    "userInterfaceStyle": "light",
     "splash": {
-      "image": "./assets/images/icon.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0A1428"
+      "backgroundColor": "#EDEDE4"
     },
     "android": {
       "package": "com.digilocal.vendor",
       "adaptiveIcon": {
-        "backgroundColor": "#0A1428",
+        "backgroundColor": "#EDEDE4",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
@@ -32,7 +30,7 @@
       ]
     },
     "web": {
-      "output": "static"
+      "output": "single"
     },
     "plugins": [
       "expo-router",
