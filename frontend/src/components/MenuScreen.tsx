@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -10,7 +10,9 @@ import {
   FlatList,
   Modal,
   Switch,
-  Image
+  Image,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import {
   Plus,
@@ -49,6 +51,7 @@ interface MenuScreenProps {
   isLoading: boolean;
   onRefresh: () => Promise<void> | void;
   isDarkMode?: boolean;
+  openAddProductTrigger?: number;
 }
 
 const PRESET_CATEGORIES = [
@@ -63,6 +66,16 @@ const PRESET_CATEGORIES = [
   'Pharmacy & Health',
   'Pooja Essentials',
   '+ Custom Category'
+];
+
+const PRESET_UNITS = [
+  'Kg',
+  'Litre',
+  'Dozen',
+  'Gm',
+  'Piece',
+  'Ml',
+  '+ Custom Unit'
 ];
 
 const normalizeCategory = (cat?: string): string => {
@@ -106,9 +119,16 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
   items,
   isLoading,
   onRefresh,
-  isDarkMode = false,
+  openAddProductTrigger,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+
+  useEffect(() => {
+    if (openAddProductTrigger && openAddProductTrigger > 0) {
+      resetForm();
+      setIsModalOpen(true);
+    }
+  }, [openAddProductTrigger]);
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modal State
@@ -137,20 +157,25 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
   const [category, setCategory] = useState('Grocery');
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [unit, setUnit] = useState('piece');
+  const [unit, setUnit] = useState('Piece');
   const [imageUrl, setImageUrl] = useState('');
   const [isAvailable, setIsAvailable] = useState(true);
+  const [stock, setStock] = useState('50');
+
+  // Unit Dropdown States
+  const [showUnitDropdown, setShowUnitDropdown] = useState(false);
+  const [customUnitInput, setCustomUnitInput] = useState('');
 
   const resetForm = () => {
     setItemName('');
     setDescription('');
     setPrice('');
-    setCategory('Grocery');
-    setCustomCategoryInput('');
-    setShowCategoryDropdown(false);
-    setUnit('piece');
+    setUnit('Piece');
+    setCustomUnitInput('');
+    setShowUnitDropdown(false);
     setImageUrl('');
     setIsAvailable(true);
+    setStock('50');
     setEditingItem(null);
   };
 
@@ -176,6 +201,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
     setItemName(item.item_name);
     setDescription(item.description || '');
     setPrice(String(item.price));
+    setStock(item.stock !== undefined ? String(item.stock) : '50');
 
     const itemCat = normalizeCategory(item.category);
     if (PRESET_CATEGORIES.includes(itemCat)) {
@@ -186,23 +212,33 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
       setCustomCategoryInput(item.category || 'General');
     }
 
-    setUnit(item.unit || 'piece');
+    const itemUnit = item.unit || 'Piece';
+    const foundPreset = PRESET_UNITS.find(u => u.toLowerCase() === itemUnit.toLowerCase() && u !== '+ Custom Unit');
+    if (foundPreset) {
+      setUnit(foundPreset);
+      setCustomUnitInput('');
+    } else {
+      setUnit('+ Custom Unit');
+      setCustomUnitInput(itemUnit);
+    }
+    setShowUnitDropdown(false);
+
     setImageUrl(item.image_url || '');
     setIsAvailable(Boolean(item.is_available));
     setIsModalOpen(true);
   };
 
-  // Upload image or video from device gallery
+  // Upload image from device gallery
   const handlePickMedia = async () => {
     try {
       const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!permission.granted) {
-        showAlert('Permission Required', 'Please grant photo/video gallery access to upload product media.', 'warning');
+        showAlert('Permission Required', 'Please grant photo gallery access to upload product photo.', 'warning');
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images', 'videos'],
+        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.7,
         base64: true,
@@ -215,11 +251,11 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
           try {
             const uploaded = await uploadMediaApi(
               asset.base64,
-              asset.fileName || `media_${Date.now()}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
-              asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg')
+              asset.fileName || `media_${Date.now()}.jpg`,
+              asset.mimeType || 'image/jpeg'
             );
             setImageUrl(uploaded.url);
-            showAlert('Media Uploaded', `Product ${asset.type === 'video' ? 'video' : 'photo'} saved permanently to server!`, 'success');
+            showAlert('Media Uploaded', 'Product photo saved permanently to server!', 'success');
           } catch (uploadErr: any) {
             setImageUrl(asset.uri);
           } finally {
@@ -234,17 +270,17 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
     }
   };
 
-  // Capture photo or video directly using phone camera
+  // Capture photo directly using phone camera
   const handleTakeMedia = async () => {
     try {
       const permission = await ImagePicker.requestCameraPermissionsAsync();
       if (!permission.granted) {
-        showAlert('Permission Required', 'Please grant camera access to capture product photo/video.', 'warning');
+        showAlert('Permission Required', 'Please grant camera access to capture product photo.', 'warning');
         return;
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images', 'videos'],
+        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.7,
         base64: true,
@@ -257,11 +293,11 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
           try {
             const uploaded = await uploadMediaApi(
               asset.base64,
-              asset.fileName || `media_${Date.now()}.${asset.type === 'video' ? 'mp4' : 'jpg'}`,
-              asset.mimeType || (asset.type === 'video' ? 'video/mp4' : 'image/jpeg')
+              asset.fileName || `media_${Date.now()}.jpg`,
+              asset.mimeType || 'image/jpeg'
             );
             setImageUrl(uploaded.url);
-            showAlert('Captured & Uploaded', `Product ${asset.type === 'video' ? 'video' : 'photo'} saved permanently to server!`, 'success');
+            showAlert('Captured & Uploaded', 'Product photo saved permanently to server!', 'success');
           } catch (uploadErr: any) {
             setImageUrl(asset.uri);
           } finally {
@@ -276,6 +312,30 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
     }
   };
 
+  const incrementPrice = () => {
+    const p = parseFloat(price) || 0;
+    setPrice((p + 1).toFixed(2).replace(/\.00$/, ''));
+  };
+
+  const decrementPrice = () => {
+    const p = parseFloat(price) || 0;
+    if (p > 0) {
+      setPrice(Math.max(0, p - 1).toFixed(2).replace(/\.00$/, ''));
+    }
+  };
+
+  const incrementStock = () => {
+    const s = parseInt(stock, 10) || 0;
+    setStock(String(s + 1));
+  };
+
+  const decrementStock = () => {
+    const s = parseInt(stock, 10) || 0;
+    if (s > 0) {
+      setStock(String(Math.max(0, s - 1)));
+    }
+  };
+
   const handleSaveItem = async () => {
     if (!itemName.trim() || !price.trim()) {
       showAlert('Required Fields Missing', 'Please enter both item name and price.', 'warning');
@@ -286,14 +346,19 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
       ? (customCategoryInput.trim() || 'General')
       : category;
 
+    const finalUnit = unit === '+ Custom Unit'
+      ? (customUnitInput.trim() || 'piece')
+      : unit;
+
     setSubmitting(true);
     try {
       const payload = {
         item_name: itemName.trim(),
         description: description.trim(),
         price: parseFloat(price),
+        stock: parseInt(stock, 10) || 0,
         category: finalCategory,
-        unit: unit.trim(),
+        unit: finalUnit.trim(),
         is_available: isAvailable,
         image_url: imageUrl.trim()
       };
@@ -395,22 +460,12 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
               </TouchableOpacity>
             ) : null}
           </View>
-
-          <TouchableOpacity
-            style={styles.addBtn}
-            onPress={handleOpenAddModal}
-            activeOpacity={0.88}
-          >
-            <Plus size={16} color="#ffffff" style={{ marginRight: 4 }} />
-            <Text style={styles.addBtnText}>Add Product</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* Zomato Tier Category Pills Bar */}
+        {/* Category Pills Bar */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
           {filterCategories.map(cat => {
             const isSelected = selectedCategory === cat;
-            const count = getCategoryCount(cat);
             return (
               <TouchableOpacity
                 key={cat}
@@ -423,21 +478,10 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
               >
                 <Text style={[
                   styles.filterPillText,
-                  { color: isSelected ? '#ffffff' : '#18281F' }
+                  { color: isSelected ? '#FFFFFF' : '#18281F' }
                 ]}>
-                  {cat}
+                  {cat.split(' ')[0]}
                 </Text>
-                <View style={[
-                  styles.countBadge,
-                  { backgroundColor: isSelected ? '#FFFFFF' : '#EFE8D8' }
-                ]}>
-                  <Text style={[
-                    styles.countText,
-                    { color: isSelected ? '#18281F' : '#6B7C70' }
-                  ]}>
-                    {count}
-                  </Text>
-                </View>
               </TouchableOpacity>
             );
           })}
@@ -452,9 +496,9 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <Package size={48} color="#6B7C70" style={{ marginBottom: 12 }} />
-            <Text style={styles.emptyTitle}>No Products Found</Text>
+            <Text style={styles.emptyTitle}>No Items Found</Text>
             <Text style={styles.emptySubtitle}>
-              Tap "Add Product" above to list items in your store menu.
+              Tap "Add Item" in the navigation bar to list items in your store menu.
             </Text>
           </View>
         }
@@ -467,8 +511,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
           return (
             <View style={styles.itemCard}>
               <View style={styles.cardMain}>
-
-                {/* Zomato Media Thumbnail Box */}
+                {/* Media Thumbnail Box */}
                 <View style={styles.thumbWrapper}>
                   <Image
                     source={{ uri: item.image_url || 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=300&auto=format&fit=crop&q=80' }}
@@ -483,9 +526,10 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
                   ) : null}
                 </View>
 
+                {/* Info Column (Category Badge, Name, Price & Unit) */}
                 <View style={styles.itemInfo}>
                   <View style={styles.nameRow}>
-                    {/* Zomato Veg / Non-Veg Emblem */}
+                    {/* Veg / Non-Veg Emblem */}
                     {nonVeg ? (
                       <View style={styles.nonVegEmblem}>
                         <View style={styles.nonVegDot} />
@@ -495,8 +539,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
                         <View style={styles.vegDot} />
                       </View>
                     )}
-
-                    <Text style={styles.catBadgeText}>{normalizeCategory(item.category)}</Text>
+                    <Text style={styles.catBadgeText}>{normalizeCategory(item.category).split(' ')[0].toUpperCase()}</Text>
                   </View>
 
                   <Text style={styles.itemName} numberOfLines={2}>{item.item_name}</Text>
@@ -507,22 +550,22 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
                   </View>
                 </View>
 
-                {/* Action Buttons */}
+                {/* Actions (Edit / Delete) - Stacked Vertically on Right */}
                 <View style={styles.actionCol}>
                   <TouchableOpacity
                     style={styles.iconBtn}
                     onPress={() => handleOpenEditModal(item)}
                     activeOpacity={0.8}
                   >
-                    <Edit size={16} color="#18281F" />
+                    <Edit size={13} color="#18281F" />
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.iconBtn, { backgroundColor: '#FEE2E2' }]}
+                    style={[styles.iconBtn, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}
                     onPress={() => handleDeleteItem(item.item_id)}
                     activeOpacity={0.8}
                   >
-                    <Trash2 size={16} color="#B91C1C" />
+                    <Trash2 size={13} color="#B91C1C" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -530,26 +573,20 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
               {/* Bottom Stock Availability Row */}
               <View style={styles.cardFooter}>
                 <View style={styles.statusPillRow}>
-                  <View style={[
-                    styles.statusDot,
-                    { backgroundColor: avail ? '#10B981' : '#EF4444' }
-                  ]} />
-                  <Text style={[
-                    styles.availText,
-                    { color: avail ? '#1E3A29' : '#B91C1C' }
-                  ]}>
+                  <View style={[styles.statusDot, { backgroundColor: avail ? '#10B981' : '#EF4444' }]} />
+                  <Text style={styles.availText}>
                     {avail ? 'In Stock (Live in Store)' : 'Out of Stock (Hidden)'}
                   </Text>
                 </View>
-
                 {isToggling ? (
-                  <ActivityIndicator size="small" color="#C4A066" />
+                  <ActivityIndicator size="small" color="#18281F" />
                 ) : (
                   <Switch
                     value={avail}
                     onValueChange={() => handleToggleAvailability(item)}
                     trackColor={{ false: '#E4DCC9', true: '#18281F' }}
                     thumbColor={avail ? '#C4A066' : '#ffffff'}
+                    style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }], marginRight: -6, marginTop: -4, marginBottom: -4 }}
                   />
                 )}
               </View>
@@ -560,105 +597,103 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
 
       {/* Add / Edit Product Item Modal */}
       <Modal visible={isModalOpen} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
           <View style={styles.modalCard}>
 
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Sparkles size={18} color="#C4A066" />
+                <Sparkles size={16} color="#C4A066" />
                 <Text style={styles.modalTitle}>
-                  {editingItem ? 'Edit Product Item' : 'Add New Product'}
+                  {editingItem ? 'Edit Item' : 'Add New Product'}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => setIsModalOpen(false)}>
-                <X size={20} color="#6B7C70" />
+              <TouchableOpacity
+                onPress={() => setIsModalOpen(false)}
+                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#EFE8D8', justifyContent: 'center', alignItems: 'center' }}
+              >
+                <X size={16} color="#6B7C70" />
               </TouchableOpacity>
             </View>
 
             <ScrollView contentContainerStyle={styles.modalForm} showsVerticalScrollIndicator={false}>
 
-              {/* Media Picker Section */}
-              <Text style={styles.label}>Product Photo / Video Upload</Text>
-
-              <View style={styles.mediaPickerCard}>
-                <View style={styles.mediaPreviewBox}>
-                  {uploadingMedia ? (
-                    <View style={{ alignItems: 'center' }}>
-                      <ActivityIndicator size="large" color="#18281F" />
-                      <Text style={{ fontSize: 11, color: '#18281F', fontWeight: '700', marginTop: 6 }}>
-                        Uploading to Server...
-                      </Text>
-                    </View>
-                  ) : imageUrl ? (
-                    <>
-                      <Image source={{ uri: imageUrl }} style={styles.previewImage} resizeMode="cover" />
-                      {isVideoUrl(imageUrl) ? (
-                        <View style={styles.videoOverlayBadge}>
-                          <VideoIcon size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                          <Text style={styles.videoOverlayText}>Video Selected</Text>
-                        </View>
-                      ) : null}
-                    </>
-                  ) : (
-                    <View style={styles.placeholderBox}>
-                      <ImageIcon size={28} color="#6B7C70" style={{ marginBottom: 4 }} />
-                      <Text style={styles.placeholderText}>No photo/video attached</Text>
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.mediaBtnRow}>
-                  <TouchableOpacity style={styles.uploadBtn} onPress={handlePickMedia} activeOpacity={0.85}>
-                    <Upload size={14} color="#18281F" style={{ marginRight: 6 }} />
-                    <Text style={styles.uploadBtnText}>Upload Media</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: '#EFE8D8' }]} onPress={handleTakeMedia} activeOpacity={0.85}>
-                    <Camera size={14} color="#18281F" style={{ marginRight: 6 }} />
-                    <Text style={styles.uploadBtnText}>Camera</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={[styles.label, { marginTop: 10, fontSize: 10 }]}>OR PASTE DIRECT MEDIA URL</Text>
-                <TextInput
-                  style={styles.modalInput}
-                  placeholder="https://... (image or video URL)"
-                  placeholderTextColor="#6B7C70"
-                  value={imageUrl}
-                  onChangeText={setImageUrl}
-                />
+              {/* ── PRODUCT PHOTO UPLOAD ── */}
+              <Text style={styles.label}>Product Photo Upload</Text>
+              <View style={styles.mediaPreviewBox}>
+                {uploadingMedia ? (
+                  <View style={{ alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color="#C4A066" />
+                    <Text style={{ fontSize: 11, color: '#6B7C70', fontWeight: '700', marginTop: 8 }}>
+                      Uploading...
+                    </Text>
+                  </View>
+                ) : imageUrl ? (
+                  <Image source={{ uri: imageUrl }} style={styles.previewImage} resizeMode="cover" />
+                ) : (
+                  <View style={styles.placeholderBox}>
+                    <ImageIcon size={32} color="#C4A066" style={{ marginBottom: 6 }} />
+                    <Text style={styles.placeholderText}>No photo attached</Text>
+                  </View>
+                )}
               </View>
 
+              {/* Upload Buttons */}
+              <View style={styles.mediaBtnRow}>
+                <TouchableOpacity style={styles.uploadBtn} onPress={handlePickMedia} activeOpacity={0.85}>
+                  <Upload size={14} color="#18281F" style={{ marginRight: 6 }} />
+                  <Text style={styles.uploadBtnText}>Upload Media</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: '#EFE8D8' }]} onPress={handleTakeMedia} activeOpacity={0.85}>
+                  <Camera size={14} color="#18281F" style={{ marginRight: 6 }} />
+                  <Text style={styles.uploadBtnText}>Camera</Text>
+                </TouchableOpacity>
+              </View>
+
+              <Text style={styles.urlLabel}>Or paste direct image URL</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder="https://... (image URL)"
+                placeholderTextColor="#A0AFA5"
+                value={imageUrl}
+                onChangeText={setImageUrl}
+              />
+
+              {/* ── PRODUCT NAME ── */}
               <Text style={styles.label}>Product Name *</Text>
               <TextInput
                 style={styles.modalInput}
                 placeholder="e.g. Amul Gold Fresh Milk 1L"
-                placeholderTextColor="#6B7C70"
+                placeholderTextColor="#A0AFA5"
                 value={itemName}
                 onChangeText={setItemName}
               />
 
-              {/* Category Dropdown Picker */}
-              <Text style={styles.label}>Category Selection *</Text>
-              <View style={{ position: 'relative', zIndex: 10 }}>
+              {/* ── CATEGORY SELECTION ── */}
+              <View style={{ zIndex: 20, position: 'relative' }}>
+                <Text style={styles.label}>Category Selection *</Text>
                 <TouchableOpacity
                   style={styles.categoryDropdownTrigger}
-                  onPress={() => setShowCategoryDropdown(s => !s)}
-                  activeOpacity={0.85}
+                  onPress={() => {
+                    setShowCategoryDropdown(s => !s);
+                    setShowUnitDropdown(false);
+                  }}
+                  activeOpacity={0.8}
                 >
-                  <Tag size={16} color="#18281F" style={{ marginRight: 8 }} />
-                  <Text style={styles.categoryDropdownTriggerText}>
+                  <Tag size={14} color="#C4A066" style={{ marginRight: 8 }} />
+                  <Text style={styles.categoryDropdownTriggerText} numberOfLines={1}>
                     {category}
                   </Text>
                   {showCategoryDropdown ? (
-                    <ChevronUp size={18} color="#18281F" />
+                    <ChevronUp size={16} color="#6B7C70" />
                   ) : (
-                    <ChevronDown size={18} color="#18281F" />
+                    <ChevronDown size={16} color="#6B7C70" />
                   )}
                 </TouchableOpacity>
-
-                {showCategoryDropdown ? (
-                  <View style={styles.categoryDropdownList}>
+                {showCategoryDropdown && (
+                  <View style={[styles.categoryDropdownList, { position: 'absolute', top: 72, left: 0, right: 0, zIndex: 999 }]}>
                     <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }} keyboardShouldPersistTaps="handled">
                       {PRESET_CATEGORIES.map(catItem => (
                         <TouchableOpacity
@@ -683,51 +718,129 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
                       ))}
                     </ScrollView>
                   </View>
-                ) : null}
+                )}
               </View>
 
-              {category === '+ Custom Category' ? (
-                <View style={{ marginTop: 8 }}>
-                  <Text style={[styles.label, { fontSize: 10 }]}>TYPE CUSTOM CATEGORY NAME *</Text>
+              {category === '+ Custom Category' && (
+                <View style={{ marginTop: 6 }}>
+                  <Text style={styles.urlLabel}>Type custom category name *</Text>
                   <TextInput
                     style={styles.modalInput}
                     placeholder="e.g. Organic Spices"
-                    placeholderTextColor="#6B7C70"
+                    placeholderTextColor="#A0AFA5"
                     value={customCategoryInput}
                     onChangeText={setCustomCategoryInput}
                   />
                 </View>
-              ) : null}
+              )}
 
-              <View style={styles.rowTwo}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Price (₹) *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="64.00"
-                    placeholderTextColor="#6B7C70"
-                    keyboardType="numeric"
-                    value={price}
-                    onChangeText={setPrice}
-                  />
-                </View>
-                <View style={{ width: 12 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>Unit</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="liter / kg / piece"
-                    placeholderTextColor="#6B7C70"
-                    value={unit}
-                    onChangeText={setUnit}
-                  />
+              {/* ── PRICE (₹) ── */}
+              <Text style={styles.label}>Price (₹) *</Text>
+              <View style={styles.spinnerInputWrapper}>
+                <TextInput
+                  style={styles.spinnerTextInput}
+                  placeholder="100.00"
+                  placeholderTextColor="#A0AFA5"
+                  keyboardType="numeric"
+                  value={price}
+                  onChangeText={setPrice}
+                />
+                <View style={styles.spinnerButtons}>
+                  <TouchableOpacity onPress={incrementPrice} style={styles.spinnerArrow}>
+                    <ChevronUp size={12} color="#18281F" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={decrementPrice} style={styles.spinnerArrow}>
+                    <ChevronDown size={12} color="#18281F" />
+                  </TouchableOpacity>
                 </View>
               </View>
 
+              {/* ── UNIT ── */}
+              <View style={{ zIndex: 10, position: 'relative' }}>
+                <Text style={styles.label}>Unit</Text>
+                <TouchableOpacity
+                  style={styles.categoryDropdownTrigger}
+                  onPress={() => {
+                    setShowUnitDropdown(!showUnitDropdown);
+                    setShowCategoryDropdown(false);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.categoryDropdownTriggerText} numberOfLines={1}>{unit}</Text>
+                  {showUnitDropdown ? (
+                    <ChevronUp size={16} color="#6B7C70" />
+                  ) : (
+                    <ChevronDown size={16} color="#6B7C70" />
+                  )}
+                </TouchableOpacity>
+                {showUnitDropdown && (
+                  <View style={[styles.categoryDropdownList, { position: 'absolute', top: 72, left: 0, right: 0, zIndex: 999 }]}>
+                    <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }} keyboardShouldPersistTaps="handled">
+                      {PRESET_UNITS.map(unitItem => (
+                        <TouchableOpacity
+                          key={unitItem}
+                          style={[
+                            styles.categoryDropdownItem,
+                            unit === unitItem && styles.categoryDropdownItemActive
+                          ]}
+                          onPress={() => {
+                            setUnit(unitItem);
+                            setShowUnitDropdown(false);
+                          }}
+                        >
+                          <Text style={[
+                            styles.categoryDropdownItemText,
+                            unit === unitItem && { color: '#18281F', fontWeight: '800' }
+                          ]}>
+                            {unitItem}
+                          </Text>
+                          {unit === unitItem ? <Check size={14} color="#18281F" /> : null}
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                )}
+              </View>
+
+              {unit === '+ Custom Unit' && (
+                <View style={{ marginTop: 6 }}>
+                  <Text style={styles.urlLabel}>Type custom unit name *</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="e.g. packet of 4"
+                    placeholderTextColor="#A0AFA5"
+                    value={customUnitInput}
+                    onChangeText={setCustomUnitInput}
+                  />
+                </View>
+              )}
+
+              {/* ── AVAILABLE STOCK ── */}
+              <Text style={styles.label}>Available Stock *</Text>
+              <View style={styles.spinnerInputWrapper}>
+                <TextInput
+                  style={styles.spinnerTextInput}
+                  placeholder="50"
+                  placeholderTextColor="#A0AFA5"
+                  keyboardType="numeric"
+                  value={stock}
+                  onChangeText={setStock}
+                />
+                <View style={styles.spinnerButtons}>
+                  <TouchableOpacity onPress={incrementStock} style={styles.spinnerArrow}>
+                    <ChevronUp size={12} color="#18281F" />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={decrementStock} style={styles.spinnerArrow}>
+                    <ChevronDown size={12} color="#18281F" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* ── ITEM AVAILABILITY ── */}
               <View style={styles.inputWrapperBox}>
-                <View style={{ flex: 1, paddingRight: 10 }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
                   <Text style={[styles.label, { marginTop: 0 }]}>Item Availability</Text>
-                  <Text style={{ fontSize: 11, color: '#6B7C70', marginTop: 2 }}>
+                  <Text style={{ fontSize: 11, color: '#6B7C70', marginTop: 3 }}>
                     {isAvailable ? 'Item is live and orderable' : 'Item is hidden from cart'}
                   </Text>
                 </View>
@@ -739,11 +852,12 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
                 />
               </View>
 
+              {/* ── DESCRIPTION ── */}
               <Text style={styles.label}>Description</Text>
               <TextInput
-                style={[styles.modalInput, { height: 70 }]}
+                style={[styles.modalInput, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
                 placeholder="Item specifications or details..."
-                placeholderTextColor="#6B7C70"
+                placeholderTextColor="#A0AFA5"
                 multiline
                 value={description}
                 onChangeText={setDescription}
@@ -755,12 +869,12 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = ({
                 disabled={submitting}
                 activeOpacity={0.9}
               >
-                {submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveBtnText}>SAVE PRODUCT ITEM</Text>}
+                {submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveBtnText}>SAVE ITEM</Text>}
               </TouchableOpacity>
             </ScrollView>
 
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Custom Alert Modal */}
@@ -777,26 +891,26 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   topSection: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
+    paddingHorizontal: 14,
+    paddingTop: 12,
+    paddingBottom: 6,
   },
   addBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 14,
-    height: 44,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 40,
+    borderRadius: 10,
     backgroundColor: '#C4A066',
     shadowColor: '#C4A066',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 3,
   },
   addBtnText: {
     color: '#ffffff',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     letterSpacing: 0.3,
   },
@@ -806,9 +920,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#E4DCC9',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    height: 44,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 40,
     backgroundColor: '#FFFFFF',
   },
   searchInput: {
@@ -818,40 +932,29 @@ const styles = StyleSheet.create({
     color: '#18281F',
   },
   filterBar: {
-    gap: 8,
+    gap: 6,
     paddingBottom: 4,
   },
   filterPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 12,
-    paddingRight: 8,
-    paddingVertical: 7,
-    borderRadius: 20,
-    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 4,
   },
   filterPillSelected: {
-    backgroundColor: '#18281F',
-    borderWidth: 1,
-    borderColor: '#18281F',
+    backgroundColor: '#34533C',
   },
   filterPillUnselected: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FAF8F3',
     borderWidth: 1,
     borderColor: '#E4DCC9',
   },
   filterPillText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
-  },
-  countBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-  },
-  countText: {
-    fontSize: 10,
-    fontWeight: '800',
+    letterSpacing: 0.2,
   },
   listContainer: {
     paddingHorizontal: 16,
@@ -874,34 +977,36 @@ const styles = StyleSheet.create({
   },
   itemCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#E4DCC9',
-    padding: 14,
-    marginBottom: 12,
+    paddingTop: 6,
+    paddingBottom: 2,
+    paddingHorizontal: 10,
+    marginBottom: 8,
     shadowColor: '#18281F',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowRadius: 6,
+    elevation: 2,
   },
   cardMain: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   thumbWrapper: {
-    width: 74,
-    height: 74,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 6,
     overflow: 'hidden',
     position: 'relative',
-    marginRight: 12,
+    marginRight: 10,
     backgroundColor: '#EFE8D8',
   },
   itemThumb: {
-    width: 74,
-    height: 74,
-    borderRadius: 14,
+    width: 46,
+    height: 46,
+    borderRadius: 6,
   },
   videoBadgeTag: {
     position: 'absolute',
@@ -922,7 +1027,9 @@ const styles = StyleSheet.create({
   },
   itemInfo: {
     flex: 1,
-    paddingRight: 8,
+    paddingLeft: 8,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
   },
   nameRow: {
     flexDirection: 'row',
@@ -967,36 +1074,40 @@ const styles = StyleSheet.create({
     letterSpacing: 0.4,
   },
   itemName: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
-    color: '#18281F',
-    lineHeight: 18,
+    color: '#18281F', // Dark Forest Green
+    lineHeight: 17,
+    marginBottom: 2,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: 4,
-    marginTop: 4,
   },
   priceText: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#C4A066',
+    fontSize: 12.5,
+    fontWeight: '800',
+    color: '#C4A066', // Warm Tan Gold
   },
   unitText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
-    color: '#6B7C70',
+    color: '#6B7C70', // Muted Sage Text
   },
   actionCol: {
     flexDirection: 'column',
-    gap: 8,
+    gap: 6,
+    alignItems: 'center',
+    marginLeft: 'auto',
   },
   iconBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
-    backgroundColor: '#EFE8D8',
+    width: 26,
+    height: 26,
+    borderRadius: 7,
+    backgroundColor: '#FAF8F3',
+    borderWidth: 1,
+    borderColor: '#E4DCC9',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1004,24 +1115,26 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 10,
-    paddingTop: 8,
+    marginTop: 6,
+    paddingTop: 0,
     borderTopWidth: 1,
-    borderTopColor: '#FAF8F3',
+    borderTopColor: '#E4DCC9',
   },
   statusPillRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
+    marginTop: -2,
   },
   statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
   },
   availText: {
     fontSize: 11,
     fontWeight: '700',
+    color: '#18281F',
   },
 
   // Modal styles
@@ -1034,42 +1147,55 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 20,
-    maxHeight: '92%',
-    borderWidth: 1,
-    borderColor: '#E4DCC9',
+    paddingHorizontal: 18,
+    paddingTop: 18,
+    paddingBottom: 0,
+    maxHeight: '94%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0EBE1',
   },
   modalTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '800',
     color: '#18281F',
   },
   modalForm: {
-    gap: 10,
-    paddingBottom: 24,
+    gap: 8,
+    paddingBottom: 20,
   },
   label: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#6B7C70',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  urlLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#A0AFA5',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginTop: 6,
+    marginTop: 8,
+    marginBottom: 4,
   },
   modalInput: {
     borderWidth: 1.5,
-    borderColor: '#E4DCC9',
+    borderColor: '#EAE3D4',
     borderRadius: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     height: 46,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '500',
     color: '#18281F',
     backgroundColor: '#FAF8F3',
   },
@@ -1081,11 +1207,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     backgroundColor: '#FAF8F3',
-    borderWidth: 1,
-    borderColor: '#E4DCC9',
-    borderRadius: 12,
-    padding: 12,
-    marginVertical: 4,
+    borderWidth: 1.5,
+    borderColor: '#EAE3D4',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 2,
   },
   mediaPickerCard: {
     backgroundColor: '#FAF8F3',
@@ -1096,11 +1223,11 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   mediaPreviewBox: {
-    height: 130,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
+    height: 150,
+    borderRadius: 14,
+    backgroundColor: '#FAF8F3',
     borderWidth: 1.5,
-    borderColor: '#E4DCC9',
+    borderColor: '#DDD3BB',
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
@@ -1139,18 +1266,20 @@ const styles = StyleSheet.create({
   mediaBtnRow: {
     flexDirection: 'row',
     gap: 10,
+    marginBottom: 2,
   },
   uploadBtn: {
     flex: 1,
     flexDirection: 'row',
-    height: 42,
-    borderRadius: 10,
-    backgroundColor: '#E4DCC9',
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#EAE3D4',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: 6,
   },
   uploadBtnText: {
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '700',
     color: '#18281F',
   },
@@ -1158,65 +1287,99 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#E4DCC9',
+    borderColor: '#EAE3D4',
     borderRadius: 12,
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     height: 46,
     backgroundColor: '#FAF8F3',
   },
   categoryDropdownTriggerText: {
     flex: 1,
     fontSize: 13,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#18281F',
   },
   categoryDropdownList: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
     borderColor: '#E4DCC9',
-    borderRadius: 12,
+    borderRadius: 14,
     marginTop: 4,
     overflow: 'hidden',
     shadowColor: '#18281F',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    elevation: 8,
+    zIndex: 100,
   },
   categoryDropdownItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
     borderBottomWidth: 1,
-    borderBottomColor: '#FAF8F3',
+    borderBottomColor: '#F5F0E8',
   },
   categoryDropdownItemActive: {
-    backgroundColor: '#E8F2EA',
+    backgroundColor: '#F5F0E8',
   },
   categoryDropdownItemText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#6B7C70',
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#18281F',
   },
   saveBtn: {
-    height: 50,
-    borderRadius: 14,
+    height: 46,
+    borderRadius: 12,
     backgroundColor: '#18281F',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 14,
+    marginTop: 10,
     shadowColor: '#18281F',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowRadius: 5,
+    elevation: 3,
   },
   saveBtnText: {
     color: '#F8F5EE',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    letterSpacing: 0.4,
+  },
+  spinnerInputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: '#EAE3D4',
+    borderRadius: 12,
+    backgroundColor: '#FAF8F3',
+    height: 46,
+    paddingHorizontal: 14,
+  },
+  spinnerTextInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#18281F',
+    paddingVertical: 0,
+  },
+  spinnerButtons: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: 28,
+    width: 22,
+    borderWidth: 1.2,
+    borderColor: '#E4DCC9',
+    borderRadius: 6,
+    backgroundColor: '#FAF8F3',
+  },
+  spinnerArrow: {
+    paddingVertical: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

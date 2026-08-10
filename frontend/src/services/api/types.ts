@@ -61,6 +61,9 @@ export interface VendorOrder {
   phone_number?: string;
   delivery_address?: string;
   address?: string;
+  flat?: string | number;
+  flat_no?: string | number;
+  flat_number?: string | number;
   order_timestamp?: string;
   status: OrderStatusType;
   total_amount: number | string;

@@ -25,13 +25,13 @@ export async function requestAlarmPermissions() {
 
   try {
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('order_alarms', {
-        name: 'Order Alarm Alerts',
+      await Notifications.setNotificationChannelAsync('order_alerts_channel', {
+        name: 'Order Alerts',
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 500, 500, 500],
-        lightColor: '#EF4444',
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        sound: 'default',
+        sound: 'order_alert_chime.wav',
         bypassDnd: true,
       });
     }
@@ -55,6 +55,8 @@ export async function requestAlarmPermissions() {
   }
 }
 
+const HARDCODED_EAS_PROJECT_ID = 'afdb0388-9c9f-4dc1-b3ca-d03a22d3bf9b';
+
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === 'web') return null;
 
@@ -62,17 +64,21 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     const hasPerm = await requestAlarmPermissions();
     if (!hasPerm) return null;
 
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId || Constants.easConfig?.projectId;
-    const tokenData = await Notifications.getExpoPushTokenAsync(projectId ? { projectId } : undefined);
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ||
+      Constants.easConfig?.projectId ||
+      HARDCODED_EAS_PROJECT_ID;
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
     return tokenData.data;
-  } catch (e) {
-    console.error('Error fetching Expo Push Token:', e);
+  } catch (e: any) {
+    console.warn('Expo Push Token registration note:', e.message || e);
     return null;
   }
 }
 
 export async function playAlarmSound(
-  soundUrl: string = 'https://raw.githubusercontent.com/freeCodeCamp/cdn/master/build/testable-projects-fcc/audio/BeepSound.wav',
+  soundSource: any = require('../../assets/order_alert_chime.wav'),
   volume: number = 1.0
 ) {
   try {
@@ -87,7 +93,7 @@ export async function playAlarmSound(
     }
 
     const { sound } = await Audio.Sound.createAsync(
-      { uri: soundUrl },
+      typeof soundSource === 'string' ? { uri: soundSource } : soundSource,
       { shouldPlay: true, isLooping: true, volume }
     );
     alarmSoundObject = sound;
@@ -117,9 +123,9 @@ export async function triggerOrderNotification(order: VendorOrder) {
         title: `🚨 NEW ORDER #${order.order_id}!`,
         body: `Customer: ${order.customer_name} • Total: ₹${order.total_amount}`,
         data: { orderId: order.order_id },
-        sound: true,
+        sound: 'order_alert_chime.wav',
         priority: Notifications.AndroidNotificationPriority.MAX,
-        ...(Platform.OS === 'android' ? { channelId: 'order_alarms' } : {}),
+        ...(Platform.OS === 'android' ? { channelId: 'order_alerts_channel' } : {}),
       } as any,
       trigger: null,
     });

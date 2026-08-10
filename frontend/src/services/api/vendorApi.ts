@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { getApiBaseUrl, safeFetch } from './config';
 import { VendorDashboardData, VendorUser, VendorItem, VendorOrder } from './types';
 
@@ -101,6 +102,33 @@ export async function toggleItemAvailabilityApi(vendorId: number, itemId: number
 
 export async function updateVendorPushTokenApi(vendorId: number, pushToken: string): Promise<boolean> {
   try {
+    const deviceType = Platform.OS === 'ios' ? 'ios' : 'android';
+    
+    // Attempt: POST /api/vendorPanel/:vendorId/fcm-token
+    try {
+      const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/fcm-token`, {
+        method: 'POST',
+        body: JSON.stringify({
+          fcm_token: pushToken,
+          device_type: deviceType
+        })
+      });
+      if (res.ok) return true;
+    } catch (_) {}
+
+    // Fallback: POST /api/vendors/device-token
+    try {
+      const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/device-token`, {
+        method: 'POST',
+        body: JSON.stringify({
+          fcm_token: pushToken,
+          device_type: deviceType
+        })
+      });
+      if (res.ok) return true;
+    } catch (_) {}
+
+    // Legacy fallback: PUT /vendorPanel/:vendorId/push-token
     const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/push-token`, {
       method: 'PUT',
       body: JSON.stringify({ push_token: pushToken })
@@ -108,6 +136,27 @@ export async function updateVendorPushTokenApi(vendorId: number, pushToken: stri
     return res.ok;
   } catch (e) {
     console.error('Failed to update push token:', e);
+    return false;
+  }
+}
+
+export async function deleteVendorPushTokenApi(vendorId: number): Promise<boolean> {
+  try {
+    // Attempt: DELETE /api/vendorPanel/:vendorId/fcm-token
+    try {
+      const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/fcm-token`, {
+        method: 'DELETE'
+      });
+      if (res.ok) return true;
+    } catch (_) {}
+
+    // Fallback: DELETE /api/vendors/fcm-token
+    const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/fcm-token`, {
+      method: 'DELETE'
+    });
+    return res.ok;
+  } catch (e) {
+    console.error('Failed to delete push token:', e);
     return false;
   }
 }
@@ -151,6 +200,50 @@ export async function requestSubscriptionRenewalApi(vendorId: number, paymentMet
     console.error('Failed to request renewal:', e);
     return false;
   }
+}
+
+export async function fetchVendorProfileApi(vendorId: number): Promise<VendorUser> {
+  const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}`);
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to fetch vendor profile');
+  }
+  return data;
+}
+
+export async function updateVendorProfileApi(vendorId: number, profileData: Partial<VendorUser>): Promise<{ message?: string; vendor?: VendorUser }> {
+  const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}`, {
+    method: 'PUT',
+    body: JSON.stringify(profileData)
+  });
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to update vendor profile');
+  }
+  return data;
+}
+
+export async function fetchVendorProductsApi(vendorId: number): Promise<VendorItem[]> {
+  const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/products`);
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to fetch vendor products');
+  }
+  return Array.isArray(data) ? data : [];
+}
+
+export async function addVendorProductApi(vendorId: number, productData: {
+  item_name: string;
+  price: number;
+  category?: string;
+  in_stock?: boolean;
+  image_url?: string;
+}): Promise<{ message?: string; item_id?: string | number; product?: VendorItem }> {
+  const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/products`, {
+    method: 'POST',
+    body: JSON.stringify(productData)
+  });
+  if (!res.ok) {
+    throw new Error(data.error || 'Failed to add product');
+  }
+  return data;
 }
 
 export async function uploadMediaApi(base64Data: string, filename?: string, fileType?: string): Promise<{ url: string }> {

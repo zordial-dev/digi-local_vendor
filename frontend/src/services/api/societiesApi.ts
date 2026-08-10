@@ -9,8 +9,16 @@ export async function fetchSocietiesApi(searchQuery?: string): Promise<Society[]
       ? `${getApiBaseUrl()}/societies?search=${encodeURIComponent(searchQuery.trim())}`
       : `${getApiBaseUrl()}/societies`;
     const { res, data } = await safeFetch(url);
-    if (!res.ok) return [];
-    return Array.isArray(data) ? data : [];
+    if (!res.ok) {
+      console.warn(`[societiesApi] GET ${url} returned status ${res.status}:`, data);
+      return [];
+    }
+    if (Array.isArray(data)) return data;
+    if (Array.isArray(data?.societies)) return data.societies;
+    if (Array.isArray(data?.data)) return data.data;
+    if (Array.isArray(data?.data?.societies)) return data.data.societies;
+    if (Array.isArray(data?.result)) return data.result;
+    return [];
   } catch (err) {
     console.error('Error fetching societies:', err);
     return [];
@@ -20,9 +28,9 @@ export async function fetchSocietiesApi(searchQuery?: string): Promise<Society[]
 export async function createSocietyApi(payload: {
   society_name: string;
   location: string;
-  pincode: string;
-  total_flats?: number;
-  rwa_phone?: string;
+  secretary_name: string;
+  secretary_mobile: string;
+  status?: string;
 }): Promise<{ message: string; society_id: number; society: Society }> {
   const { res, data } = await safeFetch(`${getApiBaseUrl()}/societies`, {
     method: 'POST',

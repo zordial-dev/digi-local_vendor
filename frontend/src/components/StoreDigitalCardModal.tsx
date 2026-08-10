@@ -8,6 +8,7 @@ import {
   Image,
   Share,
   ScrollView,
+  Linking,
 } from 'react-native';
 import { X, Store, Building, Mail, Phone, ExternalLink, QrCode } from 'lucide-react-native';
 import { DigiLocalLogo } from './DigiLocalLogo';
@@ -67,7 +68,7 @@ export const StoreDigitalCardModal: React.FC<StoreDigitalCardModalProps> = ({
               <View style={styles.qrCardTopBand}>
                 <View style={styles.qrCardLogoRow}>
                   <View style={styles.qrLogoBox}>
-                    <DigiLocalLogo size={32} primaryColor="#074E36" goldColor="#E6B741" />
+                    <DigiLocalLogo size={65} primaryColor="#055726" goldColor="#C4A066" />
                   </View>
                   <View>
                     <Text style={styles.qrCardBrandLabel}>DIGILOCAL</Text>
@@ -106,10 +107,7 @@ export const StoreDigitalCardModal: React.FC<StoreDigitalCardModalProps> = ({
                 </View>
               </View>
 
-              {/* Shop URL */}
-              <View style={styles.urlBox}>
-                <Text style={styles.urlText} numberOfLines={1}>{shopUrl}</Text>
-              </View>
+
 
               {/* Decorative bottom accent */}
               <View style={styles.qrCardBottomBar} />
@@ -209,10 +207,9 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 12,
   },
   qrCardBrandLabel: {
     color: '#F8F5EE',

@@ -11,7 +11,9 @@ import {
   TextInput,
   Modal,
   Linking,
+  Platform,
 } from 'react-native';
+import { CustomTimePicker } from './CustomTimePicker';
 import {
   Store,
   Building,
@@ -35,6 +37,7 @@ import {
   ExternalLink,
   AlertTriangle,
   Check,
+  Clock,
 } from 'lucide-react-native';
 import { Colors } from '../constants/theme';
 import {
@@ -71,7 +74,7 @@ const FAQItem: React.FC<{ question: string; answer: string }> = ({ question, ans
     >
       <View style={faqStyles.itemHeader}>
         <Text style={faqStyles.question}>{question}</Text>
-        {open ? <ChevronUp size={16} color="#1B2A4A" /> : <ChevronDown size={16} color="#6B7280" />}
+        {open ? <ChevronUp size={16} color="#18281F" /> : <ChevronDown size={16} color="#6B7C70" />}
       </View>
       {open ? <Text style={faqStyles.answer}>{answer}</Text> : null}
     </TouchableOpacity>
@@ -81,7 +84,7 @@ const FAQItem: React.FC<{ question: string; answer: string }> = ({ question, ans
 const faqStyles = StyleSheet.create({
   item: {
     borderBottomWidth: 1,
-    borderBottomColor: '#F0EDE7',
+    borderBottomColor: '#E4DCC9',
     paddingVertical: 12,
   },
   itemHeader: {
@@ -92,13 +95,13 @@ const faqStyles = StyleSheet.create({
   question: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#1B2A4A',
+    color: '#18281F',
     flex: 1,
     paddingRight: 8,
   },
   answer: {
     fontSize: 12,
-    color: '#6B7280',
+    color: '#6B7C70',
     lineHeight: 18,
     marginTop: 8,
   },
@@ -139,7 +142,7 @@ const docStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#F7F4EE',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -148,7 +151,7 @@ const docStyles = StyleSheet.create({
   handleBar: {
     width: 40,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#E4DCC9',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 16,
@@ -162,38 +165,38 @@ const docStyles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#1B2A4A',
+    color: '#18281F',
     flex: 1,
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#E4DCC9',
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeBtnText: {
     fontSize: 14,
-    color: '#374151',
+    color: '#6B7C70',
     fontWeight: '700',
   },
   body: {
     fontSize: 13,
-    color: '#374151',
+    color: '#6B7C70',
     lineHeight: 22,
     marginBottom: 24,
   },
   doneBtn: {
     height: 48,
     borderRadius: 14,
-    backgroundColor: '#1B2A4A',
+    backgroundColor: '#34533C',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
   },
   doneBtnText: {
-    color: '#FFFFFF',
+    color: '#F7F4EE',
     fontSize: 14,
     fontWeight: '700',
   },
@@ -320,7 +323,7 @@ const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (
               <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 12, height: 48, backgroundColor: '#F9FAFB' }}>
                 <Lock size={16} color="#9CA3AF" style={{ marginRight: 10 }} />
                 <TextInput
-                  style={{ flex: 1, fontSize: 14, color: '#111827', height: '100%' }}
+                  style={{ flex: 1, fontSize: 14, color: '#18281F', height: '100%' }}
                   secureTextEntry={!show}
                   value={val}
                   onChangeText={set}
@@ -374,9 +377,9 @@ const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visibl
             onPress={() => Linking.openURL('mailto:support@digilocal.in')}
             activeOpacity={0.85}
           >
-            <Mail size={18} color="#1B2A4A" style={{ marginRight: 12 }} />
+            <Mail size={18} color="#18281F" style={{ marginRight: 12 }} />
             <View>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#1B2A4A' }}>Email Support</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#18281F' }}>Email Support</Text>
               <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 1 }}>support@digilocal.in</Text>
             </View>
           </TouchableOpacity>
@@ -386,9 +389,9 @@ const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visibl
             onPress={() => Linking.openURL('tel:+919876543210')}
             activeOpacity={0.85}
           >
-            <Phone size={18} color="#1B2A4A" style={{ marginRight: 12 }} />
+            <Phone size={18} color="#18281F" style={{ marginRight: 12 }} />
             <View>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#1B2A4A' }}>Call Support</Text>
+              <Text style={{ fontSize: 13, fontWeight: '700', color: '#18281F' }}>Call Support</Text>
               <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 1 }}>+91 98765 43210</Text>
             </View>
           </TouchableOpacity>
@@ -400,6 +403,74 @@ const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visibl
     </View>
   </Modal>
 );
+
+// Helper to parse time string (e.g., "08:30 AM") to Date
+const parseTimeString = (timeStr: string): Date => {
+  const date = new Date();
+  try {
+    const match = timeStr.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (match) {
+      let hours = parseInt(match[1], 10);
+      const minutes = parseInt(match[2], 10);
+      const period = match[3].toUpperCase();
+      if (period === 'PM' && hours < 12) hours += 12;
+      if (period === 'AM' && hours === 12) hours = 0;
+      date.setHours(hours, minutes, 0, 0);
+    }
+  } catch (e) {
+    console.error(e);
+  }
+  return date;
+};
+
+// Helper to format Date to "hh:mm AM/PM"
+const formatTime = (date: Date): string => {
+  let hours = date.getHours();
+  const minutes = date.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12; // the hour '0' should be '12'
+  const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+  const hoursStr = hours < 10 ? '0' + hours : hours;
+  return `${hoursStr}:${minutesStr} ${ampm}`;
+};
+
+const pickerModalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContainer: {
+    width: '100%',
+    maxHeight: 450,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1.5,
+    borderColor: '#E4DCC9',
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  header: {
+    padding: 16,
+    borderBottomWidth: 1.5,
+    borderBottomColor: '#FAF8F3',
+    backgroundColor: '#FAF8F3',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#18281F',
+    letterSpacing: 0.5,
+  },
+});
 
 // ── Main SettingsScreen Component ────────────────────────────
 export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
@@ -435,9 +506,20 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
 
   // Store Config States
   const [phone, setPhone] = useState(vendor.phone_number || '');
-  const [gstNum, setGstNum] = useState(vendor.gst_number || '');
-  const [openTime, setOpenTime] = useState('08:00 AM');
-  const [closeTime, setCloseTime] = useState('10:00 PM');
+
+  // Extract initial PAN and GST from vendor.gst_number
+  const initialGstRaw = (vendor.gst_number || '').trim().toUpperCase();
+  const initialPan = initialGstRaw.length === 10 ? initialGstRaw : (initialGstRaw.length === 15 ? initialGstRaw.substring(2, 12) : '');
+  const initialGst = initialGstRaw.length === 15 ? initialGstRaw : '';
+
+  const [panNum, setPanNum] = useState(initialPan);
+  const [gstNum, setGstNum] = useState(initialGst);
+  const [openTime, setOpenTime] = useState((vendor as any).opening_timing || vendor.opening_time || '08:00 AM');
+  const [closeTime, setCloseTime] = useState((vendor as any).closing_timing || vendor.closing_time || '10:00 PM');
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [timePickerTarget, setTimePickerTarget] = useState<'open' | 'close' | null>(null);
+
+
   const [gstPercent, setGstPercent] = useState('5');
   const [serviceChargePercent, setServiceChargePercent] = useState('0');
   const [deliveryCharge, setDeliveryCharge] = useState('20');
@@ -446,7 +528,13 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
   const [savingSettings, setSavingSettings] = useState(false);
 
   const handleSaveStoreConfigs = async () => {
+    if (openTime.trim() === closeTime.trim()) {
+      showAlert('Invalid Timings', 'Opening time and closing time cannot be the same.', 'warning');
+      return;
+    }
+
     const cleanPhone = phone.trim();
+    const cleanPan = panNum.trim().toUpperCase();
     const cleanGst = gstNum.trim().toUpperCase();
 
     if (cleanPhone) {
@@ -457,21 +545,34 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
       }
     }
 
-    if (cleanGst) {
+    if (cleanPan) {
       const panRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-      const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
-      if (!panRegex.test(cleanGst) && !gstRegex.test(cleanGst)) {
-        showAlert('Invalid PAN/GST', 'Please enter a valid 10-character PAN No. (e.g. ABCDE1234F) or 15-character GST No. (e.g. 22AAAAA0000A1Z5).', 'warning');
+      if (!panRegex.test(cleanPan)) {
+        showAlert('Invalid PAN', 'Please enter a valid 10-character PAN No. (e.g. ABCDE1234F).', 'warning');
         return;
       }
     }
+
+    if (cleanGst) {
+      const gstRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+      if (!gstRegex.test(cleanGst)) {
+        showAlert('Invalid GSTIN', 'Please enter a valid 15-character GST No. (e.g. 22AAAAA0000A1Z5).', 'warning');
+        return;
+      }
+      if (cleanPan && cleanGst.substring(2, 12) !== cleanPan) {
+        showAlert('PAN/GST Mismatch', 'The PAN number must match characters 3 to 12 of your GSTIN.', 'warning');
+        return;
+      }
+    }
+
+    const submittedGstNumber = cleanGst || cleanPan;
 
     setSavingSettings(true);
     try {
       await updateStoreSettingsApi(vendor.vendor_id, {
         store_name: vendor.store_name,
         phone_number: cleanPhone,
-        gst_number: cleanGst,
+        gst_number: submittedGstNumber,
         opening_timing: openTime.trim(),
         closing_timing: closeTime.trim(),
         gst_percentage: parseFloat(gstPercent) || 0,
@@ -531,14 +632,14 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
 
   // Support & Legal 2x2 grid items
   const supportCards = [
-    { icon: HelpCircle, label: 'Help & Support', sub: 'FAQs & Contact', onPress: () => setShowHelp(true), color: '#3B82F6' },
-    { icon: Info, label: 'About Us', sub: 'Our story & mission', onPress: () => setShowAbout(true), color: '#8B5CF6' },
-    { icon: Shield, label: 'Privacy Policy', sub: 'Data safety', onPress: () => setShowPrivacy(true), color: '#10B981' },
-    { icon: FileText, label: 'Terms & Conditions', sub: 'Store & platform rules', onPress: () => setShowTerms(true), color: '#F59E0B' },
+    { icon: HelpCircle, label: 'Help & Support', sub: 'FAQs & Contact', onPress: () => setShowHelp(true), color: '#34533C' },
+    { icon: Info, label: 'About Us', sub: 'Our story & mission', onPress: () => setShowAbout(true), color: '#C4A066' },
+    { icon: Shield, label: 'Privacy Policy', sub: 'Data safety', onPress: () => setShowPrivacy(true), color: '#059669' },
+    { icon: FileText, label: 'Terms & Conditions', sub: 'Store & platform rules', onPress: () => setShowTerms(true), color: '#E6C35C' },
   ];
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: '#F4F6FB' }]} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, { backgroundColor: '#EDEDE4' }]} contentContainerStyle={styles.content}>
 
       {/* Store Header Card */}
       <View style={styles.card}>
@@ -557,8 +658,8 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
             <Text style={styles.storeTitle}>{vendor.store_name}</Text>
             <Text style={styles.vendorName}>Owner: {vendor.vendor_name}</Text>
             <View style={styles.badgeRow}>
-              <View style={[styles.statusBadge, { backgroundColor: vendor.status === 'APPROVED' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)' }]}>
-                <Text style={{ color: vendor.status === 'APPROVED' ? '#059669' : '#D97706', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
+              <View style={[styles.statusBadge, { backgroundColor: (vendor.status === 'APPROVED' || vendor.status === 'ACTIVE') ? 'rgba(24, 40, 31, 0.1)' : 'rgba(245, 158, 11, 0.1)' }]}>
+                <Text style={{ color: (vendor.status === 'APPROVED' || vendor.status === 'ACTIVE') ? '#18281F' : '#D97706', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
                   ACCOUNT {vendor.status}
                 </Text>
               </View>
@@ -568,23 +669,23 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
 
         {/* Digital Card Button */}
         <TouchableOpacity style={styles.digitalCardBtn} onPress={() => setShowQR(true)} activeOpacity={0.88}>
-          <QrCode size={15} color="#1B2A4A" style={{ marginRight: 8 }} />
+          <QrCode size={15} color="#18281F" style={{ marginRight: 8 }} />
           <Text style={styles.digitalCardBtnText}>View Digital Store Card & QR</Text>
-          <ExternalLink size={13} color="#6B7280" style={{ marginLeft: 'auto' }} />
+          <ExternalLink size={13} color="#18281F" style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
       </View>
 
       {/* Subscription Card */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Calendar size={17} color="#1B2A4A" style={{ marginRight: 8 }} />
+          <Calendar size={17} color="#18281F" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Subscription & Plan</Text>
         </View>
 
         <View style={styles.subDetailsRow}>
           <View style={styles.subCol}>
             <Text style={styles.subLabel}>Status</Text>
-            <Text style={[styles.subValue, { color: isExpired ? '#EF4444' : '#10B981' }]}>
+            <Text style={[styles.subValue, { color: isExpired ? '#EF4444' : '#18281F' }]}>
               {subscription?.status || (isExpired ? 'EXPIRED' : 'ACTIVE')}
             </Text>
           </View>
@@ -618,7 +719,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
       {/* Business Profile Info */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Building size={17} color="#1B2A4A" style={{ marginRight: 8 }} />
+          <Building size={17} color="#18281F" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Business Profile Details</Text>
         </View>
 
@@ -638,14 +739,14 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
       {/* Store Rules & Website Configurations */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Sliders size={17} color="#1B2A4A" style={{ marginRight: 8 }} />
+          <Sliders size={17} color="#18281F" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Store Rules & Configurations</Text>
         </View>
 
         <Text style={styles.sectionHeading}>1. Store Profile & Branding</Text>
         <Text style={styles.configLabel}>WhatsApp / Phone Number</Text>
         <TextInput
-          style={[styles.configInput, { color: '#111827' }]}
+          style={[styles.configInput, { color: '#18281F' }]}
           value={phone}
           onChangeText={(t) => {
             const digitsOnly = t.replace(/[^0-9]/g, '');
@@ -656,25 +757,77 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
           maxLength={10}
           placeholder="e.g. 9876543210" placeholderTextColor="#9CA3AF"
         />
-        <Text style={styles.configLabel}>PAN / GSTIN Registration Number</Text>
+        <Text style={styles.configLabel}>PAN Number</Text>
         <TextInput
-          style={[styles.configInput, { color: '#111827' }]}
+          style={[styles.configInput, { color: '#' }]}
+          value={panNum}
+          onChangeText={(t) => {
+            const cleaned = t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+            let formatted = '';
+            for (let i = 0; i < cleaned.length; i++) {
+              const char = cleaned[i];
+              if (i < 5) {
+                if (/[A-Z]/.test(char)) formatted += char;
+              } else if (i < 9) {
+                if (/[0-9]/.test(char)) formatted += char;
+              } else {
+                if (/[A-Z]/.test(char)) formatted += char;
+              }
+            }
+            setPanNum(formatted);
+          }}
+          autoCapitalize="characters"
+          maxLength={10}
+          placeholder="e.g. ABCDE1234F" placeholderTextColor="#9CA3AF"
+        />
+
+        <Text style={styles.configLabel}>GSTIN Number (Optional)</Text>
+        <TextInput
+          style={[styles.configInput, { color: "#18281F", marginTop: 4 }]}
           value={gstNum}
-          onChangeText={(t) => setGstNum(t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15))}
+          onChangeText={(t) => {
+            const cleaned = t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
+            setGstNum(cleaned);
+            if (cleaned.length >= 12) {
+              setPanNum(cleaned.substring(2, 12));
+            }
+          }}
           autoCapitalize="characters"
           maxLength={15}
-          placeholder="e.g. 22AAAAA0000A1Z5 / ABCDE1234F" placeholderTextColor="#9CA3AF"
+          placeholder="e.g. 22AAAAA0000A1Z5" placeholderTextColor="#9CA3AF"
         />
 
         <Text style={styles.sectionHeading}>2. Operating Timings</Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.configLabel}>Opening Time</Text>
-            <TextInput style={[styles.configInput, { color: '#111827' }]} value={openTime} onChangeText={setOpenTime} placeholder="08:00 AM" placeholderTextColor="#9CA3AF" />
+            <TouchableOpacity
+              style={styles.dropdownTrigger}
+              onPress={() => {
+                setTimePickerTarget('open');
+                setShowTimePicker(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Clock size={15} color="#18281F" style={{ marginRight: 8 }} />
+              <Text style={styles.dropdownTriggerText}>{openTime || '08:00 AM'}</Text>
+              <ChevronDown size={14} color="#04130aff" />
+            </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.configLabel}>Closing Time</Text>
-            <TextInput style={[styles.configInput, { color: '#111827' }]} value={closeTime} onChangeText={setCloseTime} placeholder="10:00 PM" placeholderTextColor="#9CA3AF" />
+            <TouchableOpacity
+              style={styles.dropdownTrigger}
+              onPress={() => {
+                setTimePickerTarget('close');
+                setShowTimePicker(true);
+              }}
+              activeOpacity={0.8}
+            >
+              <Clock size={15} color="#18281F" style={{ marginRight: 8 }} />
+              <Text style={styles.dropdownTriggerText}>{closeTime || '10:00 PM'}</Text>
+              <ChevronDown size={14} color="#9CA3AF" />
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -682,25 +835,25 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.configLabel}>GST Tax (%)</Text>
-            <TextInput style={[styles.configInput, { color: '#111827' }]} value={gstPercent} onChangeText={setGstPercent} keyboardType="numeric" placeholder="5.0" placeholderTextColor="#9CA3AF" />
+            <TextInput style={[styles.configInput, { color: '#18281F' }]} value={gstPercent} onChangeText={setGstPercent} keyboardType="numeric" placeholder="5.0" placeholderTextColor="#9CA3AF" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.configLabel}>Service Charge (%)</Text>
-            <TextInput style={[styles.configInput, { color: '#111827' }]} value={serviceChargePercent} onChangeText={setServiceChargePercent} keyboardType="numeric" placeholder="0.0" placeholderTextColor="#9CA3AF" />
+            <TextInput style={[styles.configInput, { color: '#18281F' }]} value={serviceChargePercent} onChangeText={setServiceChargePercent} keyboardType="numeric" placeholder="0.0" placeholderTextColor="#9CA3AF" />
           </View>
         </View>
         <Text style={styles.configLabel}>Delivery / Packaging Charge (₹)</Text>
-        <TextInput style={[styles.configInput, { color: '#111827' }]} value={deliveryCharge} onChangeText={setDeliveryCharge} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
+        <TextInput style={[styles.configInput, { color: '#18281F' }]} value={deliveryCharge} onChangeText={setDeliveryCharge} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
 
         <Text style={styles.sectionHeading}>4. Order Restrictions & Limits</Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.configLabel}>Min Order Value (₹)</Text>
-            <TextInput style={[styles.configInput, { color: '#111827' }]} value={minOrderVal} onChangeText={setMinOrderVal} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
+            <TextInput style={[styles.configInput, { color: '#18281F' }]} value={minOrderVal} onChangeText={setMinOrderVal} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.configLabel}>Max Item Qty Limit</Text>
-            <TextInput style={[styles.configInput, { color: '#111827' }]} value={maxQtyLimit} onChangeText={setMaxQtyLimit} keyboardType="numeric" placeholder="10" placeholderTextColor="#9CA3AF" />
+            <TextInput style={[styles.configInput, { color: '#18281F' }]} value={maxQtyLimit} onChangeText={setMaxQtyLimit} keyboardType="numeric" placeholder="10" placeholderTextColor="#9CA3AF" />
           </View>
         </View>
 
@@ -722,7 +875,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
       {/* Sound & Notification Alert */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <BellRing size={17} color="#1B2A4A" style={{ marginRight: 8 }} />
+          <BellRing size={17} color="#18281F" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Sound & Notification Alert</Text>
         </View>
         <TouchableOpacity
@@ -738,11 +891,11 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
       {/* Account & Security */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <ShieldCheck size={17} color="#1B2A4A" style={{ marginRight: 8 }} />
+          <ShieldCheck size={17} color="#18281F" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Account & Security</Text>
         </View>
         <TouchableOpacity style={styles.settingsRowItem} onPress={() => setShowPassword(true)} activeOpacity={0.85}>
-          <Lock size={16} color="#1B2A4A" style={{ marginRight: 12 }} />
+          <Lock size={16} color="#18281F" style={{ marginRight: 12 }} />
           <View style={{ flex: 1 }}>
             <Text style={styles.settingsRowLabel}>Password & Security</Text>
             <Text style={styles.settingsRowSub}>Change your account password</Text>
@@ -754,7 +907,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
       {/* Support & Legal — 2x2 Grid */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <HelpCircle size={17} color="#1B2A4A" style={{ marginRight: 8 }} />
+          <HelpCircle size={17} color="#18281F" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Support & Legal</Text>
         </View>
         <View style={styles.supportGrid}>
@@ -814,6 +967,30 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
       <CustomAlertModal
         alertState={alertState}
         onClose={() => setAlertState(prev => ({ ...prev, visible: false }))}
+      />
+
+      <CustomTimePicker
+        visible={showTimePicker}
+        initialTime={timePickerTarget === 'open' ? openTime : closeTime}
+        onClose={() => {
+          setShowTimePicker(false);
+          setTimePickerTarget(null);
+        }}
+        onSave={(time) => {
+          if (timePickerTarget === 'open') {
+            if (time.trim() === closeTime.trim()) {
+              showAlert('Invalid Timings', 'Opening time and closing time cannot be the same.', 'warning');
+              return;
+            }
+            setOpenTime(time);
+          } else {
+            if (time.trim() === openTime.trim()) {
+              showAlert('Invalid Timings', 'Opening time and closing time cannot be the same.', 'warning');
+              return;
+            }
+            setCloseTime(time);
+          }
+        }}
       />
     </ScrollView>
   );
@@ -899,31 +1076,49 @@ const styles = StyleSheet.create({
   infoLine: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7 },
   infoLineText: { fontSize: 13, fontWeight: '500', color: '#18281F' },
   sectionHeading: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '800',
     color: '#6B7C70',
     textTransform: 'uppercase',
-    letterSpacing: 0.8,
-    marginTop: 16,
-    marginBottom: 6,
+    letterSpacing: 1.0,
+    marginTop: 14,
+    marginBottom: 5,
+    marginLeft: 2,
   },
   configLabel: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: '#6B7C70',
     textTransform: 'uppercase',
-    letterSpacing: 0.3,
-    marginTop: 8,
-    marginBottom: 5,
+    letterSpacing: 0.4,
+    marginTop: 6,
+    marginBottom: 4,
+    marginLeft: 2,
   },
   configInput: {
+    borderWidth: 1.5,
+    borderColor: '#E4DCC9',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 42,
+    fontSize: 13,
+    backgroundColor: '#FAF8F3',
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1.5,
     borderColor: '#E4DCC9',
     borderRadius: 11,
     paddingHorizontal: 12,
     height: 44,
-    fontSize: 13,
     backgroundColor: '#FAF8F3',
+  },
+  dropdownTriggerText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#111827',
+    fontWeight: '600',
   },
   saveConfigsBtn: {
     flexDirection: 'row',
@@ -947,34 +1142,34 @@ const styles = StyleSheet.create({
   settingsRowItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 9,
   },
-  settingsRowLabel: { fontSize: 14, fontWeight: '700', color: '#18281F' },
-  settingsRowSub: { fontSize: 12, color: '#6B7C70', marginTop: 2 },
+  settingsRowLabel: { fontSize: 13, fontWeight: '700', color: '#18281F' },
+  settingsRowSub: { fontSize: 11, color: '#6B7C70', marginTop: 2 },
   // Support 2x2 grid
   supportGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   supportGridItem: {
     width: '47%',
     backgroundColor: '#FAF8F3',
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#E4DCC9',
   },
   supportIconBox: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 10,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  supportGridLabel: { fontSize: 13, fontWeight: '700', color: '#18281F' },
-  supportGridSub: { fontSize: 11, color: '#6B7C70', marginTop: 3 },
+  supportGridLabel: { fontSize: 12, fontWeight: '700', color: '#18281F' },
+  supportGridSub: { fontSize: 10.5, color: '#6B7C70', marginTop: 2 },
   logoutBtn: {
     flexDirection: 'row',
     height: 50,

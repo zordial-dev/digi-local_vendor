@@ -62,6 +62,13 @@ const isNonVegItem = (name: string) => {
   return text.includes('chicken') || text.includes('egg') || text.includes('mutton') || text.includes('fish') || text.includes('meat');
 };
 
+const hasPhoneNumber = (order: any) => {
+  const num = order.phone_number || order.phone;
+  if (!num) return false;
+  const clean = num.toString().trim().toLowerCase();
+  return clean !== '' && clean !== 'n/a' && clean !== 'null' && clean !== 'undefined';
+};
+
 export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
   vendorId,
   orders,
@@ -299,19 +306,12 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
                     <Text style={styles.customerName} numberOfLines={1}>{order.customer_name}</Text>
                   </View>
 
-                  <TouchableOpacity
-                    style={styles.callBtn}
-                    onPress={() => handleCallCustomer(order.phone_number || order.phone || '')}
-                    activeOpacity={0.85}
-                  >
-                    <Phone size={12} color="#18281F" style={{ marginRight: 4 }} />
-                    <Text style={styles.callBtnText}>Call</Text>
-                  </TouchableOpacity>
                 </View>
 
                 <View style={styles.addressRow}>
-                  <MapPin size={14} color="#C4A066" style={{ marginRight: 6, marginTop: 2 }} />
-                  <Text style={styles.addressText} numberOfLines={2}>{order.address}</Text>
+                  <Text style={styles.addressText} numberOfLines={2}>
+                    {order.flat || order.flat_no || order.flat_number ? `Flat ${order.flat || order.flat_no || order.flat_number}, ` : ''}{order.address}
+                  </Text>
                 </View>
               </View>
 
@@ -444,21 +444,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderWidth: 1.5,
     borderColor: '#E4DCC9',
-    borderRadius: 12,
-    padding: 8,
-    gap: 6,
+    borderRadius: 10,
+    padding: 7,
+    gap: 5,
   },
   statIconBox: {
-    width: 26,
-    height: 26,
-    borderRadius: 7,
+    width: 24,
+    height: 24,
+    borderRadius: 6,
     justifyContent: 'center',
     alignItems: 'center',
   },
   statValue: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '900',
-    lineHeight: 16,
+    lineHeight: 15,
   },
   statLabel: {
     fontSize: 9,
@@ -544,15 +544,15 @@ const styles = StyleSheet.create({
   },
   orderCard: {
     backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1.5,
     borderColor: '#E4DCC9',
-    padding: 14,
-    marginBottom: 12,
+    padding: 12,
+    marginBottom: 10,
     shadowColor: '#18281F',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
-    shadowRadius: 6,
+    shadowRadius: 5,
     elevation: 2,
   },
   cardHeader: {
@@ -564,7 +564,7 @@ const styles = StyleSheet.create({
     borderBottomColor: '#FAF8F3',
   },
   orderIdText: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '900',
     color: '#18281F',
   },
@@ -600,9 +600,9 @@ const styles = StyleSheet.create({
   },
   customerSection: {
     backgroundColor: '#FAF8F3',
-    borderRadius: 12,
-    padding: 10,
-    marginVertical: 10,
+    borderRadius: 10,
+    padding: 8,
+    marginVertical: 8,
     borderWidth: 1,
     borderColor: '#E4DCC9',
   },
@@ -628,7 +628,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   customerName: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     color: '#18281F',
     flex: 1,
@@ -664,8 +664,9 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     color: '#6B7C70',
-    letterSpacing: 0.5,
-    marginBottom: 6,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 5,
   },
   itemRow: {
     flexDirection: 'row',
@@ -735,10 +736,11 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '800',
     color: '#6B7C70',
-    letterSpacing: 0.5,
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
   },
   totalValue: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '900',
     color: '#C4A066',
   },

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "866177756650",
+    "project_id": "visitor-log-d3dd2",
+    "storage_bucket": "visitor-log-d3dd2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:866177756650:android:13eee9020a0bd5e10e5693",
+        "android_client_info": {
+          "package_name": "com.digilocal.vendor"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwFQpjGq4MeHLAEY6G8FXZ_3Wq_Bq1oz4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

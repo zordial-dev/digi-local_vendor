@@ -12,6 +12,8 @@
     },
     "android": {
       "package": "com.digilocal.vendor",
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#EDEDE4",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
@@ -33,6 +35,8 @@
       "output": "single"
     },
     "plugins": [
+      "@react-native-firebase/app",
+      "@react-native-firebase/auth",
       "expo-router",
       "expo-font",
       "expo-web-browser",
@@ -43,7 +47,20 @@
         {
           "icon": "./assets/images/icon.png",
           "color": "#C5A880",
-          "sounds": []
+          "sounds": [
+            "./assets/order_alert_chime.wav"
+          ]
+        }
+      ],
+      "@react-native-community/datetimepicker",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "colorPrimary": "#18281F",
+            "colorAccent": "#18281F",
+            "colorPrimaryDark": "#18281F"
+          }
         }
       ]
     ],
@@ -53,8 +70,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "8806e9e7-48b6-436e-8c52-49ab7a28ec09"
+        "projectId": "afdb0388-9c9f-4dc1-b3ca-d03a22d3bf9b"
       }
-    }
+    },
+    "owner": "lovelyjains-team"
   }
 }

@@ -28,6 +28,14 @@ export async function updateOrderStatusApi(
 
   let result;
   try {
+    result = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/orders/${orderId}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status })
+    });
+    if (result.res.ok) return true;
+  } catch (_) {}
+
+  try {
     result = await safeFetch(`${getApiBaseUrl()}/orders/${orderId}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status })

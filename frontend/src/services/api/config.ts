@@ -9,15 +9,25 @@ import {
 // Read API Base URL from environment variable (.env -> EXPO_PUBLIC_API_URL for zordial-dev/digi-local_vendor)
 const ENV_API_URL = process.env.EXPO_PUBLIC_API_URL
   ? process.env.EXPO_PUBLIC_API_URL.trim()
-  : 'https://digilocal-backend-mock.onrender.com/api';
+  : 'https://digi-local-backend.onrender.com/api';
 
 const formatApiUrl = (url: string): string => {
   let clean = url.trim();
   if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
     clean = `http://${clean}`;
   }
+
+  // Fix missing slash typos like :5001api -> :5001/api
+  clean = clean.replace(/(:[0-9]+)api/i, '$1/api');
+
+  // Strip trailing /vendors or /vendors/ if present in base URL
+  clean = clean.replace(/\/vendors\/?$/i, '');
+
   if (!clean.endsWith('/api')) {
-    clean = clean.replace(/\/+$/, '') + '/api';
+    clean = clean.replace(/\/+$/, '');
+    if (!clean.endsWith('/api')) {
+      clean = `${clean}/api`;
+    }
   }
   return clean;
 };
@@ -70,7 +80,6 @@ export const safeFetch = async (
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Bypass-Tunnel-Reminder': 'true',
-      'bypass-tunnel-reminder': 'true',
       ...((options.headers as Record<string, string>) || {})
     };
 
@@ -129,6 +138,20 @@ export const safeFetch = async (
     return { res, data };
   } catch (err: any) {
     clearTimeout(timeoutId);
+
+    // Automatic fallback to production cloud backend if local server is unreachable
+    const cloudFallbackUrl = 'https://digi-local-backend.onrender.com/api';
+    if (retryCount === 0 && !url.startsWith(cloudFallbackUrl)) {
+      const currentHost = getApiBaseUrl();
+      const fallbackUrl = url.replace(currentHost, cloudFallbackUrl);
+      console.warn(`⚠️ [NETWORK FALLBACK]: Local server ${url} unreachable (${err.message}). Retrying on Render cloud: ${fallbackUrl}`);
+      try {
+        return await safeFetch(fallbackUrl, options, 1);
+      } catch (fallbackErr: any) {
+        console.error('❌ [CLOUD FALLBACK FAILED]:', fallbackErr.message);
+      }
+    }
+
     if (err.name === 'AbortError') {
       throw new Error(`Network request timed out (${url}). Please verify server connection.`);
     }
