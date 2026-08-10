@@ -100,38 +100,17 @@ export async function toggleItemAvailabilityApi(vendorId: number, itemId: number
 
 // ── Store Settings, Push Tokens & Media Upload APIs ────────────
 
-export async function updateVendorPushTokenApi(vendorId: number, pushToken: string): Promise<boolean> {
+export async function updateVendorPushTokenApi(vendorId: number | string, pushToken: string): Promise<boolean> {
   try {
-    const deviceType = Platform.OS === 'ios' ? 'ios' : 'android';
+    const platform = Platform.OS === 'ios' ? 'ios' : 'android';
     
-    // Attempt: POST /api/vendorPanel/:vendorId/fcm-token
-    try {
-      const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/fcm-token`, {
-        method: 'POST',
-        body: JSON.stringify({
-          fcm_token: pushToken,
-          device_type: deviceType
-        })
-      });
-      if (res.ok) return true;
-    } catch (_) {}
-
-    // Fallback: POST /api/vendors/device-token
-    try {
-      const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/device-token`, {
-        method: 'POST',
-        body: JSON.stringify({
-          fcm_token: pushToken,
-          device_type: deviceType
-        })
-      });
-      if (res.ok) return true;
-    } catch (_) {}
-
-    // Legacy fallback: PUT /vendorPanel/:vendorId/push-token
-    const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/push-token`, {
-      method: 'PUT',
-      body: JSON.stringify({ push_token: pushToken })
+    const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/fcm-token`, {
+      method: 'POST',
+      body: JSON.stringify({
+        vendor_id: vendorId,
+        fcm_token: pushToken,
+        platform: platform
+      })
     });
     return res.ok;
   } catch (e) {
@@ -140,19 +119,13 @@ export async function updateVendorPushTokenApi(vendorId: number, pushToken: stri
   }
 }
 
-export async function deleteVendorPushTokenApi(vendorId: number): Promise<boolean> {
+export async function deleteVendorPushTokenApi(vendorId: number | string): Promise<boolean> {
   try {
-    // Attempt: DELETE /api/vendorPanel/:vendorId/fcm-token
-    try {
-      const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/fcm-token`, {
-        method: 'DELETE'
-      });
-      if (res.ok) return true;
-    } catch (_) {}
-
-    // Fallback: DELETE /api/vendors/fcm-token
     const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/fcm-token`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      body: JSON.stringify({
+        vendor_id: vendorId
+      })
     });
     return res.ok;
   } catch (e) {

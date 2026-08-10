@@ -42,7 +42,7 @@ interface OrdersScreenProps {
   isDarkMode?: boolean;
 }
 
-type StatusFilter = 'ALL' | 'PLACED' | 'ACCEPTED' | 'COMPLETED' | 'CANCELLED';
+type StatusFilter = 'ALL' | 'PLACED' | 'ACCEPTED' | 'DELIVERED' | 'CANCELLED';
 
 const formatElapsedTime = (timestamp: string) => {
   try {
@@ -132,7 +132,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
         return { bg: '#FEF3C7', text: '#D97706', label: '⚡ NEW ORDER', border: '#FCD34D' };
       case 'ACCEPTED':
         return { bg: '#E0E7FF', text: '#4338CA', label: '🍳 PREPARING', border: '#C7D2FE' };
-      case 'COMPLETED':
+      case 'DELIVERED':
         return { bg: '#D1FAE5', text: '#047857', label: '✅ DELIVERED', border: '#A7F3D0' };
       case 'CANCELLED':
         return { bg: '#FEE2E2', text: '#B91C1C', label: '❌ CANCELLED', border: '#FCA5A5' };
@@ -197,14 +197,14 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
 
         {/* Status Filter Pills Bar */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterBar}>
-          {(['ALL', 'PLACED', 'ACCEPTED', 'COMPLETED', 'CANCELLED'] as StatusFilter[]).map(tab => {
+          {(['ALL', 'PLACED', 'ACCEPTED', 'DELIVERED', 'CANCELLED'] as StatusFilter[]).map(tab => {
             const count = tab === 'ALL' ? orders.length : orders.filter(o => o.status === tab).length;
             const isSelected = statusFilter === tab;
             const labelMap: Record<string, string> = {
               ALL: 'ALL',
               PLACED: 'NEW',
               ACCEPTED: 'ACCEPTED',
-              COMPLETED: 'COMPLETED',
+              DELIVERED: 'DELIVERED',
               CANCELLED: 'CANCELLED'
             };
 
@@ -391,7 +391,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = ({
 
                           <TouchableOpacity
                             style={[styles.btn, styles.btnComplete]}
-                            onPress={() => handleStatusUpdate(order.order_id, 'COMPLETED')}
+                            onPress={() => handleStatusUpdate(order.order_id, 'DELIVERED')}
                             activeOpacity={0.88}
                           >
                             <PackageCheck size={16} color="#ffffff" style={{ marginRight: 4 }} />

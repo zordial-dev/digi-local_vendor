@@ -4,14 +4,17 @@ import { checkVendorPhoneApi, sendOtpApi, loginVendorWithOtpApi } from './api/au
 let confirmationResult: any = null;
 
 /**
- * Safely retrieve Native Firebase Auth SDK instance without throwing "Object is not a function"
+ * Safely retrieve Native Firebase Auth SDK instance
  */
 const getFirebaseAuthInstance = () => {
   if (Platform.OS === 'web') return null;
 
   try {
-    const authModule = require('@react-native-firebase/auth');
-    const authFn = typeof authModule === 'function' ? authModule : (authModule?.default || authModule);
+    // ⚠️ IMPORTANT: Uncomment the line below when you are ready to build the APK!
+    // We comment it out temporarily because Expo Go automatically tries to load it and crashes.
+    const authModule = require('@react-native-firebase/auth'); 
+    
+    const authFn = typeof authModule === 'function' ? authModule : ((authModule as any)?.default || authModule);
     if (typeof authFn === 'function') {
       return authFn();
     }
@@ -51,7 +54,10 @@ export async function sendOtpToVendorMobile(mobileNumber: string, isLogin: boole
   // Safely retrieve Native Firebase Auth instance
   const authInstance = getFirebaseAuthInstance();
   if (!authInstance || typeof authInstance.signInWithPhoneNumber !== 'function') {
-    throw new Error('Firebase Native SMS requires the compiled Standalone Android APK. Please install the compiled APK on your device to send SMS.');
+    console.log('⚠️ [EXPO GO DETECTED]: Bypassing Firebase Native SMS');
+    confirmationResult = { isExpoMock: true, mobile: formattedPhone };
+    alert('EXPO TEST MODE: Firebase Native SDK is unavailable in Expo Go. Please use the test number 9999999999 and OTP 123456 to test the flow.');
+    return { success: true, message: 'Mock OTP sent (Expo Go)' };
   }
 
   // 💥 Trigger Firebase Client SDK SMS to SIM Card
@@ -74,6 +80,14 @@ export async function verifySmsAndLoginVendor(mobileNumber: string, smsCode: str
   }
 
   console.log('🔥 [VERIFYING FIREBASE SMS CODE]:', smsCode);
+
+  if (confirmationResult.isExpoMock) {
+    console.log('🔥 [EXPO MOCK VERIFY]: Sending local OTP to backend for verification');
+    // Call the auth API with the raw phone and OTP (bypassing Firebase Token exchange)
+    const backendData = await loginVendorWithOtpApi(confirmationResult.mobile, smsCode);
+    console.log('✅ [DIGILOCAL BACKEND LOGIN SUCCESS]:', backendData);
+    return backendData;
+  }
 
   // 1. Confirm 6-digit SMS code with Firebase Client SDK
   const userCredential = await confirmationResult.confirm(smsCode.trim());
