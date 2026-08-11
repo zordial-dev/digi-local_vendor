@@ -23,3 +23,13 @@ allprojects {
 
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
+
+subprojects { subproject ->
+    afterEvaluate {
+        if (subproject.hasProperty("android")) {
+            if (!subproject.plugins.hasPlugin("org.jetbrains.kotlin.android")) {
+                subproject.apply plugin: "org.jetbrains.kotlin.android"
+            }
+        }
+    }
+}
