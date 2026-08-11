@@ -6,4 +6,3 @@ export * from './api/authApi';
 export * from './api/vendorApi';
 export * from './api/ordersApi';
 export * from './socketService';
-export * from './firebaseAuthService';

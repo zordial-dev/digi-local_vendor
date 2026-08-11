@@ -44,7 +44,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Svg, { Path } from 'react-native-svg';
 import { Colors, APP_LOGO_URL } from '../constants/theme';
 import { DigiLocalLogo } from './DigiLocalLogo';
-import { loginVendorApi, registerVendorApi, fetchSocietiesApi, createSocietyApi, VendorUser, Society, sendOtpApi, verifyOtpApi, loginVendorWithOtpApi, forgotPasswordOtpApi, resetPasswordWithOtpApi, sendOtpToVendorMobile, verifySmsAndLoginVendor } from '../services/apiService';
+import { loginVendorApi, registerVendorApi, fetchSocietiesApi, createSocietyApi, VendorUser, Society, sendOtpApi, verifyOtpApi, loginVendorWithOtpApi, forgotPasswordOtpApi, resetPasswordWithOtpApi } from '../services/apiService';
 import { getSavedCredentials, saveCredentials } from '../services/authStorage';
 
 interface LoginScreenProps {
@@ -595,28 +595,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setLoading(true);
     console.log('📲 [LOGIN OTP TRIGGERED]:', { cleanInput, isMobile, isEmail });
     try {
-      if (isMobile) {
-        console.log('📱 [CALLING sendOtpToVendorMobile]:', cleanInput);
-        const otpRes = await sendOtpToVendorMobile(cleanInput, true);
-        console.log('✅ [sendOtpToVendorMobile RESULT]:', otpRes);
-        setLoginOtpSent(true);
-        setLoginOtpTimer(30);
-        const msg = otpRes.message || `Firebase SMS OTP code sent to +91 ${cleanInput}`;
-        setSuccessMsg(msg);
-        Alert.alert('📲 OTP Sent Successfully', msg);
-      } else {
-        console.log('📧 [CALLING sendOtpApi FOR EMAIL]:', cleanInput);
-        const res = await sendOtpApi(cleanInput, 'login');
-        console.log('✅ [sendOtpApi RESULT]:', res);
-        setLoginOtpSent(true);
-        setLoginOtpTimer(30);
-        const msg = res.message || `OTP sent to your email ID (${cleanInput})`;
-        setSuccessMsg(msg);
-        Alert.alert('📧 OTP Sent Successfully', msg);
-      }
+      console.log('📱/📧 [CALLING sendOtpApi]:', cleanInput);
+      const res = await sendOtpApi(cleanInput, 'login');
+      console.log('✅ [sendOtpApi RESULT]:', res);
+      setLoginOtpSent(true);
+      setLoginOtpTimer(30);
+      const msg = res.message || `OTP sent to your ${isMobile ? 'mobile number' : 'email ID'} (${cleanInput})`;
+      setSuccessMsg(msg);
+      Alert.alert('📲 OTP Sent Successfully', msg);
     } catch (err: any) {
       console.error('❌ [LOGIN OTP ERROR FAILED]:', err.message || err);
-      const errorText = err.message || 'Failed to send SMS OTP via Firebase. Please verify mobile number and connection.';
+      const errorText = err.message || 'Failed to send OTP. Please verify your details and connection.';
       setError(errorText);
       Alert.alert('❌ OTP Request Failed', errorText);
     } finally {
@@ -637,24 +626,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       const cleanInput = email.trim();
       let res;
       try {
-        res = await verifySmsAndLoginVendor(cleanInput, loginOtp);
+        res = await loginVendorWithOtpApi(cleanInput, loginOtp);
       } catch (err: any) {
-        if (loginOtp === generatedLoginOtp || loginOtp === '123456') {
-          const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanInput);
-          res = {
-            vendor: {
-              vendor_id: 1,
-              vendor_name: 'Rahul Sharma',
-              store_name: 'Sharma Kirana Store',
-              email: isEmail ? cleanInput.toLowerCase() : 'sharma.kirana@digilocal.com',
-              phone_number: !isEmail ? cleanInput : '9876543210',
-              status: 'ACTIVE' as const,
-              society_name: 'Greenwood Residency'
-            }
-          };
-        } else {
-          throw err;
-        }
+        throw err;
       }
 
       onLoginSuccess(res.vendor);
@@ -752,11 +726,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       try {
         verified = await verifyOtpApi(cleanContact, regOtp);
       } catch (e) {
-        if (regOtp === generatedRegOtp || regOtp === '123456') {
-          verified = true;
-        } else {
-          throw e;
-        }
+        throw e;
       }
 
       if (!verified) {
