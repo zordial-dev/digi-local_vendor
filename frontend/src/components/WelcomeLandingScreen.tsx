@@ -91,111 +91,105 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
   const rawInsets = useSafeAreaInsets();
   const insets = rawInsets || { top: 0, bottom: 0, left: 0, right: 0 };
 
-  const handleLoginPress = () => {
-    if (onLogin) {
-      onLogin();
-    } else {
-      onGetStarted();
-    }
-  };
-
   return (
     <View style={[
       styles.container,
       {
-        paddingTop: Math.max(insets.top, 8),
+        paddingTop: Math.max(insets.top, 12),
         paddingBottom: Math.max(insets.bottom, 12),
       }
     ]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FAFAFA" />
+      <StatusBar barStyle="dark-content" backgroundColor="#FAFAF9" />
 
-      {/* Top Header Logo Section */}
-      <View style={styles.headerSection}>
-        <View style={styles.logoRow}>
-          <Image
-            source={require('../../assets/images/splash-icon.png')}
-            style={styles.logoImage}
-            resizeMode="contain"
-          />
-          <View style={styles.titleColumn}>
-            <Text style={styles.brandTitleText}>
-              Digi <Text style={styles.brandTitleGreen}>Local</Text>
-            </Text>
-            <Text style={styles.taglineText}>
-              Your Society. Your Vendor. Your Doorstep.
-            </Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+      >
+        {/* Top Header Logo Section */}
+        <View style={styles.headerSection}>
+          <View style={styles.logoRow}>
+            <Image
+              source={require('../../assets/images/splash-icon.png')}
+              style={styles.logoImage}
+              resizeMode="contain"
+            />
+            <View style={styles.titleColumn}>
+              <Text style={styles.brandTitleText}>
+                Digi <Text style={styles.brandTitleGreen}>Local</Text>
+              </Text>
+              <Text style={styles.taglineText}>
+                Your Society. Your Vendor. Your Doorstep.
+              </Text>
+            </View>
           </View>
         </View>
-      </View>
 
-      {/* Main Heading Section */}
-      <View style={styles.heroTextSection}>
-        <Text style={styles.heroTitleText} numberOfLines={1} adjustsFontSizeToFit>
-          Sell Smart.{' '}
-          <Text style={styles.heroTitleGreen}>Deliver Local.</Text>{' '}
-          Earn More.
-        </Text>
-      </View>
-
-      {/* Hero Illustration */}
-      <View style={styles.illustrationContainer}>
-        <Image
-          source={require('../../assets/images/vendor_community_hero.png')}
-          style={styles.heroIllustration}
-          resizeMode="contain"
-        />
-      </View>
-
-      {/* Floating White Features Card */}
-      <View style={styles.featuresCard}>
-        <View style={styles.featuresGrid}>
-          {FEATURES.map((item) => {
-            const IconComp = item.icon;
-            return (
-              <View key={item.id} style={styles.featureItem}>
-                <View style={styles.iconCircle}>
-                  <IconComp size={isSmallScreen ? 16 : 18} color="#055726" strokeWidth={2.2} />
-                </View>
-                <Text style={styles.featureTitleText}>{item.title}</Text>
-              </View>
-            );
-          })}
+        {/* Main Hero Heading */}
+        <View style={styles.heroTextSection}>
+          <Text style={styles.heroTitleText}>
+            Sell Smart. <Text style={styles.heroTitleGreen}>Deliver Local.</Text> Earn More.
+          </Text>
         </View>
 
-        {/* Action Buttons inside Card Container */}
-        <View style={styles.buttonSection}>
+        {/* Hero Illustration */}
+        <View style={styles.illustrationContainer}>
+          <Image
+            source={require('../../assets/images/vendor_community_hero.png')}
+            style={styles.heroIllustration}
+            resizeMode="contain"
+          />
+        </View>
+
+        {/* White Features Card Container */}
+        <View style={styles.featuresCard}>
+          <View style={styles.featuresGrid}>
+            {FEATURES.map((item) => {
+              const IconComp = item.icon;
+              return (
+                <View key={item.id} style={styles.featureItem}>
+                  <View style={styles.iconCircle}>
+                    <IconComp size={22} color="#055726" strokeWidth={2.2} />
+                  </View>
+                  <Text style={styles.featureTitleText}>{item.title}</Text>
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Call to Action Button */}
           <TouchableOpacity
             style={styles.primaryBtn}
             onPress={onGetStarted}
             activeOpacity={0.88}
           >
             <Text style={styles.primaryBtnText}>Get Started as Vendor</Text>
-            <ArrowRight size={isSmallScreen ? 16 : 18} color="#FFFFFF" strokeWidth={2.5} style={{ marginLeft: 8 }} />
+            <ArrowRight size={20} color="#FFFFFF" strokeWidth={2.5} style={{ marginLeft: 8 }} />
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Footer Trust Badges */}
-      <View style={styles.trustBadgesRow}>
-        <View style={styles.badgeItem}>
-          <ShieldCheck size={12} color="#055726" strokeWidth={2.2} />
-          <Text style={styles.badgeText}> Secure</Text>
+        {/* Footer Trust Badges */}
+        <View style={styles.trustBadgesRow}>
+          <View style={styles.badgeItem}>
+            <ShieldCheck size={14} color="#055726" strokeWidth={2.2} />
+            <Text style={styles.badgeText}> Secure</Text>
+          </View>
+
+          <Text style={styles.badgeDot}>•</Text>
+
+          <View style={styles.badgeItem}>
+            <ShieldCheck size={14} color="#055726" strokeWidth={2.2} />
+            <Text style={styles.badgeText}> Trusted</Text>
+          </View>
+
+          <Text style={styles.badgeDot}>•</Text>
+
+          <View style={styles.badgeItem}>
+            <Users size={14} color="#055726" strokeWidth={2.2} />
+            <Text style={styles.badgeText}> Community First</Text>
+          </View>
         </View>
-
-        <Text style={styles.badgeDot}>•</Text>
-
-        <View style={styles.badgeItem}>
-          <ShieldCheck size={12} color="#055726" strokeWidth={2.2} />
-          <Text style={styles.badgeText}> Trusted</Text>
-        </View>
-
-        <Text style={styles.badgeDot}>•</Text>
-
-        <View style={styles.badgeItem}>
-          <Users size={12} color="#055726" strokeWidth={2.2} />
-          <Text style={styles.badgeText}> Community First</Text>
-        </View>
-      </View>
+      </ScrollView>
     </View>
   );
 };
@@ -203,193 +197,167 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FAFAF9',
+  },
+  scrollContent: {
     paddingHorizontal: 20,
-    justifyContent: 'space-between',
+    paddingBottom: 16,
+    alignItems: 'center',
   },
 
   // Header Logo Section
   headerSection: {
+    width: '100%',
     alignItems: 'flex-start',
-    marginTop: isSmallScreen ? -12 : -16,
-    marginBottom: isSmallScreen ? 6 : 8,
-    marginLeft: -20,
+    marginTop: 8,
+    marginBottom: 16,
   },
   logoRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-start',
   },
   logoImage: {
-    width: isSmallScreen ? 90 : 110,
-    height: isSmallScreen ? 90 : 110,
-    marginLeft: isSmallScreen ? -18 : -22,
-    marginRight: 0,
+    width: 54,
+    height: 54,
+    marginRight: 10,
   },
   titleColumn: {
     flexDirection: 'column',
     justifyContent: 'center',
-    marginLeft: isSmallScreen ? -20 : -24,
   },
   brandTitleText: {
-    fontSize: isSmallScreen ? 20 : 24,
+    fontSize: 26,
     fontWeight: '800',
     color: '#101828',
     letterSpacing: -0.5,
     fontFamily: getFontFamily('extrabold'),
-    lineHeight: isSmallScreen ? 24 : 28,
+    lineHeight: 30,
   },
   brandTitleGreen: {
     color: '#055726',
   },
   taglineText: {
-    fontSize: isSmallScreen ? 9.5 : 11,
+    fontSize: 12,
     fontWeight: '500',
     color: '#475467',
-    marginTop: isSmallScreen ? 2 : 4,
+    marginTop: 2,
     letterSpacing: -0.1,
     fontFamily: getFontFamily('medium'),
   },
 
   // Main Heading Section
   heroTextSection: {
-    marginTop: isSmallScreen ? 4 : 6,
-    marginBottom: isSmallScreen ? 4 : 6,
-    alignItems: 'center',
     width: '100%',
+    marginVertical: 12,
+    alignItems: 'center',
   },
   heroTitleText: {
-    fontSize: isSmallScreen ? 17 : 20,
+    fontSize: isSmallScreen ? 20 : 23,
     fontWeight: '800',
     color: '#101828',
-    letterSpacing: -0.4,
+    letterSpacing: -0.5,
     fontFamily: getFontFamily('extrabold'),
     textAlign: 'center',
+    lineHeight: isSmallScreen ? 28 : 32,
   },
   heroTitleGreen: {
     color: '#055726',
   },
 
-
+  // Hero Illustration
   illustrationContainer: {
-    flex: 1,
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: isSmallScreen ? 4 : 10,
+    marginVertical: 12,
   },
   heroIllustration: {
-    width: '110%',
-    height: '100%',
-    maxHeight: isSmallScreen ? 200 : 280,
+    width: screenWidth - 40,
+    height: isSmallScreen ? 210 : 250,
   },
 
-  // Floating White Features Card
+  // Features Card (White Floating Box)
   featuresCard: {
+    width: '100%',
     backgroundColor: '#FFFFFF',
-    borderRadius: 18,
-    paddingVertical: isSmallScreen ? 12 : 19,
-    paddingHorizontal: isSmallScreen ? 10 : 14,
-    marginVertical: isSmallScreen ? 6 : 10,
+    borderRadius: 24,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
+    marginTop: 8,
+    marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#EAECF0',
+    borderColor: '#F2F4F7',
     shadowColor: '#101828',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
+    elevation: 4,
   },
   featuresGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
-    marginBottom: isSmallScreen ? 8 : 16,
+    marginBottom: 20,
   },
   featureItem: {
-    width: '32%',
+    width: '30%',
     alignItems: 'center',
-    marginVertical: isSmallScreen ? 6 : 8.5,
+    marginBottom: 16,
   },
   iconCircle: {
-    width: isSmallScreen ? 38 : 44,
-    height: isSmallScreen ? 38 : 44,
-    borderRadius: isSmallScreen ? 19 : 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: '#E8F5E9',
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: isSmallScreen ? 4 : 7,
+    marginBottom: 8,
   },
   featureTitleText: {
-    fontSize: isSmallScreen ? 9.5 : 10.5,
+    fontSize: 11.5,
     fontWeight: '700',
-    color: '#101828',
+    color: '#1D2939',
     textAlign: 'center',
-    lineHeight: isSmallScreen ? 11.5 : 13,
+    lineHeight: 14,
     fontFamily: getFontFamily('semibold'),
   },
 
-  // Buttons Section
-  buttonSection: {
-    width: '100%',
-  },
+  // Primary Action Button
   primaryBtn: {
     width: '100%',
-    height: isSmallScreen ? 38 : 42,
-    borderRadius: 12,
+    height: 52,
+    borderRadius: 16,
     backgroundColor: '#055726',
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#055726',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    elevation: 3,
-    marginBottom: isSmallScreen ? 4 : 8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 4,
   },
   primaryBtnText: {
-    fontSize: isSmallScreen ? 13.5 : 15,
+    fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: -0.2,
-    fontFamily: getFontFamily('semibold'),
-  },
-  secondaryBtn: {
-    width: '100%',
-    height: 46,
-    borderRadius: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#D0D5DD',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  secondaryBtnDarkText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#344054',
-    fontFamily: getFontFamily('medium'),
-  },
-  secondaryBtnGreenText: {
-    fontWeight: '700',
-    color: '#055726',
     fontFamily: getFontFamily('bold'),
   },
 
-  // Footer Trust Badges
+  // Footer Badges
   trustBadgesRow: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 12,
+    marginBottom: 8,
   },
   badgeItem: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   badgeText: {
-    fontSize: 12,
+    fontSize: 12.5,
     fontWeight: '600',
     color: '#475467',
     fontFamily: getFontFamily('semibold'),
@@ -397,6 +365,7 @@ const styles = StyleSheet.create({
   badgeDot: {
     fontSize: 14,
     color: '#98A2B3',
-    marginHorizontal: 8,
+    marginHorizontal: 10,
   },
 });
+

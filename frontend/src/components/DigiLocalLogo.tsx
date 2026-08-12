@@ -11,14 +11,12 @@ export const DigiLocalLogo: React.FC<DigiLocalLogoProps> = ({
   size = 96,
 }) => {
   return (
-    <View style={[styles.container, { width: size, height: size, borderRadius: size / 2 }]}>
+    <View style={[styles.container, { width: size, height: size }]}>
       <Image
         source={require('../../assets/images/splash-icon.png')}
         style={{
           width: size,
           height: size,
-          borderRadius: size / 2,
-          transform: [{ scale: 1.25 }]
         }}
         resizeMode="contain"
       />
@@ -30,6 +28,5 @@ const styles = StyleSheet.create({
   container: {
     justifyContent: 'center',
     alignItems: 'center',
-    overflow: 'hidden',
   },
 });

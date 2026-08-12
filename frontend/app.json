@@ -73,6 +73,10 @@
         "projectId": "bc89e8e6-ba8a-47fd-ae6a-6576e18da293"
       }
     },
-    "owner": "lovelyjain24"
+    "owner": "lovelyjain24",
+    "ios": {
+      "bundleIdentifier": "com.digilocal.vendor",
+      "googleServicesFile": "./GoogleService-Info.plist"
+    }
   }
 }

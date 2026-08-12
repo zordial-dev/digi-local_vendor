@@ -49,13 +49,8 @@ export const SplashScreenComponent: React.FC<SplashScreenProps> = ({ onFinish })
           }
         ]}
       >
-        {/* 3D Rounded Neumorphic Logo Dish matching screenshot */}
         <View style={styles.logoDish}>
-
-
-
-
-          <DigiLocalLogo size={165} />
+          <DigiLocalLogo size={130} />
         </View>
 
         {/* Brand Subtitle Title */}

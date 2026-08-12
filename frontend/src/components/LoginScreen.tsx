@@ -13,7 +13,10 @@ import {
   Modal,
   Image,
   Alert,
+  NativeModules,
+  TurboModuleRegistry,
 } from 'react-native';
+import Constants, { ExecutionEnvironment } from 'expo-constants';
 import {
   Lock,
   Mail,
@@ -46,6 +49,98 @@ import { Colors, APP_LOGO_URL } from '../constants/theme';
 import { DigiLocalLogo } from './DigiLocalLogo';
 import { loginVendorApi, registerVendorApi, fetchSocietiesApi, createSocietyApi, VendorUser, Society, sendOtpApi, verifyOtpApi, loginVendorWithOtpApi, forgotPasswordOtpApi, resetPasswordWithOtpApi } from '../services/apiService';
 import { getSavedCredentials, saveCredentials } from '../services/authStorage';
+
+// Clean user-facing error message formatter for production
+const formatUserFacingError = (err: any, fallbackMessage: string): string => {
+  const message = String(err?.message || err || '');
+
+  if (message.includes('auth/too-many-requests')) {
+    return 'Too many OTP requests. Please wait a moment and try again.';
+  }
+  if (message.includes('auth/invalid-phone-number')) {
+    return 'Invalid mobile number. Please check your 10-digit number and try again.';
+  }
+  if (message.includes('auth/quota-exceeded')) {
+    return 'SMS service is temporarily busy. Please try again later or use password login.';
+  }
+  if (message.includes('auth/invalid-verification-code') || message.includes('invalid-otp')) {
+    return 'Invalid verification code. Please check the code and try again.';
+  }
+  if (message.includes('auth/session-expired') || message.includes('code-expired')) {
+    return 'OTP code has expired. Please request a new code.';
+  }
+  if (message.includes('auth/app-not-authorized') || message.includes('play_integrity') || message.includes('Native module')) {
+    return 'OTP service is initializing. Please try again or use password login.';
+  }
+  if (message.includes('network-request-failed') || message.includes('fetch')) {
+    return 'Network connection issue. Please check your internet connection.';
+  }
+
+  if (message.startsWith('Error:') || message.includes('[auth/') || message.includes('[TypeError')) {
+    return fallbackMessage;
+  }
+
+  return message || fallbackMessage;
+};
+
+// Safe helper for Firebase Phone Auth (prevents Expo Go startup crash when native modules aren't linked)
+let firebaseAuthModule: any = null;
+
+const getFirebaseAuthModule = () => {
+  if (firebaseAuthModule) return firebaseAuthModule;
+
+  try {
+    const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient || (Constants as any).appOwnership === 'expo';
+    if (isExpoGo) {
+      return null;
+    }
+
+    firebaseAuthModule = require('@react-native-firebase/auth');
+    return firebaseAuthModule;
+  } catch (e) {
+    console.log('Firebase Auth module load error:', e);
+    return null;
+  }
+};
+
+const safeSendFirebaseOtp = async (phoneNumber: string, purpose: 'login' | 'register' = 'login') => {
+  const mod = getFirebaseAuthModule();
+
+  if (!mod) {
+    throw new Error('Firebase Auth native module is not available in Expo Go. Pure Firebase SMS OTP requires a native APK build (npx eas build -p android --profile preview) or npx expo run:android.');
+  }
+
+  const getAuthInstance = () => {
+    try {
+      if (mod.getAuth) return mod.getAuth();
+      if (typeof mod.default === 'function') return mod.default();
+      if (typeof mod === 'function') return mod();
+    } catch (e) {
+      console.log('Error getting firebase auth instance:', e);
+    }
+    return null;
+  };
+
+  const authInstance = getAuthInstance();
+  if (__DEV__ && authInstance && authInstance.settings) {
+    try {
+      authInstance.settings.appVerificationDisabledForTesting = true;
+    } catch (e) {
+      console.log('App verification flag setting skipped:', e);
+    }
+  }
+
+  const { signInWithPhoneNumber } = mod;
+  if (authInstance && signInWithPhoneNumber) {
+    return await signInWithPhoneNumber(authInstance, phoneNumber);
+  }
+
+  if (authInstance && typeof authInstance.signInWithPhoneNumber === 'function') {
+    return await authInstance.signInWithPhoneNumber(phoneNumber);
+  }
+
+  throw new Error('signInWithPhoneNumber method is unavailable on Firebase Auth instance.');
+};
 
 interface LoginScreenProps {
   onLoginSuccess: (vendor: VendorUser) => void;
@@ -152,13 +247,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [loginWithOtp, setLoginWithOtp] = useState(false);
   const [loginOtpSent, setLoginOtpSent] = useState(false);
   const [loginOtp, setLoginOtp] = useState('');
-  const [generatedLoginOtp, setGeneratedLoginOtp] = useState('');
+  const [loginConfirmResult, setLoginConfirmResult] = useState<any>(null);
   const [loginOtpTimer, setLoginOtpTimer] = useState(0);
 
   // Registration OTP States
   const [showRegOtpModal, setShowRegOtpModal] = useState(false);
   const [regOtp, setRegOtp] = useState('');
-  const [generatedRegOtp, setGeneratedRegOtp] = useState('');
+  const [regConfirmResult, setRegConfirmResult] = useState<any>(null);
   const [regOtpTimer, setRegOtpTimer] = useState(0);
 
   // Forgot Password modal states
@@ -580,34 +675,33 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     const cleanInput = email.trim();
 
     if (!cleanInput) {
-      setError('Please enter your Mobile Number or Email ID.');
+      setError('Please enter your 10-digit Mobile Number.');
       return;
     }
 
-    const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanInput);
     const isMobile = /^[6-9]\d{9}$/.test(cleanInput);
-
-    if (!isEmail && !isMobile) {
-      setError('Please enter a valid 10-digit Mobile Number or Email ID.');
+    if (!isMobile) {
+      setError('Please enter a valid 10-digit Mobile Number starting with 6, 7, 8, or 9.');
       return;
     }
 
     setLoading(true);
-    console.log('📲 [LOGIN OTP TRIGGERED]:', { cleanInput, isMobile, isEmail });
+    const formattedPhone = cleanInput.startsWith('+91') ? cleanInput : `+91${cleanInput}`;
+    console.log('📲 [LOGIN OTP TRIGGERED]:', formattedPhone);
     try {
-      console.log('📱/📧 [CALLING sendOtpApi]:', cleanInput);
-      const res = await sendOtpApi(cleanInput, 'login');
-      console.log('✅ [sendOtpApi RESULT]:', res);
+      const confirmation = await safeSendFirebaseOtp(formattedPhone, 'login');
+      setLoginConfirmResult(confirmation);
       setLoginOtpSent(true);
-      setLoginOtpTimer(30);
-      const msg = res.message || `OTP sent to your ${isMobile ? 'mobile number' : 'email ID'} (${cleanInput})`;
-      setSuccessMsg(msg);
-      Alert.alert('📲 OTP Sent Successfully', msg);
+      setLoginOtpTimer(60);
+      if (confirmation.simulationOtp) {
+        setSuccessMsg(`OTP sent to ${formattedPhone}. (Test OTP: ${confirmation.simulationOtp})`);
+      } else {
+        setSuccessMsg(`OTP sent to mobile number ${formattedPhone}`);
+      }
     } catch (err: any) {
-      console.error('❌ [LOGIN OTP ERROR FAILED]:', err.message || err);
-      const errorText = err.message || 'Failed to send OTP. Please verify your details and connection.';
-      setError(errorText);
-      Alert.alert('❌ OTP Request Failed', errorText);
+      console.error('❌ [LOGIN OTP FAILED]:', err);
+      const userMessage = formatUserFacingError(err, 'Unable to send OTP at this time. Please try again or log in with your password.');
+      setError(userMessage);
     } finally {
       setLoading(false);
     }
@@ -623,63 +717,31 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setLoading(true);
     try {
-      const cleanInput = email.trim();
-      let res;
-      try {
-        res = await loginVendorWithOtpApi(cleanInput, loginOtp);
-      } catch (err: any) {
-        throw err;
+      if (!loginConfirmResult) {
+        throw new Error('OTP session expired. Please request a new OTP code.');
       }
-
-      onLoginSuccess(res.vendor);
+      const userCredential = await loginConfirmResult.confirm(loginOtp);
+      if (userCredential?.isBackend) {
+        const res = await loginVendorWithOtpApi(userCredential.phone, userCredential.otp);
+        onLoginSuccess(res.vendor);
+      } else if (userCredential?.user) {
+        const firebaseToken = await userCredential.user.getIdToken();
+        const res = await loginVendorWithOtpApi(firebaseToken);
+        onLoginSuccess(res.vendor);
+      } else {
+        throw new Error('OTP verification failed. Please try again.');
+      }
     } catch (err: any) {
-      setError(err.message || 'OTP verification failed.');
+      console.error('❌ [VERIFY OTP FAILED]:', err);
+      const userMessage = formatUserFacingError(err, 'Invalid OTP code. Please check the code and try again.');
+      setError(userMessage);
     } finally {
       setLoading(false);
     }
   };
 
   const handleTriggerRegOtp = async () => {
-    setError('');
-    setSuccessMsg('');
-    const cleanPassword = password.trim();
-
-    if (!cleanPassword) {
-      setError('Please create a password for your account.');
-      return;
-    }
-
-    const hasUpperCase = /[A-Z]/.test(cleanPassword);
-    const hasNumber = /[0-9]/.test(cleanPassword);
-    const hasSpecial = /[^a-zA-Z0-9]/.test(cleanPassword);
-
-    if (cleanPassword.length < 8 || !hasUpperCase || !hasNumber || !hasSpecial) {
-      setError('Password must be at least 8 characters long and include an uppercase letter, a number, and a special symbol (@, #, $, !).');
-      return;
-    }
-
-    if (!agreedToTerms) {
-      setError('Please agree to the Terms & Conditions and Privacy Policy.');
-      return;
-    }
-
-    setLoading(true);
-    const cleanContact = email.trim() || phone.trim();
-    try {
-      await sendOtpApi(cleanContact);
-      setRegOtp('');
-      setRegOtpTimer(30);
-      setShowRegOtpModal(true);
-    } catch (err: any) {
-      console.warn('Real registration OTP send failed, using simulated fallback:', err);
-      const mockCode = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedRegOtp(mockCode);
-      setRegOtp('');
-      setRegOtpTimer(30);
-      setShowRegOtpModal(true);
-    } finally {
-      setLoading(false);
-    }
+    handleSendMobileOtp();
   };
 
   const handleSendMobileOtp = async () => {
@@ -692,21 +754,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setLoading(true);
-    console.log('📱 [REGISTRATION MOBILE OTP TRIGGERED]:', cleanPhone);
+    const formattedPhone = cleanPhone.startsWith('+91') ? cleanPhone : `+91${cleanPhone}`;
+    console.log('📱 [REGISTRATION OTP TRIGGERED]:', formattedPhone);
     try {
-      const res = await sendOtpApi(cleanPhone, 'register');
-      console.log('✅ [REGISTRATION MOBILE OTP RESULT]:', res);
+      const confirmation = await safeSendFirebaseOtp(formattedPhone, 'register');
+      setRegConfirmResult(confirmation);
       setRegOtp('');
-      setRegOtpTimer(30);
+      setRegOtpTimer(60);
       setShowRegOtpModal(true);
-      const msg = `SMS OTP dispatched via Firebase to mobile number +91 ${cleanPhone}`;
-      setSuccessMsg(msg);
-      Alert.alert('📱 OTP Dispatched', msg);
+      if (confirmation.simulationOtp) {
+        setSuccessMsg(`OTP sent to ${formattedPhone}. (Test OTP: ${confirmation.simulationOtp})`);
+      } else {
+        setSuccessMsg(`OTP sent to mobile number ${formattedPhone}`);
+      }
     } catch (err: any) {
-      console.error('❌ [REGISTRATION MOBILE OTP FAILED]:', err.message || err);
-      const errorText = err.message || 'Failed to dispatch SMS OTP via Firebase. Please check your network and mobile number.';
-      setError(errorText);
-      Alert.alert('❌ Mobile OTP Failed', errorText);
+      console.error('❌ [REGISTRATION OTP FAILED]:', err);
+      const userMessage = formatUserFacingError(err, 'Unable to send OTP at this time. Please try again or verify mobile number.');
+      setError(userMessage);
     } finally {
       setLoading(false);
     }
@@ -721,16 +785,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setLoading(true);
     try {
-      const cleanContact = phone.trim() || email.trim();
-      let verified = false;
-      try {
-        verified = await verifyOtpApi(cleanContact, regOtp);
-      } catch (e) {
-        throw e;
+      if (!regConfirmResult) {
+        throw new Error('OTP session expired. Please request a new OTP code.');
       }
-
-      if (!verified) {
-        throw new Error('Invalid OTP code.');
+      const userCredential = await regConfirmResult.confirm(regOtp);
+      if (!userCredential?.user && !userCredential?.isBackend) {
+        throw new Error('OTP verification failed. Please try again.');
       }
 
       setIsMobileVerified(true);
@@ -741,7 +801,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         handleRegister();
       }
     } catch (err: any) {
-      setError(err.message || 'Registration OTP verification failed.');
+      console.error('❌ [REGISTRATION VERIFY FAILED]:', err);
+      const userMessage = formatUserFacingError(err, 'Invalid OTP code. Please check the code and try again.');
+      setError(userMessage);
     } finally {
       setLoading(false);
     }
@@ -885,7 +947,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               {/* Top DigiLocal Logo */}
               <Image
                 source={require('../../assets/images/icon.png')}
-                style={{ width: 250, height: 250, marginTop: -35, marginBottom: -60 }}
+                style={{ width: 88, height: 88, marginBottom: 8 }}
                 resizeMode="contain"
               />
               <Text style={styles.mainTitleCentered}>Vendor Login</Text>
