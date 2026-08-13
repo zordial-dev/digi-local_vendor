@@ -26,8 +26,8 @@ export function connectSocket(vendorId: number, onNewOrder: (order: any) => void
       console.log(`[SocketService] Joined vendor room: vendor_${vendorId}`);
     });
 
-    socketInstance.on('new_order_alert', (data) => {
-      console.log('🚨 [SocketService] New order event received:', data);
+    const handleIncomingOrder = (data: any) => {
+      console.log('🚨 [SocketService] New order event received via Socket.io:', data);
       
       // Map properties to match VendorOrder if backend format differs slightly
       const normalizedOrder = {
@@ -43,7 +43,11 @@ export function connectSocket(vendorId: number, onNewOrder: (order: any) => void
       };
 
       onNewOrder(normalizedOrder);
-    });
+    };
+
+    socketInstance.on('new_order_alert', handleIncomingOrder);
+    socketInstance.on('NEW_ORDER_ALERT', handleIncomingOrder);
+    socketInstance.on('new_order', handleIncomingOrder);
 
     socketInstance.on('disconnect', (reason) => {
       console.log(`[SocketService] Disconnected. Reason: ${reason}`);

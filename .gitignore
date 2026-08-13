@@ -51,6 +51,15 @@ yarn-error.log*
 ehthumbs.db
 Thumbs.db
 
+# Android build artifacts
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+android/.kotlin/
+android/local.properties
+
 # IDEs and Editors
 .idea/
 .vscode/*
