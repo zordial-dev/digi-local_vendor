@@ -7,9 +7,12 @@ dist/
 web-build/
 expo-env.d.ts
 
-# Environment files
+# Environment files & Firebase Credentials
 .env
 .env.local
+google-services.json
+GoogleService-Info.plist
+**/google-services.json
 
 # Logs & System
 *.log

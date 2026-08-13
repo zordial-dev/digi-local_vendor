@@ -142,7 +142,7 @@ export async function registerVendorApi(payload: {
   }
 }
 
-export async function loginVendorWithOtpApi(identifierOrFirebaseToken: string, otp?: string): Promise<{
+export async function loginVendorWithOtpApi(identifier: string, otp?: string): Promise<{
   vendor: VendorUser;
   accessToken: string;
   refreshToken?: string;
@@ -150,17 +150,17 @@ export async function loginVendorWithOtpApi(identifierOrFirebaseToken: string, o
   message?: string;
 }> {
   try {
-    const isFirebaseToken = !otp && identifierOrFirebaseToken.length > 50;
-    const body = isFirebaseToken
-      ? { firebase_token: identifierOrFirebaseToken, idToken: identifierOrFirebaseToken }
-      : /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(identifierOrFirebaseToken)
-      ? { email: identifierOrFirebaseToken.trim().toLowerCase(), identifier: identifierOrFirebaseToken.trim().toLowerCase(), otp: otp?.trim() }
+    const clean = identifier.trim();
+    const cleanOtp = otp?.trim();
+    const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean);
+    const body = isEmail
+      ? { email: clean.toLowerCase(), identifier: clean.toLowerCase(), otp: cleanOtp }
       : {
-          mobile: identifierOrFirebaseToken.trim(),
-          phone: identifierOrFirebaseToken.trim(),
-          phone_number: identifierOrFirebaseToken.trim(),
-          identifier: identifierOrFirebaseToken.trim(),
-          otp: otp?.trim()
+          mobile: clean,
+          phone: clean,
+          phone_number: clean,
+          identifier: clean,
+          otp: cleanOtp
         };
 
     const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/login`, {
@@ -221,15 +221,15 @@ export async function logoutVendorApi(refreshToken?: string): Promise<{ message?
 export async function sendOtpApi(
   identifier: string,
   purpose?: 'login' | 'register'
-): Promise<{ exists?: boolean; message?: string; target?: string; provider?: string; simulationOtp?: string; otp?: string; code?: string }> {
+): Promise<{ exists?: boolean; message?: string; target?: string; provider?: string; simulationOtp?: string; otp?: string; code?: string; success?: boolean; data?: any }> {
   const clean = identifier.trim();
   const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean);
-  const url = `${getApiBaseUrl()}/vendors/send-otp`;
+  const url = `${getApiBaseUrl()}/otp/send-otp`;
   const payload = isEmail
-    ? { email: clean.toLowerCase(), identifier: clean.toLowerCase(), purpose }
+    ? { phone: clean, mobile: clean, email: clean.toLowerCase(), identifier: clean.toLowerCase(), purpose }
     : {
-        mobile: clean,
         phone: clean,
+        mobile: clean,
         phone_number: clean,
         identifier: clean,
         email: `${clean}@mobile.digilocal.com`,
@@ -247,7 +247,7 @@ export async function sendOtpApi(
     console.log('📡 [SEND OTP RESPONSE STATUS]:', res.status, res.ok ? 'OK' : 'FAILED');
     console.log('📦 [SEND OTP RESPONSE BODY]:', data);
 
-    if (!res.ok) {
+    if (!res.ok || data.success === false) {
       console.error('❌ [SEND OTP FAILED]: Server returned error', { status: res.status, data });
       throw new Error(data.error || data.message || `Failed to send OTP (Status: ${res.status})`);
     }
@@ -261,30 +261,36 @@ export async function sendOtpApi(
 }
 
 export async function verifyOtpApi(
-  identifierOrFirebaseToken: string,
+  identifier: string,
   otp?: string
 ): Promise<boolean> {
-  const isFirebaseToken = !otp && identifierOrFirebaseToken.length > 50;
-  const payload = isFirebaseToken
-    ? { firebase_token: identifierOrFirebaseToken, idToken: identifierOrFirebaseToken }
-    : /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(identifierOrFirebaseToken)
-    ? { email: identifierOrFirebaseToken.trim().toLowerCase(), identifier: identifierOrFirebaseToken.trim().toLowerCase(), otp: otp?.trim() }
+  const clean = identifier.trim();
+  const cleanOtp = otp?.trim();
+  const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean);
+  const payload = isEmail
+    ? { phone: clean, email: clean.toLowerCase(), identifier: clean.toLowerCase(), otp: cleanOtp }
     : {
-        mobile: identifierOrFirebaseToken.trim(),
-        phone: identifierOrFirebaseToken.trim(),
-        phone_number: identifierOrFirebaseToken.trim(),
-        identifier: identifierOrFirebaseToken.trim(),
-        email: `${identifierOrFirebaseToken.trim()}@mobile.digilocal.com`,
-        otp: otp?.trim()
+        phone: clean,
+        mobile: clean,
+        phone_number: clean,
+        identifier: clean,
+        email: `${clean}@mobile.digilocal.com`,
+        otp: cleanOtp
       };
 
-  const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/verify-otp`, {
+  const url = `${getApiBaseUrl()}/otp/verify-otp`;
+  console.log('🔑 [VERIFY OTP REQUEST]:', { url, payload });
+
+  const { res, data } = await safeFetch(url, {
     method: 'POST',
     body: JSON.stringify(payload)
   });
 
-  if (!res.ok) {
-    throw new Error(data.error || 'Invalid or expired OTP code');
+  console.log('📡 [VERIFY OTP RESPONSE STATUS]:', res.status, res.ok ? 'OK' : 'FAILED');
+  console.log('📦 [VERIFY OTP RESPONSE BODY]:', data);
+
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || data.message || 'Invalid or expired OTP code');
   }
   return true;
 }

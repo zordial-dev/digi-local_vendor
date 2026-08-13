@@ -50,7 +50,9 @@ import {
   playAlarmSound,
   stopAlarmSound,
   triggerOrderNotification,
-  registerForPushNotificationsAsync
+  registerForPushNotificationsAsync,
+  setupOrderAlertChannel,
+  setupNotificationListeners
 } from '../services/notificationService';
 
 // Screens & Overlays
@@ -132,6 +134,19 @@ export default function App() {
   const [activeAlarmOrder, setActiveAlarmOrder] = useState<VendorOrder | null>(null);
   const knownOrderIdsRef = useRef<Set<string | number>>(new Set());
   const isFirstLoadRef = useRef(true);
+
+  // Initialize High-Priority Order Alerts & Lockscreen Notification Channel
+  useEffect(() => {
+    setupOrderAlertChannel();
+
+    const cleanupListeners = setupNotificationListeners((orderId) => {
+      setCurrentTab('orders');
+    });
+
+    return () => {
+      cleanupListeners();
+    };
+  }, []);
 
   const theme = Colors.light;
 
@@ -643,11 +658,11 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   headerLogo: {
-    width: 70,
-    height: 70,
+    width: 42,
+    height: 42,
     resizeMode: 'contain',
     position: 'absolute',
-    left: 1,
+    left: 12,
   },
   headerTitleContainer: {
     flex: 1,

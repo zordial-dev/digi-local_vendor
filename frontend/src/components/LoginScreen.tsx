@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   ScrollView,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   StatusBar,
   Modal,
@@ -17,6 +18,7 @@ import {
   TurboModuleRegistry,
 } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Lock,
   Mail,
@@ -83,64 +85,7 @@ const formatUserFacingError = (err: any, fallbackMessage: string): string => {
   return message || fallbackMessage;
 };
 
-// Safe helper for Firebase Phone Auth (prevents Expo Go startup crash when native modules aren't linked)
-let firebaseAuthModule: any = null;
 
-const getFirebaseAuthModule = () => {
-  if (firebaseAuthModule) return firebaseAuthModule;
-
-  try {
-    const isExpoGo = Constants.executionEnvironment === ExecutionEnvironment.StoreClient || (Constants as any).appOwnership === 'expo';
-    if (isExpoGo) {
-      return null;
-    }
-
-    firebaseAuthModule = require('@react-native-firebase/auth');
-    return firebaseAuthModule;
-  } catch (e) {
-    console.log('Firebase Auth module load error:', e);
-    return null;
-  }
-};
-
-const safeSendFirebaseOtp = async (phoneNumber: string, purpose: 'login' | 'register' = 'login') => {
-  const mod = getFirebaseAuthModule();
-
-  if (!mod) {
-    throw new Error('Firebase Auth native module is not available in Expo Go. Pure Firebase SMS OTP requires a native APK build (npx eas build -p android --profile preview) or npx expo run:android.');
-  }
-
-  const getAuthInstance = () => {
-    try {
-      if (mod.getAuth) return mod.getAuth();
-      if (typeof mod.default === 'function') return mod.default();
-      if (typeof mod === 'function') return mod();
-    } catch (e) {
-      console.log('Error getting firebase auth instance:', e);
-    }
-    return null;
-  };
-
-  const authInstance = getAuthInstance();
-  if (__DEV__ && authInstance && authInstance.settings) {
-    try {
-      authInstance.settings.appVerificationDisabledForTesting = true;
-    } catch (e) {
-      console.log('App verification flag setting skipped:', e);
-    }
-  }
-
-  const { signInWithPhoneNumber } = mod;
-  if (authInstance && signInWithPhoneNumber) {
-    return await signInWithPhoneNumber(authInstance, phoneNumber);
-  }
-
-  if (authInstance && typeof authInstance.signInWithPhoneNumber === 'function') {
-    return await authInstance.signInWithPhoneNumber(phoneNumber);
-  }
-
-  throw new Error('signInWithPhoneNumber method is unavailable on Firebase Auth instance.');
-};
 
 interface LoginScreenProps {
   onLoginSuccess: (vendor: VendorUser) => void;
@@ -193,6 +138,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   onBackToWelcome,
   isDarkMode = false,
 }) => {
+  const rawInsets = useSafeAreaInsets();
+  const insets = rawInsets || { top: 0, bottom: 0, left: 0, right: 0 };
   const theme = isDarkMode ? Colors.dark : Colors.light;
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -247,14 +194,31 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [loginWithOtp, setLoginWithOtp] = useState(false);
   const [loginOtpSent, setLoginOtpSent] = useState(false);
   const [loginOtp, setLoginOtp] = useState('');
-  const [loginConfirmResult, setLoginConfirmResult] = useState<any>(null);
   const [loginOtpTimer, setLoginOtpTimer] = useState(0);
 
-  // Registration OTP States
+  // Registration OTP & Step Validation States
   const [showRegOtpModal, setShowRegOtpModal] = useState(false);
   const [regOtp, setRegOtp] = useState('');
-  const [regConfirmResult, setRegConfirmResult] = useState<any>(null);
   const [regOtpTimer, setRegOtpTimer] = useState(0);
+  const [touchedStep1, setTouchedStep1] = useState(false);
+  const [touchedStep2, setTouchedStep2] = useState(false);
+  const [touchedStep3, setTouchedStep3] = useState(false);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      () => setIsKeyboardVisible(true)
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => setIsKeyboardVisible(false)
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   // Forgot Password modal states
   const [agreedToTerms, setAgreedToTerms] = useState(true);
@@ -305,24 +269,31 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       } catch (err) {
         console.error('Error during login screen init:', err);
       }
+      
+      // Pre-fetch societies in background on mount
+      fetchSocietiesApi('').then(res => {
+        if (Array.isArray(res) && res.length > 0) {
+          setAllSocieties(res);
+          setSocieties(res);
+        }
+      }).catch(() => {});
     };
     init();
   }, []);
 
-  // Load all registered societies (called on focus)
+  // Load all registered societies (called on focus / tap)
   const loadAllSocieties = async () => {
+    setShowSocietyDropdown(true);
     if (allSocieties.length > 0) {
       setSocieties(allSocieties);
-      setShowSocietyDropdown(true);
       return;
     }
     setIsSearchingSocieties(true);
     try {
       const res = await fetchSocietiesApi('');
-      const list = Array.isArray(res) ? res : [];
+      const list = Array.isArray(res) && res.length > 0 ? res : [];
       setAllSocieties(list);
       setSocieties(list);
-      setShowSocietyDropdown(true);
     } catch (e) {
       console.log('Society load error:', e);
     } finally {
@@ -334,22 +305,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setSocietyInputText(text);
     setSelectedSocietyId(null);
 
-    if (text.trim().length === 0) {
+    const query = text.trim().toLowerCase();
+    if (query.length === 0) {
       setSocieties(allSocieties);
       setShowSocietyDropdown(allSocieties.length > 0);
       return;
     }
 
-    if (text.trim().length < 2) {
-      setSocieties([]);
-      setShowSocietyDropdown(false);
-      return;
+    // Synchronous local filter first for instant 0ms response
+    if (allSocieties.length > 0) {
+      const filtered = allSocieties.filter(soc =>
+        soc.society_name.toLowerCase().includes(query) ||
+        (soc.location && soc.location.toLowerCase().includes(query))
+      );
+      setSocieties(filtered);
+      setShowSocietyDropdown(true);
+      if (filtered.length > 0) return;
     }
 
+    // Fast API fallback search if local results empty
     setIsSearchingSocieties(true);
     try {
       const res = await fetchSocietiesApi(text.trim());
-      setSocieties(Array.isArray(res) ? res : (res as any).societies || []);
+      const list = Array.isArray(res) ? res : (res as any).societies || [];
+      setSocieties(list);
       setShowSocietyDropdown(true);
     } catch (e) {
       console.log('Society search error:', e);
@@ -526,78 +505,37 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   const handleNextStep1 = () => {
     setError('');
+    setTouchedStep1(true);
     const cleanVendor = vendorName.trim();
     const cleanPhone = phone.trim();
     const cleanEmail = email.trim().toLowerCase();
 
-    if (!selectedSocietyId) {
-      setError('Housing Society Selection is mandatory *. Please search and select your society.');
-      return;
-    }
-    if (!cleanVendor) {
-      setError('Owner Name is mandatory *. Please enter your name.');
-      return;
-    }
-    if (cleanVendor.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanVendor)) {
-      setError('Owner Name is mandatory * (must contain only alphabets, at least 2 characters).');
-      return;
-    }
-    if (!cleanPhone || !/^[6-9]\d{9}$/.test(cleanPhone)) {
-      setError('Mobile Number is mandatory * (must be a valid 10-digit number).');
-      return;
-    }
-    if (!isMobileVerified) {
-      setError('Mobile OTP Verification is mandatory *. Please tap "Verify via OTP" beside your phone number.');
-      return;
-    }
-    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanEmail)) {
-      setError('Email Address is mandatory *. Please enter a valid email.');
-      return;
-    }
-    if (!category) {
-      setError('Business Category Selection is mandatory *. Please select a category.');
-      return;
-    }
+    if (!selectedSocietyId) return;
+    if (!cleanVendor || cleanVendor.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanVendor)) return;
+    if (!cleanPhone || !/^[6-9]\d{9}$/.test(cleanPhone)) return;
+    if (!isMobileVerified) return;
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanEmail)) return;
+    if (!category) return;
 
     setRegStep(2);
   };
 
   const handleNextStep2 = () => {
     setError('');
+    setTouchedStep2(true);
     const cleanStore = storeName.trim();
     const cleanAddress = shopAddress.trim();
     const cleanPin = pincode.trim();
     const cleanCity = city.trim();
     const cleanGst = gst.trim().toUpperCase();
 
-    if (!cleanStore || cleanStore.length < 2) {
-      setError('Shop / Business Name is mandatory * (at least 2 characters).');
-      return;
-    }
-    if (!cleanAddress || cleanAddress.length < 5) {
-      setError('Shop Address is mandatory * (at least 5 characters).');
-      return;
-    }
-    if (!cleanPin || !/^\d{6}$/.test(cleanPin)) {
-      setError('Pincode is mandatory * (must be a 6-digit number).');
-      return;
-    }
-    if (!cleanCity || cleanCity.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanCity)) {
-      setError('City Name is mandatory * (alphabets only, at least 2 characters).');
-      return;
-    }
-    if (!cleanGst) {
-      setError('GST / PAN Number is mandatory *. Please enter your 15-digit GST or 10-digit PAN.');
-      return;
-    }
-    if (cleanGst.length !== 15 && cleanGst.length !== 10) {
-      setError('GST Number format is invalid * (must be 15-digit GSTIN or 10-digit PAN).');
-      return;
-    }
-    if (shopImages.length === 0) {
-      setError('Shop Photos are mandatory *. Please upload at least 1 photo of your store.');
-      return;
-    }
+    if (!cleanStore || cleanStore.length < 2) return;
+    if (!cleanAddress || cleanAddress.length < 5) return;
+    if (!cleanPin || !/^\d{6}$/.test(cleanPin)) return;
+    if (!cleanCity || cleanCity.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanCity)) return;
+    if (!cleanGst || (cleanGst.length !== 15 && cleanGst.length !== 10)) return;
+    if (!panCheckRegex.test(cleanGst) && !gstCheckRegex.test(cleanGst)) return;
+    if (shopImages.length === 0) return;
 
     setRegStep(3);
   };
@@ -605,43 +543,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const handleRegister = async () => {
     setError('');
     setSuccessMsg('');
+    setTouchedStep3(true);
 
     const cleanPassword = password.trim();
     const cleanConfirm = confirmPassword.trim();
-
-    if (!cleanPassword) {
-      setError('Password Creation is mandatory *. Please enter a password.');
-      return;
-    }
-
     const hasUpperCase = /[A-Z]/.test(cleanPassword);
     const hasNumber = /[0-9]/.test(cleanPassword);
     const hasSpecial = /[^a-zA-Z0-9]/.test(cleanPassword);
 
-    if (cleanPassword.length < 8 || !hasUpperCase || !hasNumber || !hasSpecial) {
-      setError('Password is mandatory * (must be 8+ chars with uppercase, number & special symbol @, #, $, !).');
-      return;
-    }
-
-    if (!cleanConfirm) {
-      setError('Confirm Password is mandatory *. Please re-enter your password.');
-      return;
-    }
-
-    if (cleanPassword !== cleanConfirm) {
-      setError('Confirm Password does not match Password *. Please verify both fields.');
-      return;
-    }
-
-    if (!agreedToTerms) {
-      setError('Agreement to Terms & Conditions and Privacy Policy is mandatory *.');
-      return;
-    }
-
-    if (!isMobileVerified) {
-      setError('Mobile OTP Verification is mandatory *. Please verify your mobile number.');
-      return;
-    }
+    if (!cleanPassword || cleanPassword.length < 8 || !hasUpperCase || !hasNumber || !hasSpecial) return;
+    if (!cleanConfirm || cleanPassword !== cleanConfirm) return;
+    if (!agreedToTerms) return;
+    if (!isMobileVerified) return;
 
     setLoading(true);
     try {
@@ -686,17 +599,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setLoading(true);
-    const formattedPhone = cleanInput.startsWith('+91') ? cleanInput : `+91${cleanInput}`;
-    console.log('📲 [LOGIN OTP TRIGGERED]:', formattedPhone);
+    console.log('📲 [LOGIN OTP TRIGGERED]:', cleanInput);
     try {
-      const confirmation = await safeSendFirebaseOtp(formattedPhone, 'login');
-      setLoginConfirmResult(confirmation);
+      const res = await sendOtpApi(cleanInput, 'login');
       setLoginOtpSent(true);
       setLoginOtpTimer(60);
-      if (confirmation.simulationOtp) {
-        setSuccessMsg(`OTP sent to ${formattedPhone}. (Test OTP: ${confirmation.simulationOtp})`);
+      const testOtp = res?.simulationOtp || res?.otp || res?.code;
+      if (testOtp) {
+        setSuccessMsg(`OTP sent to ${cleanInput}. (Test OTP: ${testOtp})`);
       } else {
-        setSuccessMsg(`OTP sent to mobile number ${formattedPhone}`);
+        setSuccessMsg(`OTP sent to mobile number ${cleanInput}`);
       }
     } catch (err: any) {
       console.error('❌ [LOGIN OTP FAILED]:', err);
@@ -710,27 +622,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const handleVerifyLoginOtp = async () => {
     setError('');
     setSuccessMsg('');
-    if (!loginOtp || loginOtp.length < 6) {
-      setError('Please enter the 6-digit OTP code.');
+    if (!loginOtp || loginOtp.length < 4) {
+      setError('Please enter the OTP code.');
       return;
     }
 
     setLoading(true);
     try {
-      if (!loginConfirmResult) {
-        throw new Error('OTP session expired. Please request a new OTP code.');
-      }
-      const userCredential = await loginConfirmResult.confirm(loginOtp);
-      if (userCredential?.isBackend) {
-        const res = await loginVendorWithOtpApi(userCredential.phone, userCredential.otp);
-        onLoginSuccess(res.vendor);
-      } else if (userCredential?.user) {
-        const firebaseToken = await userCredential.user.getIdToken();
-        const res = await loginVendorWithOtpApi(firebaseToken);
-        onLoginSuccess(res.vendor);
-      } else {
-        throw new Error('OTP verification failed. Please try again.');
-      }
+      const cleanInput = email.trim();
+      await verifyOtpApi(cleanInput, loginOtp);
+      const res = await loginVendorWithOtpApi(cleanInput, loginOtp);
+      onLoginSuccess(res.vendor);
     } catch (err: any) {
       console.error('❌ [VERIFY OTP FAILED]:', err);
       const userMessage = formatUserFacingError(err, 'Invalid OTP code. Please check the code and try again.');
@@ -754,18 +656,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setLoading(true);
-    const formattedPhone = cleanPhone.startsWith('+91') ? cleanPhone : `+91${cleanPhone}`;
-    console.log('📱 [REGISTRATION OTP TRIGGERED]:', formattedPhone);
+    console.log('📱 [REGISTRATION OTP TRIGGERED]:', cleanPhone);
     try {
-      const confirmation = await safeSendFirebaseOtp(formattedPhone, 'register');
-      setRegConfirmResult(confirmation);
+      const res = await sendOtpApi(cleanPhone, 'register');
       setRegOtp('');
       setRegOtpTimer(60);
       setShowRegOtpModal(true);
-      if (confirmation.simulationOtp) {
-        setSuccessMsg(`OTP sent to ${formattedPhone}. (Test OTP: ${confirmation.simulationOtp})`);
+      const testOtp = res?.simulationOtp || res?.otp || res?.code;
+      if (testOtp) {
+        setSuccessMsg(`OTP sent to ${cleanPhone}. (Test OTP: ${testOtp})`);
       } else {
-        setSuccessMsg(`OTP sent to mobile number ${formattedPhone}`);
+        setSuccessMsg(`OTP sent to mobile number ${cleanPhone}`);
       }
     } catch (err: any) {
       console.error('❌ [REGISTRATION OTP FAILED]:', err);
@@ -778,20 +679,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   const handleVerifyAndRegister = async () => {
     setError('');
-    if (!regOtp || regOtp.length < 6) {
-      setError('Please enter the 6-digit OTP code.');
+    if (!regOtp || regOtp.length < 4) {
+      setError('Please enter the OTP code.');
       return;
     }
 
     setLoading(true);
     try {
-      if (!regConfirmResult) {
-        throw new Error('OTP session expired. Please request a new OTP code.');
-      }
-      const userCredential = await regConfirmResult.confirm(regOtp);
-      if (!userCredential?.user && !userCredential?.isBackend) {
-        throw new Error('OTP verification failed. Please try again.');
-      }
+      const cleanPhone = phone.trim();
+      await verifyOtpApi(cleanPhone, regOtp);
 
       setIsMobileVerified(true);
       setShowRegOtpModal(false);
@@ -901,21 +797,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: '#FAF7F0' }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
     >
       <StatusBar barStyle="dark-content" backgroundColor="#FAF7F0" />
       <ScrollView
         contentContainerStyle={[
           styles.scrollContainer,
           {
-            paddingTop: mode === 'login' ? (Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 16 : 40) : (Platform.OS === 'android' ? (StatusBar.currentHeight || 20) : 0),
-            paddingBottom: Platform.OS === 'ios' ? 180 : 160
+            paddingTop: mode === 'login'
+              ? Math.max(insets.top + 8, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 12 : 24)
+              : Math.max(insets.top + 10, Platform.OS === 'android' ? (StatusBar.currentHeight || 20) + 8 : 16),
+            paddingBottom: isKeyboardVisible ? 320 : Math.max(insets.bottom + 48, 64)
           }
         ]}
-        automaticallyAdjustKeyboardInsets={true}
+        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios' ? false : true}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
-        showsVerticalScrollIndicator={false}
+        showsVerticalScrollIndicator={true}
+        bounces={true}
       >
         {/* Heading Section */}
         <View style={[styles.headingSection, mode === 'login' ? { marginBottom: 20, marginTop: 0 } : { marginBottom: 4, marginTop: 4 }]}>
@@ -946,8 +845,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <View style={{ alignItems: 'center', width: '100%', marginBottom: 4 }}>
               {/* Top DigiLocal Logo */}
               <Image
-                source={require('../../assets/images/icon.png')}
-                style={{ width: 88, height: 88, marginBottom: 8 }}
+                source={require('../../assets/images/splash-icon.png')}
+                style={{ width: 250, height: 150
+                  
+                  
+                  , marginBottom: 12 }}
                 resizeMode="contain"
               />
               <Text style={styles.mainTitleCentered}>Vendor Login</Text>
@@ -1010,7 +912,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
         {/* Main Form Container */}
         <View style={styles.card}>
-          {error ? (
+          {error && mode === 'login' ? (
             <View style={styles.errorBox}>
               <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
               <Text style={styles.errorText}>{error}</Text>
@@ -1043,7 +945,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 />
               </View>
               {isEmailInvalid ? (
-                <Text style={styles.inputErrorText}>⚠️ Please enter a valid email address (e.g. vendor@domain.com)</Text>
+                <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
               ) : null}
 
               {loginWithOtp ? (
@@ -1152,7 +1054,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     </TouchableOpacity>
                   </View>
                   {isPasswordInvalid ? (
-                    <Text style={styles.inputErrorText}>⚠️ Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
+                    <Text style={styles.inputErrorText}>Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
                   ) : null}
 
                   {/* Forgot Password Link */}
@@ -1209,8 +1111,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <View style={{ display: regStep === 1 ? 'flex' : 'none', width: '100%' }}>
                 {/* Select Housing Society */}
                 <Text style={[styles.inputLabel, { marginTop: 25 }]}>Select Housing Society *</Text>
-                <View style={{ position: 'relative', zIndex: 10, marginBottom: 12 }}>
-                  <View style={[styles.inputWrapper, selectedSocietyId ? styles.inputWrapperActive : undefined]}>
+                <View style={{ position: 'relative', zIndex: 10, marginBottom: 4 }}>
+                  <View style={[styles.inputWrapper, selectedSocietyId ? styles.inputWrapperActive : undefined, (touchedStep1 && !selectedSocietyId) ? styles.inputWrapperError : undefined]}>
                     <Building size={18} color="#9CA3AF" style={{ marginRight: 10 }} />
                     <TextInput
                       style={styles.input}
@@ -1257,6 +1159,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     </View>
                   ) : null}
                 </View>
+                {touchedStep1 && !selectedSocietyId ? (
+                  <Text style={styles.inputErrorText}>Housing Society Selection is mandatory *. Please search and select your society.</Text>
+                ) : null}
 
                 {societyInputText.trim().length >= 2 && societies.length === 0 ? (
                   <TouchableOpacity
@@ -1280,7 +1185,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 >
                   {/* Owner Name */}
                   <Text style={[styles.inputLabel, { marginTop: 12 }]}>Owner Name *</Text>
-                  <View style={styles.inputWrapper}>
+                  <View style={[styles.inputWrapper, (touchedStep1 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim()))) ? styles.inputWrapperError : undefined]}>
                     <TextInput
                       style={styles.input}
                       placeholder="Enter owner name"
@@ -1289,8 +1194,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       onChangeText={(text) => setVendorName(text.replace(/[^a-zA-Z\s]/g, ''))}
                     />
                   </View>
-                  {isVendorInvalid ? (
-                    <Text style={styles.inputErrorText}>⚠️ Owner name must contain only alphabets</Text>
+                  {touchedStep1 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim())) ? (
+                    <Text style={styles.inputErrorText}>Owner Name is mandatory * (alphabets only, at least 2 characters).</Text>
+                  ) : isVendorInvalid ? (
+                    <Text style={styles.inputErrorText}>Owner name must contain only alphabets</Text>
                   ) : null}
 
                   {/* Mobile Number */}
@@ -1311,7 +1218,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       ) : null
                     )}
                   </View>
-                  <View style={styles.inputWrapper}>
+                  <View style={[styles.inputWrapper, (touchedStep1 && (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.trim()) || !isMobileVerified)) ? styles.inputWrapperError : undefined]}>
                     <Phone color="#055726" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
                     <TextInput
                       style={styles.input}
@@ -1328,13 +1235,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       }}
                     />
                   </View>
-                  {isPhoneInvalid ? (
-                    <Text style={styles.inputErrorText}>⚠️ Mobile number must be 10 digits starting with 6, 7, 8, or 9</Text>
+                  {touchedStep1 && (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.trim())) ? (
+                    <Text style={styles.inputErrorText}>Mobile Number is mandatory * (10-digit number starting with 6, 7, 8, or 9).</Text>
+                  ) : touchedStep1 && !isMobileVerified ? (
+                    <Text style={styles.inputErrorText}>Mobile OTP Verification is mandatory *. Please tap "Verify via OTP" beside your phone number.</Text>
+                  ) : isPhoneInvalid ? (
+                    <Text style={styles.inputErrorText}>Mobile number must be 10 digits starting with 6, 7, 8, or 9</Text>
                   ) : null}
 
                   {/* Email Address */}
                   <Text style={[styles.inputLabel, { marginTop: 16 }]}>Email Address *</Text>
-                  <View style={styles.inputWrapper}>
+                  <View style={[styles.inputWrapper, (touchedStep1 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim()))) ? styles.inputWrapperError : undefined]}>
                     <TextInput
                       style={styles.input}
                       placeholder="Enter email address"
@@ -1345,15 +1256,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       onChangeText={(text) => setEmail(text.trim())}
                     />
                   </View>
-                  {isEmailInvalid ? (
-                    <Text style={styles.inputErrorText}>⚠️ Please enter a valid email address (e.g. vendor@domain.com)</Text>
+                  {touchedStep1 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) ? (
+                    <Text style={styles.inputErrorText}>Email Address is mandatory * (e.g. vendor@domain.com).</Text>
+                  ) : isEmailInvalid ? (
+                    <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
                   ) : null}
 
                   {/* Business Category */}
                   <Text style={[styles.inputLabel, { marginTop: 16 }]}>Business Category *</Text>
-                  <View style={{ position: 'relative', zIndex: 10, marginBottom: 12 }}>
+                  <View style={{ position: 'relative', zIndex: 10, marginBottom: 4 }}>
                     <TouchableOpacity
-                      style={styles.inputWrapper}
+                      style={[styles.inputWrapper, (touchedStep1 && !category) ? styles.inputWrapperError : undefined]}
                       onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
                       activeOpacity={0.8}
                     >
@@ -1386,6 +1299,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       </View>
                     ) : null}
                   </View>
+                  {touchedStep1 && !category ? (
+                    <Text style={styles.inputErrorText}>Business Category Selection is mandatory *. Please select a category.</Text>
+                  ) : null}
 
                   {/* Next Button */}
                   <TouchableOpacity
@@ -1402,7 +1318,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <View style={{ display: regStep === 2 ? 'flex' : 'none', width: '100%' }}>
                 {/* Shop / Business Name */}
                 <Text style={[styles.inputLabel, { marginTop: 8 }]}>Shop / Business Name *</Text>
-                <View style={styles.inputWrapper}>
+                <View style={[styles.inputWrapper, (touchedStep2 && (!storeName.trim() || storeName.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={styles.input}
                     placeholder="Enter shop / business name"
@@ -1411,13 +1327,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     onChangeText={(text) => setStoreName(text.replace(/[^a-zA-Z\s]/g, ''))}
                   />
                 </View>
-                {isStoreInvalid ? (
-                  <Text style={styles.inputErrorText}>⚠️ Business name must be at least 2 characters</Text>
+                {touchedStep2 && (!storeName.trim() || storeName.trim().length < 2) ? (
+                  <Text style={styles.inputErrorText}>Shop / Business Name is mandatory * (at least 2 characters).</Text>
+                ) : isStoreInvalid ? (
+                  <Text style={styles.inputErrorText}>Business name must be at least 2 characters</Text>
                 ) : null}
 
                 {/* Shop Address */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop Address *</Text>
-                <View style={styles.inputWrapper}>
+                <View style={[styles.inputWrapper, (touchedStep2 && (!shopAddress.trim() || shopAddress.trim().length < 5)) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={styles.input}
                     placeholder="Enter shop address"
@@ -1426,15 +1344,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     onChangeText={setShopAddress}
                   />
                 </View>
-                {isAddressInvalid ? (
-                  <Text style={styles.inputErrorText}>⚠️ Shop address must be at least 5 characters</Text>
+                {touchedStep2 && (!shopAddress.trim() || shopAddress.trim().length < 5) ? (
+                  <Text style={styles.inputErrorText}>Shop Address is mandatory * (at least 5 characters).</Text>
+                ) : isAddressInvalid ? (
+                  <Text style={styles.inputErrorText}>Shop address must be at least 5 characters</Text>
                 ) : null}
 
                 {/* Pincode & City (Side by Side Grid) */}
                 <View style={[styles.gridRow, { marginTop: 16 }]}>
                   <View style={[styles.gridCol, { marginRight: 8 }]}>
                     <Text style={styles.inputLabel}>Pincode *</Text>
-                    <View style={[styles.inputWrapper, isPincodeInvalid ? styles.inputWrapperError : undefined]}>
+                    <View style={[styles.inputWrapper, (touchedStep2 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim()))) ? styles.inputWrapperError : isPincodeInvalid ? styles.inputWrapperError : undefined]}>
                       <TextInput
                         style={styles.input}
                         placeholder="Enter pincode"
@@ -1445,14 +1365,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         onChangeText={setPincode}
                       />
                     </View>
-                    {isPincodeInvalid ? (
-                      <Text style={styles.inputErrorText}>⚠️ Enter 6-digit pincode</Text>
+                    {touchedStep2 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())) ? (
+                      <Text style={styles.inputErrorText}>Pincode is mandatory * (6-digit number).</Text>
+                    ) : isPincodeInvalid ? (
+                      <Text style={styles.inputErrorText}>Enter 6-digit pincode</Text>
                     ) : null}
                   </View>
 
                   <View style={[styles.gridCol, { marginLeft: 8 }]}>
                     <Text style={styles.inputLabel}>City *</Text>
-                    <View style={[styles.inputWrapper, isCityInvalid ? styles.inputWrapperError : undefined]}>
+                    <View style={[styles.inputWrapper, (touchedStep2 && (!city.trim() || city.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(city.trim()))) ? styles.inputWrapperError : isCityInvalid ? styles.inputWrapperError : undefined]}>
                       <TextInput
                         style={styles.input}
                         placeholder="Enter city"
@@ -1461,15 +1383,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         onChangeText={(text) => setCity(text.replace(/[^a-zA-Z\s]/g, ''))}
                       />
                     </View>
-                    {isCityInvalid ? (
-                      <Text style={styles.inputErrorText}>⚠️ Enter valid city name</Text>
+                    {touchedStep2 && (!city.trim() || city.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(city.trim())) ? (
+                      <Text style={styles.inputErrorText}>City Name is mandatory * (alphabets only, at least 2 characters).</Text>
+                    ) : isCityInvalid ? (
+                      <Text style={styles.inputErrorText}>Enter valid city name</Text>
                     ) : null}
                   </View>
                 </View>
 
                 {/* GST Number */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>GST / PAN Number *</Text>
-                <View style={styles.inputWrapper}>
+                <View style={[styles.inputWrapper, (touchedStep2 && (!gst.trim() || (gst.trim().length !== 15 && gst.trim().length !== 10) || (!panCheckRegex.test(gst.toUpperCase().trim()) && !gstCheckRegex.test(gst.toUpperCase().trim())))) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={styles.input}
                     placeholder="Enter 15-digit GSTIN or 10-digit PAN"
@@ -1480,14 +1404,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     onChangeText={(text) => setGst(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15))}
                   />
                 </View>
-                {isGstInvalid ? (
-                  <Text style={styles.inputErrorText}>⚠️ Invalid format. Enter 10-digit PAN or 15-digit GST</Text>
+                {touchedStep2 && (!gst.trim() || (gst.trim().length !== 15 && gst.trim().length !== 10) || (!panCheckRegex.test(gst.toUpperCase().trim()) && !gstCheckRegex.test(gst.toUpperCase().trim()))) ? (
+                  <Text style={styles.inputErrorText}>GST / PAN Number is mandatory * (10-digit PAN or 15-digit GSTIN).</Text>
+                ) : isGstInvalid ? (
+                  <Text style={styles.inputErrorText}>Invalid format. Enter 10-digit PAN or 15-digit GST</Text>
                 ) : null}
 
                 {/* Shop Images Picker Section */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop Images *</Text>
                 <TouchableOpacity
-                  style={styles.uploadCard}
+                  style={[styles.uploadCard, (touchedStep2 && shopImages.length === 0) ? { borderColor: '#EF4444', backgroundColor: '#FEF2F2' } : undefined]}
                   onPress={handleAddPhoto}
                   activeOpacity={0.8}
                 >
@@ -1499,6 +1425,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <Text style={styles.uploadSub}>(Max 5 Images)</Text>
                   </View>
                 </TouchableOpacity>
+                {touchedStep2 && shopImages.length === 0 ? (
+                  <Text style={styles.inputErrorText}>Shop Photos are mandatory *. Please upload at least 1 photo of your store.</Text>
+                ) : null}
 
                 {/* Preview thumbnails */}
                 {shopImages.length > 0 ? (
@@ -1531,7 +1460,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <View style={{ display: regStep === 3 ? 'flex' : 'none', width: '100%' }}>
                 {/* Create Password */}
                 <Text style={styles.inputLabel}>Create Password *</Text>
-                <View style={styles.inputWrapper}>
+                <View style={[styles.inputWrapper, (touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim()))) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Enter password (8+ chars, uppercase, symbol)"
@@ -1546,13 +1475,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     {showPassword ? <EyeOff color="#6B7280" size={20} /> : <Eye color="#6B7280" size={20} />}
                   </TouchableOpacity>
                 </View>
-                {isPasswordInvalid ? (
-                  <Text style={styles.inputErrorText}>⚠️ Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
+                {touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim())) ? (
+                  <Text style={styles.inputErrorText}>Password is mandatory * (8+ chars with uppercase, number & special symbol @, #, $, !).</Text>
+                ) : isPasswordInvalid ? (
+                  <Text style={styles.inputErrorText}>Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
                 ) : null}
 
                 {/* Confirm Password */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Confirm Password *</Text>
-                <View style={styles.inputWrapper}>
+                <View style={[styles.inputWrapper, (touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim())) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Re-enter password to confirm"
@@ -1567,8 +1498,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     {showConfirmPassword ? <EyeOff color="#6B7280" size={20} /> : <Eye color="#6B7280" size={20} />}
                   </TouchableOpacity>
                 </View>
-                {confirmPassword && confirmPassword.trim() !== password.trim() ? (
-                  <Text style={styles.inputErrorText}>⚠️ Confirm Password does not match Password</Text>
+                {touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim()) ? (
+                  <Text style={styles.inputErrorText}>Confirm Password is mandatory and must match Password *.</Text>
+                ) : (confirmPassword && confirmPassword.trim() !== password.trim()) ? (
+                  <Text style={styles.inputErrorText}>Confirm Password does not match Password</Text>
                 ) : null}
 
                 {/* Details Summary Card */}
@@ -1605,7 +1538,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 {/* Terms & Privacy Agreement Checkbox */}
                 <View style={styles.termsCheckRow}>
                   <TouchableOpacity
-                    style={[styles.checkboxSquare, agreedToTerms && styles.checkboxSquareChecked]}
+                    style={[styles.checkboxSquare, agreedToTerms && styles.checkboxSquareChecked, (touchedStep3 && !agreedToTerms) ? { borderColor: '#EF4444' } : undefined]}
                     onPress={() => setAgreedToTerms(!agreedToTerms)}
                     activeOpacity={0.8}
                   >
@@ -1623,6 +1556,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     .
                   </Text>
                 </View>
+                {touchedStep3 && !agreedToTerms ? (
+                  <Text style={styles.inputErrorText}>Agreement to Terms & Conditions and Privacy Policy is mandatory *.</Text>
+                ) : null}
+                {touchedStep3 && !isMobileVerified ? (
+                  <Text style={styles.inputErrorText}>Mobile OTP Verification is mandatory *. Please go back to Step 1 and verify your mobile number.</Text>
+                ) : null}
 
                 {/* Submit Button */}
                 <TouchableOpacity
@@ -2176,11 +2115,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 24,
-    paddingTop: Platform.OS === 'android' ? (StatusBar.currentHeight || 28) + 24 : 64,
-    paddingBottom: Platform.OS === 'ios' ? 160 : 140,
     alignItems: 'center',
     backgroundColor: '#FAF7F0',
-    minHeight: '100%',
     flexGrow: 1,
   },
   backButton: {

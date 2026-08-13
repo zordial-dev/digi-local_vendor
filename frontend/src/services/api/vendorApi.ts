@@ -104,14 +104,31 @@ export async function updateVendorPushTokenApi(vendorId: number | string, pushTo
   try {
     const platform = Platform.OS === 'ios' ? 'ios' : 'android';
     
-    const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/fcm-token`, {
+    // First try standard backend route /vendors/push-token
+    let { res } = await safeFetch(`${getApiBaseUrl()}/vendors/push-token`, {
       method: 'POST',
       body: JSON.stringify({
         vendor_id: vendorId,
+        push_token: pushToken,
         fcm_token: pushToken,
         platform: platform
       })
     });
+
+    // Fallback to /vendors/fcm-token if /vendors/push-token returns 404
+    if (!res.ok && res.status === 404) {
+      const fallback = await safeFetch(`${getApiBaseUrl()}/vendors/fcm-token`, {
+        method: 'POST',
+        body: JSON.stringify({
+          vendor_id: vendorId,
+          push_token: pushToken,
+          fcm_token: pushToken,
+          platform: platform
+        })
+      });
+      res = fallback.res;
+    }
+
     return res.ok;
   } catch (e) {
     console.error('Failed to update push token:', e);

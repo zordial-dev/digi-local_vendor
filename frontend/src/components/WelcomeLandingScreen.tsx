@@ -217,9 +217,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoImage: {
-    width: 54,
-    height: 54,
-    marginRight: 10,
+    width: 46,
+    height: 46,
+    marginRight: 12,
   },
   titleColumn: {
     flexDirection: 'column',

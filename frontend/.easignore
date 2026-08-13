@@ -1,23 +1,19 @@
-# Dependencies
+# Exclude large directories and build caches from EAS upload
 node_modules/
-
-# Expo & React Native
 .expo/
 dist/
 web-build/
-expo-env.d.ts
-
-# Environment files
-.env
-.env.local
-
-# Logs & System
 *.log
 .DS_Store
 Thumbs.db
 
-# Builds
-*.apk
-*.aab
+# Exclude Android native build outputs
+android/build/
+android/.gradle/
+android/app/build/
+android/.idea/
+android/app/build/intermediates/
 
-# Note: google-services.json is intentionally NOT ignored so EAS Build can include it.
+# Keep google-services.json for Firebase FCM
+!google-services.json
+!GoogleService-Info.plist

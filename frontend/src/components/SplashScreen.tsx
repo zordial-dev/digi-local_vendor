@@ -50,7 +50,8 @@ export const SplashScreenComponent: React.FC<SplashScreenProps> = ({ onFinish })
         ]}
       >
         <View style={styles.logoDish}>
-          <DigiLocalLogo size={130} />
+          <DigiLocalLogo size={250
+          } />
         </View>
 
         {/* Brand Subtitle Title */}

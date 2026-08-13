@@ -4,7 +4,8 @@ import { Audio } from 'expo-av';
 import { VendorOrder } from './apiService';
 import Constants from 'expo-constants';
 
-// Configure notification handling behaviour safely
+// ── PILLAR 1: High-Priority Notification Handler & Android Channel ──
+
 try {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -18,21 +19,28 @@ try {
   });
 } catch (_) {}
 
-let alarmSoundObject: Audio.Sound | null = null;
-
-export async function requestAlarmPermissions() {
+/**
+ * Configure high-priority Android Order Alert Channel
+ * - Wakes up lockscreen (PUBLIC visibility)
+ * - Bypasses Do Not Disturb (bypassDnd)
+ * - Plays custom chime & vibrate loop
+ */
+export async function setupOrderAlertChannel(): Promise<boolean> {
   if (Platform.OS === 'web') return true;
 
   try {
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('order_alerts_channel', {
-        name: 'Order Alerts',
+        name: 'New Order Alerts',
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: '#FF231F7C',
+        vibrationPattern: [0, 500, 500, 500],
+        lightColor: '#055726',
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
         sound: 'order_alert_chime.wav',
         bypassDnd: true,
+        showBadge: true,
+        enableVibrate: true,
+        enableLights: true,
       });
     }
 
@@ -45,44 +53,33 @@ export async function requestAlarmPermissions() {
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Failed to get push token for notification permissions!');
+      console.warn('Notification permissions not granted!');
       return false;
     }
     return true;
   } catch (error) {
-    console.error('Error requesting notification permissions:', error);
+    console.error('Error setting up notification channel:', error);
     return false;
   }
 }
 
-const HARDCODED_EAS_PROJECT_ID = 'afdb0388-9c9f-4dc1-b3ca-d03a22d3bf9b';
-
-export async function registerForPushNotificationsAsync(): Promise<string | null> {
-  if (Platform.OS === 'web') return null;
-
-  try {
-    const hasPerm = await requestAlarmPermissions();
-    if (!hasPerm) return null;
-
-    const projectId =
-      Constants.expoConfig?.extra?.eas?.projectId ||
-      Constants.easConfig?.projectId ||
-      HARDCODED_EAS_PROJECT_ID;
-
-    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    return tokenData.data;
-  } catch (e: any) {
-    console.warn('Expo Push Token registration note:', e.message || e);
-    return null;
-  }
+export async function requestAlarmPermissions(): Promise<boolean> {
+  return setupOrderAlertChannel();
 }
 
-export async function playAlarmSound(
+// ── PILLAR 2: Continuous Background Audio Ringtone & Vibration Loop ──
+
+let alarmSoundObject: Audio.Sound | null = null;
+
+/**
+ * Play continuous ringing chime & vibration until stopped by vendor
+ */
+export async function startContinuousOrderRingtone(
   soundSource: any = require('../../assets/order_alert_chime.wav'),
   volume: number = 1.0
 ) {
   try {
-    await stopAlarmSound();
+    await stopContinuousOrderRingtone();
 
     if (Platform.OS !== 'web') {
       await Audio.setAudioModeAsync({
@@ -99,11 +96,11 @@ export async function playAlarmSound(
     alarmSoundObject = sound;
     Vibration.vibrate([1000, 1000, 1000], true);
   } catch (error) {
-    console.error('Failed to play alarm sound:', error);
+    console.error('Failed to start continuous order ringtone:', error);
   }
 }
 
-export async function stopAlarmSound() {
+export async function stopContinuousOrderRingtone() {
   try {
     Vibration.cancel();
     if (alarmSoundObject) {
@@ -112,17 +109,48 @@ export async function stopAlarmSound() {
       alarmSoundObject = null;
     }
   } catch (error) {
-    console.error('Error stopping alarm sound:', error);
+    console.error('Error stopping order ringtone:', error);
   }
 }
 
+// Aliases for backward compatibility
+export const playAlarmSound = startContinuousOrderRingtone;
+export const stopAlarmSound = stopContinuousOrderRingtone;
+
+// ── PILLAR 3: Push Token Registration for Remote Backend FCM Triggers ──
+
+const HARDCODED_EAS_PROJECT_ID = 'afdb0388-9c9f-4dc1-b3ca-d03a22d3bf9b';
+
+export async function registerForPushNotificationsAsync(): Promise<string | null> {
+  if (Platform.OS === 'web') return null;
+
+  try {
+    const hasPerm = await setupOrderAlertChannel();
+    if (!hasPerm) return null;
+
+    const projectId =
+      Constants.expoConfig?.extra?.eas?.projectId ||
+      Constants.easConfig?.projectId ||
+      HARDCODED_EAS_PROJECT_ID;
+
+    const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+    return tokenData.data;
+  } catch (e: any) {
+    console.warn('Expo Push Token registration note:', e.message || e);
+    return null;
+  }
+}
+
+// ── PILLAR 4: Local Notification Trigger & Tap Event Listeners ──
+
 export async function triggerOrderNotification(order: VendorOrder) {
   try {
+    await setupOrderAlertChannel();
     await Notifications.scheduleNotificationAsync({
       content: {
         title: `🚨 NEW ORDER #${order.order_id}!`,
-        body: `Customer: ${order.customer_name} • Total: ₹${order.total_amount}`,
-        data: { orderId: order.order_id },
+        body: `Customer: ${order.customer_name || 'Resident'} • Total: ₹${order.total_amount}`,
+        data: { orderId: order.order_id, order },
         sound: 'order_alert_chime.wav',
         priority: Notifications.AndroidNotificationPriority.MAX,
         ...(Platform.OS === 'android' ? { channelId: 'order_alerts_channel' } : {}),
@@ -140,4 +168,31 @@ export async function dismissOrderNotifications() {
   } catch (error) {
     console.error('Error dismissing notifications:', error);
   }
+}
+
+/**
+ * Setup notification tap listener to handle off-screen / background order opens
+ */
+export function setupNotificationListeners(
+  onOrderTapped: (orderId: number | string) => void
+) {
+  // Listener when notification arrives in foreground or background
+  const receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
+    startContinuousOrderRingtone();
+  });
+
+  // Listener when notification banner is tapped
+  const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+    startContinuousOrderRingtone();
+    const data = response.notification.request.content.data;
+    const rawId = data?.orderId ?? data?.order_id;
+    if (typeof rawId === 'string' || typeof rawId === 'number') {
+      onOrderTapped(rawId);
+    }
+  });
+
+  return () => {
+    receivedSubscription.remove();
+    responseSubscription.remove();
+  };
 }
