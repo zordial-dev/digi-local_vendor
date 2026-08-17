@@ -710,7 +710,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     setForgotError('');
     const cleanContact = forgotEmail.trim();
     if (!cleanContact) {
-      setForgotError('Please enter your registered Email or Mobile Number.');
+      setForgotError('Please enter your registered Phone Number.');
       return;
     }
     setForgotLoading(true);
@@ -817,7 +817,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         bounces={true}
       >
         {/* Heading Section */}
-        <View style={[styles.headingSection, mode === 'login' ? { marginBottom: 20, marginTop: 0 } : { marginBottom: 4, marginTop: 4 }]}>
+        <View style={[styles.headingSection, mode === 'login' ? { marginBottom: 14, marginTop: 0 } : { marginBottom: 4, marginTop: 4 }]}>
           {mode === 'register' ? (
             <View style={styles.headerRowAligned}>
               <TouchableOpacity
@@ -842,20 +842,50 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <View style={{ width: 28 }} />
             </View>
           ) : (
-            <View style={{ alignItems: 'center', width: '100%', marginBottom: 4 }}>
-              {/* Top DigiLocal Logo */}
-              <Image
-                source={require('../../assets/images/splash-icon.png')}
-                style={{ width: 250, height: 150
-                  
-                  
-                  , marginBottom: 12 }}
-                resizeMode="contain"
-              />
-              <Text style={styles.mainTitleCentered}>Vendor Login</Text>
-              <Text style={styles.mainSubtitleCentered}>
-                Welcome back! Login to your vendor account
-              </Text>
+            <View style={{ width: '100%', marginBottom: 0 }}>
+              {/* Row 1: Back button on top left */}
+              {onBackToWelcome && (
+                <TouchableOpacity
+                  onPress={onBackToWelcome}
+                  style={{ alignSelf: 'flex-start', paddingVertical: 8, paddingRight: 16, marginBottom: 8 }}
+                  activeOpacity={0.7}
+                >
+                  <ArrowLeft size={24} color="#055726" strokeWidth={2.5} />
+                </TouchableOpacity>
+              )}
+
+              {/* Centered logo and titles section below back option */}
+              <View style={{ alignItems: 'center', width: '100%' }}>
+                {/* Top DigiLocal Logo */}
+                <Image
+                  source={require('../../assets/images/LOGO.png')}
+                  style={{ width: 270, height: 180, marginTop: -55, marginBottom: -35 }}
+                  resizeMode="contain"
+                />
+                
+                {/* Vendor Login Text */}
+                <Text style={{
+                  fontSize: 28,
+                  fontWeight: '800',
+                  color: '#055726',
+                  textAlign: 'center',
+                  fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_800Bold',
+                  letterSpacing: -0.5,
+                  marginBottom: 12,
+                }}>
+                  Vendor Login
+                </Text>
+
+                {/* Welcome Text */}
+                <Text style={{
+                  fontSize: 13.5,
+                  color: '#6B7280',
+                  textAlign: 'center',
+                  fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
+                }}>
+                  Welcome back! Login to your vendor account
+                </Text>
+              </View>
             </View>
           )}
 
@@ -944,7 +974,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   onChangeText={(text) => setEmail(text.trim())}
                 />
               </View>
-              {isEmailInvalid ? (
+              {/^\d+$/.test(email) && email.length > 0 && !/^[6-9]/.test(email) ? (
+                <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9</Text>
+              ) : /^\d+$/.test(email) && email.length > 0 && email.length < 10 ? (
+                <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {email.length}/10)</Text>
+              ) : isEmailInvalid ? (
                 <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
               ) : null}
 
@@ -1057,8 +1091,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <Text style={styles.inputErrorText}>Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
                   ) : null}
 
-                  {/* Forgot Password Link */}
+                  {/* Login with OTP & Forgot Password Links */}
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <TouchableOpacity
+                      style={styles.forgotPasswordRow}
+                      onPress={() => {
+                        setLoginWithOtp(true);
+                        setLoginOtpSent(false);
+                        setLoginOtp('');
+                        setError('');
+                        setSuccessMsg('');
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={{ color: '#055726', fontSize: 13, fontWeight: '700' }}>Login with OTP</Text>
+                    </TouchableOpacity>
+
                     <TouchableOpacity
                       style={styles.forgotPasswordRow}
                       onPress={() => {
@@ -1074,18 +1122,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       activeOpacity={0.7}
                     >
                       <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      onPress={() => {
-                        setLoginWithOtp(true);
-                        setLoginOtpSent(false);
-                        setLoginOtp('');
-                        setError('');
-                        setSuccessMsg('');
-                      }}
-                    >
-                      <Text style={{ color: '#055726', fontSize: 13, fontWeight: '700' }}>Login with OTP</Text>
                     </TouchableOpacity>
                   </View>
 
@@ -1209,7 +1245,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         <Text style={{ fontSize: 11, fontWeight: '700', color: '#059669' }}>Verified</Text>
                       </View>
                     ) : (
-                      phone.trim().length === 10 ? (
+                      phone.trim().length === 10 && /^[6-9]\d{9}$/.test(phone.trim()) ? (
                         <TouchableOpacity onPress={handleSendMobileOtp} disabled={loading} activeOpacity={0.7}>
                           <Text style={{ fontSize: 12, fontWeight: '700', color: '#055726', textDecorationLine: 'underline' }}>
                             Verify via OTP
@@ -1218,8 +1254,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       ) : null
                     )}
                   </View>
-                  <View style={[styles.inputWrapper, (touchedStep1 && (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.trim()) || !isMobileVerified)) ? styles.inputWrapperError : undefined]}>
-                    <Phone color="#055726" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
+                  <View style={[styles.inputWrapper, (isPhoneInvalid || (touchedStep1 && (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.trim()) || !isMobileVerified))) ? styles.inputWrapperError : undefined]}>
+                    <View style={styles.countryCodeBadge}>
+                      <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                    </View>
+                    <View style={styles.countryCodeDivider} />
                     <TextInput
                       style={styles.input}
                       placeholder="Enter 10-digit mobile number"
@@ -1228,19 +1267,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       maxLength={10}
                       value={phone}
                       onChangeText={(text) => {
-                        const digitsOnly = text.replace(/[^0-9]/g, '');
-                        const validStart = digitsOnly.replace(/^[^6-9]+/, '');
-                        setPhone(validStart.slice(0, 10));
+                        const digitsOnly = text.replace(/[^0-9]/g, '').slice(0, 10);
+                        setPhone(digitsOnly);
                         if (isMobileVerified) setIsMobileVerified(false);
                       }}
                     />
                   </View>
-                  {touchedStep1 && (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.trim())) ? (
+                  {phone.length > 0 && !/^[6-9]/.test(phone) ? (
+                    <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
+                  ) : phone.length > 0 && phone.length < 10 ? (
+                    <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {phone.length}/10).</Text>
+                  ) : touchedStep1 && (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.trim())) ? (
                     <Text style={styles.inputErrorText}>Mobile Number is mandatory * (10-digit number starting with 6, 7, 8, or 9).</Text>
                   ) : touchedStep1 && !isMobileVerified ? (
                     <Text style={styles.inputErrorText}>Mobile OTP Verification is mandatory *. Please tap "Verify via OTP" beside your phone number.</Text>
-                  ) : isPhoneInvalid ? (
-                    <Text style={styles.inputErrorText}>Mobile number must be 10 digits starting with 6, 7, 8, or 9</Text>
                   ) : null}
 
                   {/* Email Address */}
@@ -1765,26 +1805,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </View>
             ) : null}
 
-            {/* Step 1: Enter Email & Send OTP */}
+            {/* Step 1: Enter Phone & Send OTP */}
             {forgotStep === 1 ? (
               <View>
                 <Text style={styles.forgotDesc}>
-                  Enter your registered vendor email address. We'll send an OTP to verify your identity.
+                  Enter your registered vendor phone number. We'll send an OTP to verify your identity.
                 </Text>
 
-                <Text style={styles.inputLabel}>Registered Email *</Text>
-                <View style={styles.inputWrapper}>
-                  <Mail color="#9CA3AF" size={18} style={styles.inputIcon} />
+                <Text style={styles.inputLabel}>Registered Phone Number *</Text>
+                <View style={[styles.inputWrapper, (forgotEmail.length > 0 && (!/^[6-9]/.test(forgotEmail) || forgotEmail.length < 10)) ? styles.inputWrapperError : undefined]}>
+                  <View style={styles.countryCodeBadge}>
+                    <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                  </View>
+                  <View style={styles.countryCodeDivider} />
                   <TextInput
                     style={styles.input}
-                    placeholder="vendor@digilocal.com"
+                    placeholder="Enter 10-digit phone number"
                     placeholderTextColor="#9CA3AF"
-                    autoCapitalize="none"
-                    keyboardType="email-address"
+                    keyboardType="phone-pad"
+                    maxLength={10}
                     value={forgotEmail}
-                    onChangeText={setForgotEmail}
+                    onChangeText={(text) => setForgotEmail(text.replace(/[^0-9]/g, '').slice(0, 10))}
                   />
                 </View>
+                {forgotEmail.length > 0 && !/^[6-9]/.test(forgotEmail) ? (
+                  <Text style={styles.inputErrorText}>Phone number must start with 6, 7, 8, or 9.</Text>
+                ) : forgotEmail.length > 0 && forgotEmail.length < 10 ? (
+                  <Text style={styles.inputErrorText}>Phone number must be 10 digits (currently {forgotEmail.length}/10).</Text>
+                ) : null}
 
                 <TouchableOpacity
                   style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
@@ -1803,12 +1851,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               /* Step 2: Enter OTP */
               <View>
                 <View style={styles.successBox}>
-                  <Mail color="#10B981" size={16} style={{ marginRight: 8 }} />
+                  <Phone color="#10B981" size={16} style={{ marginRight: 8 }} />
                   <Text style={styles.successText}>OTP sent to {forgotEmail}</Text>
                 </View>
 
                 <Text style={styles.forgotDesc}>
-                  Enter the 6-digit OTP sent to your registered email address.
+                  Enter the 6-digit OTP sent to your registered phone number.
                 </Text>
 
                 <Text style={styles.inputLabel}>Enter OTP *</Text>
@@ -2053,11 +2101,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                 {/* Secretary Contact */}
                 <Text style={[styles.inputLabel, { marginTop: 12 }]}>Secretary Contact *</Text>
-                <View style={styles.inputWrapper}>
-                  <Phone color="#9CA3AF" size={18} style={styles.inputIcon} />
+                <View style={[styles.inputWrapper, (newSocietyOwnerPhone.length > 0 && (!/^[6-9]/.test(newSocietyOwnerPhone) || newSocietyOwnerPhone.length < 10)) ? styles.inputWrapperError : undefined]}>
+                  <View style={styles.countryCodeBadge}>
+                    <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                  </View>
+                  <View style={styles.countryCodeDivider} />
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g. 9876543210"
+                    placeholder="9876543210"
                     placeholderTextColor="#9CA3AF"
                     value={newSocietyOwnerPhone}
                     onChangeText={(text) => setNewSocietyOwnerPhone(text.replace(/[^0-9]/g, '').slice(0, 10))}
@@ -2065,6 +2116,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     maxLength={10}
                   />
                 </View>
+                {newSocietyOwnerPhone.length > 0 && !/^[6-9]/.test(newSocietyOwnerPhone) ? (
+                  <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
+                ) : newSocietyOwnerPhone.length > 0 && newSocietyOwnerPhone.length < 10 ? (
+                  <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {newSocietyOwnerPhone.length}/10).</Text>
+                ) : null}
 
                 {/* Cancel & Submit Button Row */}
                 <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 24, gap: 12 }}>
@@ -2151,14 +2207,14 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 420,
     alignItems: 'center',
-    marginTop: 28,
+    marginTop: 12,
     marginBottom: 20,
   },
   dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '80%',
-    marginBottom: 20,
+    marginBottom: 6,
   },
   dividerLine: {
     flex: 1,
@@ -2364,6 +2420,24 @@ const styles = StyleSheet.create({
   },
   inputIcon: {
     marginRight: 10,
+  },
+  countryCodeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 6,
+  },
+  countryCodeText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#055726',
+    fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
+  },
+  countryCodeDivider: {
+    width: 1,
+    height: 22,
+    backgroundColor: '#E5E7EB',
+    marginRight: 10,
+    marginLeft: 2,
   },
   input: {
     flex: 1,

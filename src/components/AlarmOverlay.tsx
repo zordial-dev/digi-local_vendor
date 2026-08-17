@@ -16,13 +16,17 @@ import {
   VolumeX,
   User,
   MapPin,
-  Phone
+  Phone,
+  XCircle
 } from 'lucide-react-native';
 import { VendorOrder } from '../services/apiService';
+import { stopAlarmSound } from '../services/notificationService';
+import { formatItemQuantity } from './OrdersScreen';
 
 interface AlarmOverlayProps {
   order: VendorOrder | null;
   onAccept: (orderId: string | number) => void;
+  onReject: (orderId: string | number) => void;
   onMute: () => void;
   isDarkMode?: boolean;
 }
@@ -30,6 +34,7 @@ interface AlarmOverlayProps {
 export const AlarmOverlay: React.FC<AlarmOverlayProps> = ({
   order,
   onAccept,
+  onReject,
   onMute,
 }) => {
   const [isMuted, setIsMuted] = useState(false);
@@ -86,6 +91,7 @@ export const AlarmOverlay: React.FC<AlarmOverlayProps> = ({
       if (Platform.OS !== 'web') {
         Vibration.cancel();
       }
+      stopAlarmSound();
     };
   }, [order]);
 
@@ -100,14 +106,24 @@ export const AlarmOverlay: React.FC<AlarmOverlayProps> = ({
     if (Platform.OS !== 'web') {
       Vibration.cancel();
     }
+    stopAlarmSound();
     setIsMuted(true);
     onMute();
+  };
+
+  const handleRejectClick = () => {
+    if (Platform.OS !== 'web') {
+      Vibration.cancel();
+    }
+    stopAlarmSound();
+    onReject(order.order_id);
   };
 
   const handleAcceptClick = () => {
     if (Platform.OS !== 'web') {
       Vibration.cancel();
     }
+    stopAlarmSound();
     onAccept(order.order_id);
   };
 
@@ -152,7 +168,7 @@ export const AlarmOverlay: React.FC<AlarmOverlayProps> = ({
             <ScrollView style={styles.itemsScroll} contentContainerStyle={styles.itemsContent}>
               {(order.items || []).map((it, idx) => (
                 <View key={idx} style={styles.itemRow}>
-                  <Text style={styles.itemQty}>{it.quantity}x</Text>
+                  <Text style={styles.itemQty}>{formatItemQuantity(it.quantity || 1, it.unit)}</Text>
                   <Text style={styles.itemName}>{it.item_name}</Text>
                   <Text style={styles.itemPrice}>₹{(it.item_total || (it.price ? Number(it.price) * it.quantity : 0))}</Text>
                 </View>
@@ -170,22 +186,34 @@ export const AlarmOverlay: React.FC<AlarmOverlayProps> = ({
           </View>
 
           {/* Action Button Controls */}
-          <View style={styles.buttonRow}>
+          <View style={styles.buttonContainer}>
             
-            {/* Mute Button */}
-            <TouchableOpacity
-              style={[styles.btn, styles.muteBtn, isMuted && styles.muteBtnActive]}
-              onPress={handleMuteClick}
-              activeOpacity={0.8}
-            >
-              <VolumeX size={18} color={isMuted ? '#6B7C70' : '#F87171'} />
-              <Text style={[styles.muteBtnText, isMuted && styles.muteBtnTextActive]}>
-                {isMuted ? 'Alarm Muted' : 'Mute Sound'}
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.buttonRow}>
+              {/* Mute Button */}
+              <TouchableOpacity
+                style={[styles.btn, styles.muteBtn, isMuted && styles.muteBtnActive]}
+                onPress={handleMuteClick}
+                activeOpacity={0.8}
+              >
+                <VolumeX size={18} color={isMuted ? '#6B7C70' : '#6B7C70'} />
+                <Text style={[styles.muteBtnText, isMuted && styles.muteBtnTextActive]}>
+                  {isMuted ? 'Muted' : 'Mute'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Reject Button */}
+              <TouchableOpacity
+                style={[styles.btn, styles.rejectBtn]}
+                onPress={handleRejectClick}
+                activeOpacity={0.8}
+              >
+                <XCircle size={18} color="#B91C1C" />
+                <Text style={styles.rejectBtnText}>Reject</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* Confirm & Accept Button */}
-            <Animated.View style={{ flex: 1.3, transform: [{ scale: pulseAnim }] }}>
+            <Animated.View style={{ width: '100%', marginTop: 12, transform: [{ scale: pulseAnim }] }}>
               <TouchableOpacity
                 style={[styles.btn, styles.ackBtn]}
                 onPress={handleAcceptClick}
@@ -336,6 +364,10 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     color: '#C4A066',
   },
+  buttonContainer: {
+    width: '100%',
+    alignItems: 'center',
+  },
   buttonRow: {
     flexDirection: 'row',
     gap: 12,
@@ -351,21 +383,32 @@ const styles = StyleSheet.create({
   },
   muteBtn: {
     flex: 1,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#FAF8F3',
     borderWidth: 1.5,
-    borderColor: '#FCA5A5',
+    borderColor: '#E4DCC9',
   },
   muteBtnActive: {
     backgroundColor: '#243A2D',
     borderColor: '#2E4738',
   },
   muteBtnText: {
-    color: '#B91C1C',
+    color: '#6B7C70',
     fontWeight: '700',
     fontSize: 13,
   },
   muteBtnTextActive: {
     color: '#94A69A',
+  },
+  rejectBtn: {
+    flex: 1,
+    backgroundColor: '#FEE2E2',
+    borderWidth: 1.5,
+    borderColor: '#FCA5A5',
+  },
+  rejectBtnText: {
+    color: '#B91C1C',
+    fontWeight: '700',
+    fontSize: 13,
   },
   ackBtn: {
     backgroundColor: '#C4A066',

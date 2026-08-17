@@ -104,7 +104,7 @@ export const CustomAlertModal: React.FC<CustomAlertModalProps> = ({
     >
       <View style={styles.overlay}>
         <View style={styles.dialogCard}>
-          
+
           {/* Header Icon Badge */}
           <View style={[styles.iconWrapper, { backgroundColor: getHeaderBg() }]}>
             {getIcon()}

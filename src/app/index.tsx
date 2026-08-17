@@ -23,7 +23,11 @@ import {
   Store,
   ClipboardList,
   Plus,
+  Bell,
+  Camera,
+  Image as ImageIcon,
 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors, BrandTheme, APP_LOGO_URL } from '../constants/theme';
 import {
   VendorUser,
@@ -38,7 +42,11 @@ import {
   setApiBaseUrl,
   placeOrderApi,
   connectSocket,
-  disconnectSocket
+  disconnectSocket,
+  getCachedDashboard,
+  uploadMediaApi,
+  updateVendorProfileApi,
+  uploadVendorLogoApi
 } from '../services/apiService';
 import {
   clearSavedCredentials,
@@ -79,6 +87,7 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showDigitalCard, setShowDigitalCard] = useState(false);
+  const [showLogoPickerModal, setShowLogoPickerModal] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const drawerAnim = useRef(new Animated.Value(300)).current;
 
@@ -135,13 +144,48 @@ export default function App() {
   const knownOrderIdsRef = useRef<Set<string | number>>(new Set());
   const isFirstLoadRef = useRef(true);
 
+  const currentUserRef = useRef<VendorUser | null>(null);
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
   // Initialize High-Priority Order Alerts & Lockscreen Notification Channel
   useEffect(() => {
-    setupOrderAlertChannel();
+    // Configure channel but do NOT request permissions before login
+    setupOrderAlertChannel(false);
 
-    const cleanupListeners = setupNotificationListeners((orderId) => {
-      setCurrentTab('orders');
-    });
+    const cleanupListeners = setupNotificationListeners(
+      (orderId) => {
+        setCurrentTab('orders');
+      },
+      async (orderId, vId) => {
+        setActiveAlarmOrder(null);
+        const vendor_id = vId || currentUserRef.current?.vendor_id;
+        if (!vendor_id) return;
+        try {
+          await updateOrderStatusApi(Number(vendor_id), orderId, 'ACCEPTED');
+          await loadDashboardData(Number(vendor_id));
+          showAlert('Order Accepted', `Order #${orderId} accepted successfully!`, 'success');
+        } catch (e: any) {
+          showAlert('Accept Failed', e.message || 'Failed to accept order', 'error');
+        }
+      },
+      async (orderId, vId) => {
+        setActiveAlarmOrder(null);
+        const vendor_id = vId || currentUserRef.current?.vendor_id;
+        if (!vendor_id) return;
+        try {
+          await updateOrderStatusApi(Number(vendor_id), orderId, 'CANCELLED');
+          await loadDashboardData(Number(vendor_id));
+          showAlert('Order Rejected', `Order #${orderId} has been rejected.`, 'warning');
+        } catch (e: any) {
+          showAlert('Reject Failed', e.message || 'Failed to reject order', 'error');
+        }
+      },
+      () => {
+        handleMuteAlarm();
+      }
+    );
 
     return () => {
       cleanupListeners();
@@ -245,6 +289,15 @@ export default function App() {
           if (vendorData && vendorData.vendor_id && vendorData.store_name) {
             console.log(`[App] Restored vendor session: ${vendorData.store_name}`);
             setCurrentUser(vendorData);
+
+            // Instant 0ms Cache Hydration
+            const cached = await getCachedDashboard(vendorData.vendor_id);
+            if (cached) {
+              if (Array.isArray(cached.items) && cached.items.length > 0) setItems(cached.items);
+              if (Array.isArray(cached.orders) && cached.orders.length > 0) setOrders(cached.orders);
+              if (cached.subscription) setSubscription(cached.subscription);
+              if (Array.isArray(cached.payments) && cached.payments.length > 0) setPayments(cached.payments);
+            }
           }
         }
       } catch (e) {
@@ -296,18 +349,34 @@ export default function App() {
     };
   }, [currentUser]);
 
-  const handleLoginSuccess = (vendor: VendorUser) => {
+  const handleLoginSuccess = async (vendor: VendorUser) => {
     setCurrentUser(vendor);
     saveVendorUser(vendor);
     isFirstLoadRef.current = true;
+
+    // Instant cache check on login
+    const cached = await getCachedDashboard(vendor.vendor_id);
+    if (cached) {
+      if (Array.isArray(cached.items) && cached.items.length > 0) setItems(cached.items);
+      if (Array.isArray(cached.orders) && cached.orders.length > 0) setOrders(cached.orders);
+      if (cached.subscription) setSubscription(cached.subscription);
+      if (Array.isArray(cached.payments) && cached.payments.length > 0) setPayments(cached.payments);
+    }
+
     loadDashboardData(vendor.vendor_id);
-    registerForPushNotificationsAsync().then(token => {
-      if (token) {
-        console.log(`[App] Push Token registered on login: ${token}`);
-        updateVendorPushTokenApi(vendor.vendor_id, token);
-      }
+
+    // Request notification permissions explicitly after login
+    setupOrderAlertChannel(true).then(() => {
+      registerForPushNotificationsAsync().then(token => {
+        if (token) {
+          console.log(`[App] Push Token registered on login: ${token}`);
+          updateVendorPushTokenApi(vendor.vendor_id, token);
+        }
+      }).catch(err => {
+        console.log('[App] Push token registration skipped:', err);
+      });
     }).catch(err => {
-      console.log('[App] Push token registration skipped:', err);
+      console.log('[App] Notification permissions check error:', err);
     });
   };
 
@@ -336,6 +405,19 @@ export default function App() {
       showAlert('Order Accepted', `Order #${orderId} accepted successfully!`, 'success');
     } catch (e: any) {
       showAlert('Accept Failed', e.message || 'Failed to accept order', 'error');
+    }
+  };
+
+  const handleRejectAlarmOrder = async (orderId: string | number) => {
+    if (!currentUser) return;
+    await stopAlarmSound();
+    setActiveAlarmOrder(null);
+    try {
+      await updateOrderStatusApi(currentUser.vendor_id, orderId, 'CANCELLED');
+      await loadDashboardData(currentUser.vendor_id);
+      showAlert('Order Rejected', `Order #${orderId} has been rejected.`, 'warning');
+    } catch (e: any) {
+      showAlert('Reject Failed', e.message || 'Failed to reject order', 'error');
     }
   };
 
@@ -406,30 +488,127 @@ export default function App() {
     );
   }
 
+  const processAndUploadLogo = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!currentUser || !asset.uri) return;
+    try {
+      showAlert('Uploading Logo', 'Uploading and saving your custom store logo...', 'info');
+      const fileName = asset.fileName || `store_logo_${Date.now()}.jpg`;
+      const mimeType = asset.mimeType || 'image/jpeg';
+
+      const uploadResult = await uploadVendorLogoApi(
+        currentUser.vendor_id,
+        asset.uri,
+        fileName,
+        mimeType
+      );
+
+      const logoUrl = uploadResult.logo_url;
+      if (logoUrl) {
+        const updatedUser = { ...currentUser, logo_url: logoUrl, logo: logoUrl };
+        setCurrentUser(updatedUser);
+        await saveVendorUser(updatedUser);
+        showAlert('Logo Updated', 'Your custom store logo has been updated successfully!', 'success');
+      }
+    } catch (err: any) {
+      showAlert('Upload Failed', err.message || 'Failed to upload store logo', 'error');
+    }
+  };
+
+  const handlePickFromCamera = async () => {
+    setShowLogoPickerModal(false);
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permission Required', 'Camera permission is required to capture your store logo.', 'warning');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await processAndUploadLogo(result.assets[0]);
+      }
+    } catch (err: any) {
+      showAlert('Camera Error', err.message || 'Failed to take photo', 'error');
+    }
+  };
+
+  const handlePickFromGallery = async () => {
+    setShowLogoPickerModal(false);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permission Required', 'Gallery access is required to pick your store logo.', 'warning');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await processAndUploadLogo(result.assets[0]);
+      }
+    } catch (err: any) {
+      showAlert('Gallery Error', err.message || 'Failed to pick image', 'error');
+    }
+  };
+
+  const handleUploadStoreLogo = () => {
+    setShowLogoPickerModal(true);
+  };
+
   const storeNameDisplay = (currentUser?.store_name || 'VENDOR').toUpperCase();
-  const storeAvatarInitial = storeNameDisplay.charAt(0);
 
   return (
     <View style={[styles.safeArea, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#EDEDE4" />
+      <StatusBar barStyle="dark-content" backgroundColor={BrandTheme.warmOffWhite} />
 
-      {/* Light Admin Header Bar matching Screenshot */}
+      {/* Custom Vendor Store Header Bar */}
       <View style={styles.adminHeader}>
-        <Image
-          source={{ uri: APP_LOGO_URL }}
-          style={styles.headerLogo}
-        />
-        <View style={styles.headerTitleContainer}>
-          <Text style={styles.headerTitle} numberOfLines={1}>DIGILOCAL VENDOR TERMINAL</Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>{storeNameDisplay}</Text>
-        </View>
+        {/* Vendor Custom Logo / Add Logo Button */}
         <TouchableOpacity
-          style={styles.hamburgerBtn}
-          onPress={openDrawer}
+          style={styles.vendorLogoBtn}
+          onPress={handleUploadStoreLogo}
           activeOpacity={0.8}
         >
-          <Menu size={20} color="#18281F" />
+          {currentUser?.logo_url || currentUser?.image_url ? (
+            <Image
+              source={{ uri: currentUser.logo_url || currentUser.image_url }}
+              style={styles.vendorLogoImg}
+            />
+          ) : (
+            <View style={styles.vendorLogoPlaceholder}>
+              <Store size={18} color={BrandTheme.forestGreen} />
+              <View style={styles.cameraIconBadge}>
+                <Camera size={9} color="#FFFFFF" />
+              </View>
+            </View>
+          )}
         </TouchableOpacity>
+
+        <View style={styles.headerTitleContainer}>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {currentUser?.store_name || 'MY STORE'}
+          </Text>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>
+            {currentUser?.society_name ? `📍 ${currentUser.society_name}` : 'Tap logo to customize'}
+          </Text>
+        </View>
+
+        <View style={styles.headerRightContainer}>
+          <TouchableOpacity
+            style={styles.hamburgerBtn}
+            onPress={openDrawer}
+            activeOpacity={0.8}
+          >
+            <Menu size={18} color={BrandTheme.darkForestGreen} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Active Screen */}
@@ -449,6 +628,7 @@ export default function App() {
           <OrdersScreenComponent
             vendorId={currentUser.vendor_id}
             orders={orders}
+            storeItems={items}
             isLoading={loading}
             onRefresh={() => loadDashboardData(currentUser.vendor_id)}
             isDarkMode={false}
@@ -458,6 +638,7 @@ export default function App() {
         <View style={{ flex: 1, display: currentTab === 'payouts' ? 'flex' : 'none' }}>
           <PayoutsScreenComponent
             payments={payments}
+            vendor={currentUser}
             isLoading={loading}
             onRefresh={() => loadDashboardData(currentUser.vendor_id)}
           />
@@ -489,7 +670,7 @@ export default function App() {
           onPress={() => setCurrentTab('menu')}
           activeOpacity={0.7}
         >
-          <Menu size={22} color={currentTab === 'menu' ? '#18281F' : '#6B7C70'} />
+          <Menu size={22} color={currentTab === 'menu' ? BrandTheme.darkForestGreen : BrandTheme.mutedSageText} />
           <Text style={[styles.bottomTabText, currentTab === 'menu' && styles.bottomTabTextActive]}>
             Menu
           </Text>
@@ -502,7 +683,7 @@ export default function App() {
           activeOpacity={0.7}
         >
           <View style={{ position: 'relative' }}>
-            <ClipboardList size={22} color={currentTab === 'orders' ? '#18281F' : '#6B7C70'} />
+            <ClipboardList size={22} color={currentTab === 'orders' ? BrandTheme.darkForestGreen : BrandTheme.mutedSageText} />
             {orders.length > 0 ? (
               <View style={styles.badgeCount}>
                 <Text style={styles.badgeText}>{orders.length}</Text>
@@ -535,7 +716,7 @@ export default function App() {
           onPress={() => setCurrentTab('payouts')}
           activeOpacity={0.7}
         >
-          <CreditCard size={22} color={currentTab === 'payouts' ? '#18281F' : '#6B7C70'} />
+          <CreditCard size={22} color={currentTab === 'payouts' ? BrandTheme.darkForestGreen : BrandTheme.mutedSageText} />
           <Text style={[styles.bottomTabText, currentTab === 'payouts' && styles.bottomTabTextActive]}>
             Payouts
           </Text>
@@ -547,7 +728,7 @@ export default function App() {
           onPress={() => setCurrentTab('settings')}
           activeOpacity={0.7}
         >
-          <Settings size={22} color={currentTab === 'settings' ? '#18281F' : '#6B7C70'} />
+          <Settings size={22} color={currentTab === 'settings' ? BrandTheme.darkForestGreen : BrandTheme.mutedSageText} />
           <Text style={[styles.bottomTabText, currentTab === 'settings' && styles.bottomTabTextActive]}>
             Settings
           </Text>
@@ -618,6 +799,7 @@ export default function App() {
         <AlarmOverlay
           order={activeAlarmOrder}
           onAccept={handleAcceptAlarmOrder}
+          onReject={handleRejectAlarmOrder}
           onMute={handleMuteAlarm}
           isDarkMode={false}
         />
@@ -637,6 +819,50 @@ export default function App() {
         alertState={alertState}
         onClose={() => setAlertState(prev => ({ ...prev, visible: false }))}
       />
+
+      {/* Logo Picker Source Selection Modal */}
+      <Modal
+        visible={showLogoPickerModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLogoPickerModal(false)}
+      >
+        <Pressable
+          style={styles.logoModalBackdrop}
+          onPress={() => setShowLogoPickerModal(false)}
+        >
+          <View style={styles.logoModalCard}>
+            <Text style={styles.logoModalTitle}>Select Store Logo</Text>
+            <Text style={styles.logoModalSubtitle}>Choose how you want to add or update your shop logo</Text>
+
+            <TouchableOpacity
+              style={styles.logoModalOptionBtn}
+              onPress={handlePickFromCamera}
+              activeOpacity={0.8}
+            >
+              <Camera size={20} color={BrandTheme.forestGreen} style={{ marginRight: 12 }} />
+              <Text style={styles.logoModalOptionText}>Take Photo with Camera</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.logoModalOptionBtn}
+              onPress={handlePickFromGallery}
+              activeOpacity={0.8}
+            >
+              <ImageIcon size={20} color={BrandTheme.forestGreen} style={{ marginRight: 12 }} />
+              <Text style={styles.logoModalOptionText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.logoModalCancelBtn}
+              onPress={() => setShowLogoPickerModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.logoModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -644,57 +870,175 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#EDEDE4', // Warm Off-White
+    backgroundColor: BrandTheme.warmOffWhite, // Warm Off-White App Background (#EDEDE4)
   },
-  adminHeader: {
-    backgroundColor: '#EDEDE4',
-    borderBottomWidth: 1.5,
-    borderBottomColor: '#E4DCC9', // Sand Border
-    paddingHorizontal: 16,
-    height: 56,
+  logoModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(24, 40, 31, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  logoModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FAF8F3',
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: '#ECE8DD',
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  logoModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#18281F',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  logoModalSubtitle: {
+    fontSize: 12,
+    color: '#6B7C70',
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  logoModalOptionBtn: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2DEC8',
+    marginBottom: 10,
+  },
+  logoModalOptionText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#18281F',
+  },
+  logoModalCancelBtn: {
+    width: '100%',
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  logoModalCancelText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
+  adminHeader: {
+    backgroundColor: BrandTheme.warmOffWhite,
+    borderBottomWidth: 1,
+    borderBottomColor: BrandTheme.sandBorder,
+    paddingHorizontal: 16,
+    height: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  vendorLogoBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    overflow: 'hidden',
     justifyContent: 'center',
+    alignItems: 'center',
+  },
+  vendorLogoImg: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: BrandTheme.forestGreen,
+  },
+  vendorLogoPlaceholder: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EAE6DB',
+    borderWidth: 1.5,
+    borderColor: BrandTheme.sandBorder,
+    justifyContent: 'center',
+    alignItems: 'center',
     position: 'relative',
   },
-  headerLogo: {
-    width: 42,
-    height: 42,
-    resizeMode: 'contain',
+  cameraIconBadge: {
     position: 'absolute',
-    left: 12,
+    bottom: -1,
+    right: -1,
+    backgroundColor: BrandTheme.forestGreen,
+    borderRadius: 8,
+    width: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
   },
   headerTitleContainer: {
     flex: 1,
+    paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  headerTitle: {
+    fontSize: 15,
+    color: BrandTheme.darkForestGreen,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textAlign: 'center',
+  },
   headerSubtitle: {
-    fontSize: 10,
-    color: '#6B7C70', // Muted Sage Text
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    fontSize: 11,
+    color: BrandTheme.mutedSageText,
+    fontWeight: '600',
     marginTop: 1,
     textAlign: 'center',
   },
-  headerTitle: {
-    fontSize: 13,
-    color: '#18281F', // Dark Forest Green
-    fontWeight: '800',
-    letterSpacing: 0.5,
-    textAlign: 'center',
+  headerRightContainer: {
+    width: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+  },
+  notificationBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: BrandTheme.sandBorder, // Sand border
+    backgroundColor: BrandTheme.warmOffWhite, // Warm Off-White background
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: BrandTheme.emeraldGreen, // Emerald green dot
   },
   hamburgerBtn: {
     width: 36,
     height: 36,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#E4DCC9', // Sand Border
-    backgroundColor: '#FAF8F3', // Light cream background
+    borderColor: BrandTheme.sandBorder, // Sand border
+    backgroundColor: BrandTheme.warmOffWhite, // Warm Off-White background
     justifyContent: 'center',
     alignItems: 'center',
-    position: 'absolute',
-    right: 16,
   },
   bottomTabBarContainer: {
     flexDirection: 'row',
@@ -714,11 +1058,11 @@ const styles = StyleSheet.create({
   bottomTabText: {
     fontSize: 10.5,
     fontWeight: '600',
-    color: '#6B7C70',
+    color: BrandTheme.mutedSageText,
     marginTop: 4,
   },
   bottomTabTextActive: {
-    color: '#18281F', // Dark Forest Green
+    color: BrandTheme.darkForestGreen,
     fontWeight: '800',
   },
   centerAddBtnWrapper: {
@@ -731,22 +1075,22 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: '#C4A066', // Warm Tan Gold
+    backgroundColor: BrandTheme.warmTanGold, // Warm Tan Gold
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#C4A066',
+    shadowColor: BrandTheme.warmTanGold,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 6,
     borderWidth: 4,
-    borderColor: '#F7F4EE',
+    borderColor: '#FAF8F3', // Cream border
     marginTop: -32,
   },
   centerAddBtnText: {
     fontSize: 9.5,
     fontWeight: '700',
-    color: '#6B7C70',
+    color: BrandTheme.mutedSageText,
     marginTop: 4,
     textAlign: 'center',
   },

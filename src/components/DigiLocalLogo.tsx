@@ -13,7 +13,7 @@ export const DigiLocalLogo: React.FC<DigiLocalLogoProps> = ({
   return (
     <View style={[styles.container, { width: size, height: size }]}>
       <Image
-        source={require('../../assets/images/splash-icon.png')}
+        source={require('../../assets/images/LOGO.png')}
         style={{
           width: size,
           height: size,

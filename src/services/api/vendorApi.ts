@@ -1,44 +1,69 @@
 import { Platform } from 'react-native';
 import { getApiBaseUrl, safeFetch } from './config';
 import { VendorDashboardData, VendorUser, VendorItem, VendorOrder } from './types';
+import { getCachedDashboard, setCachedDashboard } from '../cacheService';
 
 // ── Vendor Dashboard & Catalog Management APIs ──────────────
 
 export async function fetchVendorDashboardApi(vendorId: number): Promise<VendorDashboardData> {
-  const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}`);
-  if (!res.ok) {
-    throw new Error(data.error || 'Failed to fetch vendor dashboard data.');
+  try {
+    const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}`);
+    if (!res.ok) {
+      const cached = await getCachedDashboard(vendorId);
+      if (cached) return cached;
+      throw new Error(data?.error || 'Failed to fetch vendor dashboard data.');
+    }
+
+    const vendor: VendorUser = data.vendor || {
+      vendor_id: vendorId,
+      store_name: 'Vendor Store',
+      email: '',
+      status: 'ACTIVE'
+    };
+
+    const items: VendorItem[] = Array.isArray(data.items)
+      ? data.items.map((it: any) => ({
+          ...it,
+          is_available: it.is_available ?? it.in_stock ?? true
+        }))
+      : [];
+
+    const orders: VendorOrder[] = Array.isArray(data.orders)
+      ? data.orders.map((o: any) => {
+          let parsedItems = o.items || o.order_items || [];
+          if (typeof parsedItems === 'string') {
+            try {
+              parsedItems = JSON.parse(parsedItems);
+            } catch (_) {
+              parsedItems = [];
+            }
+          }
+          return {
+            ...o,
+            phone_number: o.phone_number || o.phone || '',
+            delivery_address: o.delivery_address || o.address || '',
+            items: Array.isArray(parsedItems) ? parsedItems : []
+          };
+        })
+      : [];
+
+    const result: VendorDashboardData = {
+      vendor,
+      items,
+      orders,
+      subscription: data.subscription || null,
+      payments: data.payments || []
+    };
+
+    // Asynchronously save fresh result in L1 & L2 cache
+    setCachedDashboard(vendorId, result).catch(() => {});
+
+    return result;
+  } catch (err: any) {
+    const cached = await getCachedDashboard(vendorId);
+    if (cached) return cached;
+    throw err;
   }
-
-  const vendor: VendorUser = data.vendor || {
-    vendor_id: vendorId,
-    store_name: 'Vendor Store',
-    email: '',
-    status: 'ACTIVE'
-  };
-
-  const items: VendorItem[] = Array.isArray(data.items)
-    ? data.items.map((it: any) => ({
-        ...it,
-        is_available: it.is_available ?? it.in_stock ?? true
-      }))
-    : [];
-
-  const orders: VendorOrder[] = Array.isArray(data.orders)
-    ? data.orders.map((o: any) => ({
-        ...o,
-        phone_number: o.phone_number || o.phone || '',
-        delivery_address: o.delivery_address || o.address || ''
-      }))
-    : [];
-
-  return {
-    vendor,
-    items,
-    orders,
-    subscription: data.subscription || null,
-    payments: data.payments || []
-  };
 }
 
 export async function addMenuItemApi(vendorId: number, item: {
@@ -252,6 +277,101 @@ export async function uploadMediaApi(base64Data: string, filename?: string, file
     }
   } catch (e) {
     console.error('Media upload failed, using inline data URL fallback:', e);
+    return { url: `data:${fileType || 'image/jpeg'};base64,${base64Data}` };
   }
-  return { url: `data:${fileType || 'image/jpeg'};base64,${base64Data}` };
+  return { url: '' };
+}
+
+/**
+ * Permanently deletes vendor account, profile, catalog items, and store records.
+ * Follows DigiLocal Vendor Account & Store Deletion API specification.
+ */
+export async function deleteVendorAccountApi(vendorId: number): Promise<{ success: boolean; message: string; vendor_id?: number }> {
+  // 1. Primary endpoint: DELETE /vendors/:vendorId
+  let result = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}`, {
+    method: 'DELETE',
+  });
+
+  // 2. Fallback alias 1: DELETE /vendors/:vendorId/store
+  if (!result.res.ok && result.res.status === 404) {
+    result = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/store`, {
+      method: 'DELETE',
+    });
+  }
+
+  // 3. Fallback alias 2: DELETE /vendorPanel/:vendorId
+  if (!result.res.ok && result.res.status === 404) {
+    result = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  if (!result.res.ok) {
+    throw new Error(result.data?.error || result.data?.message || 'Failed to delete vendor store account.');
+  }
+
+  return result.data;
+}
+
+/**
+ * Uploads vendor shop logo via Camera/Gallery and updates vendor store profile.
+ * Supports multipart/form-data & JSON with fallback endpoints.
+ */
+export async function uploadVendorLogoApi(
+  vendorId: number,
+  fileUri: string,
+  fileName?: string,
+  mimeType?: string
+): Promise<{ success: boolean; logo_url: string; message?: string }> {
+  const formData = new FormData();
+  const name = fileName || `logo_${Date.now()}.jpg`;
+  const type = mimeType || 'image/jpeg';
+
+  formData.append('logo', {
+    uri: Platform.OS === 'android' ? fileUri : fileUri.replace('file://', ''),
+    name,
+    type,
+  } as any);
+
+  // 1. Primary endpoint: POST /vendorPanel/:vendorId/logo
+  let result = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/logo`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  // 2. Fallback: PUT /vendorPanel/:vendorId/logo
+  if (!result.res.ok && (result.res.status === 404 || result.res.status === 405)) {
+    result = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/logo`, {
+      method: 'PUT',
+      body: formData,
+    });
+  }
+
+  // 3. Fallback: POST /vendorPanel/upload-logo
+  if (!result.res.ok && result.res.status === 404) {
+    result = await safeFetch(`${getApiBaseUrl()}/vendorPanel/upload-logo`, {
+      method: 'POST',
+      body: formData,
+    });
+    if (result.res.ok && (result.data.logo_url || result.data.image_url)) {
+      const uploadedUrl = result.data.logo_url || result.data.image_url;
+      // Save logo to vendor settings
+      await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify({ logo: uploadedUrl, logo_url: uploadedUrl }),
+      });
+      return { success: true, logo_url: uploadedUrl, message: 'Shop logo updated successfully!' };
+    }
+  }
+
+  if (result.res.ok && result.data) {
+    const url = result.data.logo_url || result.data.image_url || result.data.logo || '';
+    return {
+      success: true,
+      logo_url: url,
+      message: result.data.message || 'Shop logo updated successfully!',
+    };
+  }
+
+  throw new Error(result.data?.error || result.data?.message || 'Failed to upload shop logo');
 }

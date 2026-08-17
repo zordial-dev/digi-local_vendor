@@ -1,5 +1,6 @@
 import { getApiBaseUrl, safeFetch } from './config';
 import { Society } from './types';
+import { getCachedSocieties, setCachedSocieties } from '../cacheService';
 
 // ── Onboarding & Societies APIs ───────────────────────────────
 
@@ -38,10 +39,21 @@ export async function fetchSocietiesApi(searchQuery?: string): Promise<Society[]
       else if (Array.isArray(data?.data?.societies)) list = data.data.societies;
       else if (Array.isArray(data?.result)) list = data.result;
 
-      if (list.length > 0) return list;
+      if (list.length > 0) {
+        if (!searchQuery) {
+          setCachedSocieties(list).catch(() => {});
+        }
+        return list;
+      }
     }
   } catch (err) {
     console.error('Error fetching societies:', err);
+  }
+
+  // Check persistent cache
+  if (!searchQuery) {
+    const cached = await getCachedSocieties();
+    if (cached && cached.length > 0) return cached;
   }
 
   // Fast fallback filtering

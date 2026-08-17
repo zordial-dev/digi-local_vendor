@@ -10,6 +10,7 @@ import {
   Image,
   TextInput,
   Modal,
+  Pressable,
   Linking,
   Platform,
 } from 'react-native';
@@ -38,7 +39,11 @@ import {
   AlertTriangle,
   Check,
   Clock,
+  Camera,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../constants/theme';
 import {
   VendorUser,
@@ -46,7 +51,11 @@ import {
   VendorPayment,
   requestSubscriptionRenewalApi,
   updateStoreSettingsApi,
+  deleteVendorAccountApi,
   getApiBaseUrl,
+  uploadMediaApi,
+  updateVendorProfileApi,
+  uploadVendorLogoApi
 } from '../services/apiService';
 import { playAlarmSound } from '../services/notificationService';
 import { CustomAlertModal, CustomAlertState, AlertType } from './CustomAlertModal';
@@ -473,7 +482,7 @@ const pickerModalStyles = StyleSheet.create({
 });
 
 // ── Main SettingsScreen Component ────────────────────────────
-export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
+export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo(({
   vendor,
   subscription,
   payments,
@@ -499,6 +508,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showLogoPickerModal, setShowLogoPickerModal] = useState(false);
 
   const showAlert = (title: string, message: string, type: AlertType = 'info', onConfirm?: () => void, onCancel?: () => void, confirmText?: string, cancelText?: string, showCancel?: boolean) => {
     setAlertState({ visible: true, title, message, type, onConfirm, onCancel, confirmText, cancelText, showCancel });
@@ -616,16 +626,97 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
   const handleDeleteAccount = () => {
     showAlert(
       'Delete Account',
-      'Are you sure you want to permanently delete your vendor account and all store data? This action cannot be undone.',
+      `Are you sure you want to permanently delete your store "${vendor.store_name || 'Vendor Store'}" and all product data? This action is permanent and cannot be undone.`,
       'error',
-      () => {
-        showAlert('Deletion Requested', 'Your account deletion request has been submitted to DigiLocal Admin. You will be logged out now.', 'warning', onLogout);
+      async () => {
+        try {
+          await deleteVendorAccountApi(vendor.vendor_id);
+          showAlert(
+            'Account Deleted',
+            'Your vendor store account and all associated data have been permanently deleted.',
+            'success',
+            onLogout
+          );
+        } catch (err: any) {
+          showAlert('Deletion Failed', err.message || 'Failed to delete vendor store account. Please try again or contact support.', 'error');
+        }
       },
       undefined,
       'YES, DELETE',
       'NO, CANCEL',
       true
     );
+  };
+
+  const processAndUploadLogo = async (asset: ImagePicker.ImagePickerAsset) => {
+    if (!asset.uri) return;
+    try {
+      showAlert('Uploading Logo', 'Uploading and saving your store logo...', 'info');
+      const fileName = asset.fileName || `store_logo_${Date.now()}.jpg`;
+      const mimeType = asset.mimeType || 'image/jpeg';
+
+      const uploadResult = await uploadVendorLogoApi(
+        vendor.vendor_id,
+        asset.uri,
+        fileName,
+        mimeType
+      );
+
+      if (uploadResult.logo_url) {
+        await onRefresh();
+        showAlert('Logo Updated', 'Your custom store logo has been updated successfully!', 'success');
+      }
+    } catch (err: any) {
+      showAlert('Upload Failed', err.message || 'Failed to upload store logo', 'error');
+    }
+  };
+
+  const handlePickFromCamera = async () => {
+    setShowLogoPickerModal(false);
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permission Required', 'Camera permission is required to take a photo of your store logo.', 'warning');
+        return;
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await processAndUploadLogo(result.assets[0]);
+      }
+    } catch (err: any) {
+      showAlert('Camera Error', err.message || 'Failed to capture photo', 'error');
+    }
+  };
+
+  const handlePickFromGallery = async () => {
+    setShowLogoPickerModal(false);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permission Required', 'Gallery access is required to choose your store logo.', 'warning');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        await processAndUploadLogo(result.assets[0]);
+      }
+    } catch (err: any) {
+      showAlert('Gallery Error', err.message || 'Failed to pick image', 'error');
+    }
+  };
+
+  const handleUploadStoreLogo = () => {
+    setShowLogoPickerModal(true);
   };
 
   const shopUrl = `${getApiBaseUrl().replace('/api', '')}/shop/${vendor.vendor_id}`;
@@ -646,24 +737,29 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
         <View style={styles.storeHeader}>
           <TouchableOpacity
             style={styles.avatarBox}
-            onPress={() => setShowQR(true)}
+            onPress={handleUploadStoreLogo}
             activeOpacity={0.85}
           >
-            <Store color="#ffffff" size={28} />
+            {vendor.logo_url || vendor.image_url ? (
+              <Image
+                source={{ uri: vendor.logo_url || vendor.image_url }}
+                style={{ width: 56, height: 56, borderRadius: 16 }}
+              />
+            ) : (
+              <Store color="#ffffff" size={28} />
+            )}
             <View style={styles.qrBadge}>
-              <QrCode size={10} color="#FFFFFF" />
+              <Camera size={10} color="#FFFFFF" />
             </View>
           </TouchableOpacity>
           <View style={{ flex: 1 }}>
             <Text style={styles.storeTitle}>{vendor.store_name}</Text>
             <Text style={styles.vendorName}>Owner: {vendor.vendor_name}</Text>
-            <View style={styles.badgeRow}>
-              <View style={[styles.statusBadge, { backgroundColor: (vendor.status === 'APPROVED' || vendor.status === 'ACTIVE') ? 'rgba(24, 40, 31, 0.1)' : 'rgba(245, 158, 11, 0.1)' }]}>
-                <Text style={{ color: (vendor.status === 'APPROVED' || vendor.status === 'ACTIVE') ? '#18281F' : '#D97706', fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>
-                  ACCOUNT {vendor.status}
-                </Text>
-              </View>
-            </View>
+            <TouchableOpacity onPress={handleUploadStoreLogo} style={{ marginTop: 3 }}>
+              <Text style={{ fontSize: 11.5, color: '#0E6B3D', fontWeight: '700' }}>
+                {vendor.logo_url || vendor.image_url ? 'Change Store Logo' : '+ Add Store Logo'}
+              </Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -992,13 +1088,120 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = ({
           }
         }}
       />
+
+      {/* Logo Picker Source Selection Modal */}
+      <Modal
+        visible={showLogoPickerModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowLogoPickerModal(false)}
+      >
+        <Pressable
+          style={styles.logoModalBackdrop}
+          onPress={() => setShowLogoPickerModal(false)}
+        >
+          <View style={styles.logoModalCard}>
+            <Text style={styles.logoModalTitle}>Select Store Logo</Text>
+            <Text style={styles.logoModalSubtitle}>Choose how you want to add or update your shop logo</Text>
+
+            <TouchableOpacity
+              style={styles.logoModalOptionBtn}
+              onPress={handlePickFromCamera}
+              activeOpacity={0.8}
+            >
+              <Camera size={20} color="#0E6B3D" style={{ marginRight: 12 }} />
+              <Text style={styles.logoModalOptionText}>Take Photo with Camera</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.logoModalOptionBtn}
+              onPress={handlePickFromGallery}
+              activeOpacity={0.8}
+            >
+              <ImageIcon size={20} color="#0E6B3D" style={{ marginRight: 12 }} />
+              <Text style={styles.logoModalOptionText}>Choose from Gallery</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.logoModalCancelBtn}
+              onPress={() => setShowLogoPickerModal(false)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.logoModalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
-};
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 16, paddingBottom: 60, gap: 14 },
+  logoModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(24, 40, 31, 0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  logoModalCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#FAF8F3',
+    borderRadius: 20,
+    padding: 22,
+    borderWidth: 1,
+    borderColor: '#ECE8DD',
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 10,
+  },
+  logoModalTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#18281F',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  logoModalSubtitle: {
+    fontSize: 12,
+    color: '#6B7C70',
+    marginBottom: 18,
+    textAlign: 'center',
+  },
+  logoModalOptionBtn: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 13,
+    paddingHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#E2DEC8',
+    marginBottom: 10,
+  },
+  logoModalOptionText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#18281F',
+  },
+  logoModalCancelBtn: {
+    width: '100%',
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  logoModalCancelText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#EF4444',
+  },
   card: {
     backgroundColor: '#FFFFFF',
     borderRadius: 18,

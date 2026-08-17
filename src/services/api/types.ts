@@ -7,6 +7,9 @@ export interface VendorUser {
   email: string;
   store_name: string;
   logo?: string;
+  logo_url?: string;
+  image_url?: string;
+  store_logo?: string;
   description?: string;
   opening_time?: string;
   closing_time?: string;
@@ -102,3 +105,32 @@ export interface VendorDashboardData {
   subscription?: VendorSubscription | null;
   payments?: VendorPayment[];
 }
+
+export interface SupportContactInfo {
+  phone: string;
+  email: string;
+  toll_free?: string;
+  whatsapp?: string;
+  address?: string;
+  working_hours?: string;
+  updated_at?: string;
+}
+
+export interface CmsPageData {
+  slug: string;
+  title: string;
+  content: string;
+  meta_description?: string;
+  phone?: string;
+  email?: string;
+  contact?: SupportContactInfo;
+  updated_at?: string;
+}
+
+export interface CmsPageSummary {
+  slug: string;
+  title: string;
+  meta_description?: string;
+  updated_at?: string;
+}
+

@@ -2,7 +2,6 @@ import { Platform } from 'react-native';
 
 export const APP_LOGO_URL = 'https://i.postimg.cc/HWbyVhCN/Green-and-Gold-D-Basket-Logo.png';
 
-// Official Brand Color Palette System
 export const BrandTheme = {
   warmOffWhite: '#EDEDE4',       // Primary Page Canvas & Hero Container Background
   creamCanvas: '#F7F4EE',        // Primary Cards & Container Backgrounds

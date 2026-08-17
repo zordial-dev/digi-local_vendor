@@ -23,6 +23,7 @@
     "expo-notifications": "~0.32.17",
     "expo-router": "~6.0.24",
     "expo-secure-store": "~15.0.8",
+    "expo-speech-recognition": "^56.0.1",
     "expo-splash-screen": "~31.0.13",
     "expo-status-bar": "~3.0.9",
     "expo-symbols": "~1.0.8",
@@ -56,5 +57,11 @@
     "build:apk": "eas build -p android --profile preview",
     "build:aab": "eas build -p android --profile production"
   },
-  "private": true
+  "private": true,
+  "allowScripts": {
+    "@firebase/util@1.15.2": true,
+    "dtrace-provider@0.8.8": true,
+    "fsevents@2.3.3": true,
+    "protobufjs@7.6.5": true
+  }
 }

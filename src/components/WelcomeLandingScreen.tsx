@@ -21,6 +21,7 @@ import {
   ArrowRight,
   Users
 } from 'lucide-react-native';
+import { BrandTheme } from '../constants/theme';
 
 interface WelcomeLandingScreenProps {
   onGetStarted: () => void;
@@ -28,7 +29,7 @@ interface WelcomeLandingScreenProps {
 }
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-const isSmallScreen = screenHeight < 720;
+const isSmallScreen = screenHeight < 800;
 
 const FEATURES = [
   {
@@ -99,7 +100,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
         paddingBottom: Math.max(insets.bottom, 12),
       }
     ]}>
-      <StatusBar barStyle="dark-content" backgroundColor="#FAFAF9" />
+      <StatusBar barStyle="dark-content" backgroundColor={BrandTheme.warmOffWhite} />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -110,7 +111,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
         <View style={styles.headerSection}>
           <View style={styles.logoRow}>
             <Image
-              source={require('../../assets/images/splash-icon.png')}
+              source={require('../../assets/images/LOGO.png')}
               style={styles.logoImage}
               resizeMode="contain"
             />
@@ -127,7 +128,12 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
 
         {/* Main Hero Heading */}
         <View style={styles.heroTextSection}>
-          <Text style={styles.heroTitleText}>
+          <Text
+            style={styles.heroTitleText}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+            minimumFontScale={0.5}
+          >
             Sell Smart. <Text style={styles.heroTitleGreen}>Deliver Local.</Text> Earn More.
           </Text>
         </View>
@@ -149,7 +155,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
               return (
                 <View key={item.id} style={styles.featureItem}>
                   <View style={styles.iconCircle}>
-                    <IconComp size={22} color="#055726" strokeWidth={2.2} />
+                    <IconComp size={22} color={BrandTheme.forestGreen} strokeWidth={2.2} />
                   </View>
                   <Text style={styles.featureTitleText}>{item.title}</Text>
                 </View>
@@ -171,21 +177,21 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
         {/* Footer Trust Badges */}
         <View style={styles.trustBadgesRow}>
           <View style={styles.badgeItem}>
-            <ShieldCheck size={14} color="#055726" strokeWidth={2.2} />
+            <ShieldCheck size={14} color={BrandTheme.forestGreen} strokeWidth={2.2} />
             <Text style={styles.badgeText}> Secure</Text>
           </View>
 
           <Text style={styles.badgeDot}>•</Text>
 
           <View style={styles.badgeItem}>
-            <ShieldCheck size={14} color="#055726" strokeWidth={2.2} />
+            <ShieldCheck size={14} color={BrandTheme.forestGreen} strokeWidth={2.2} />
             <Text style={styles.badgeText}> Trusted</Text>
           </View>
 
           <Text style={styles.badgeDot}>•</Text>
 
           <View style={styles.badgeItem}>
-            <Users size={14} color="#055726" strokeWidth={2.2} />
+            <Users size={14} color={BrandTheme.forestGreen} strokeWidth={2.2} />
             <Text style={styles.badgeText}> Community First</Text>
           </View>
         </View>
@@ -197,12 +203,14 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#FAFAF9',
+    backgroundColor: BrandTheme.warmOffWhite,
   },
   scrollContent: {
+    flexGrow: 1,
     paddingHorizontal: 20,
     paddingBottom: 16,
     alignItems: 'center',
+    justifyContent: 'space-between',
   },
 
   // Header Logo Section
@@ -217,9 +225,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   logoImage: {
-    width: 46,
-    height: 46,
-    marginRight: 12,
+    width: 105,
+    height: 70,
+    marginLeft: -15,
+    marginRight: -10,
   },
   titleColumn: {
     flexDirection: 'column',
@@ -228,18 +237,18 @@ const styles = StyleSheet.create({
   brandTitleText: {
     fontSize: 26,
     fontWeight: '800',
-    color: '#101828',
+    color: BrandTheme.darkForestGreen,
     letterSpacing: -0.5,
     fontFamily: getFontFamily('extrabold'),
     lineHeight: 30,
   },
   brandTitleGreen: {
-    color: '#055726',
+    color: BrandTheme.forestGreen,
   },
   taglineText: {
     fontSize: 12,
     fontWeight: '500',
-    color: '#475467',
+    color: BrandTheme.mutedSageText,
     marginTop: 2,
     letterSpacing: -0.1,
     fontFamily: getFontFamily('medium'),
@@ -252,16 +261,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   heroTitleText: {
-    fontSize: isSmallScreen ? 20 : 23,
+    fontSize: isSmallScreen ? 16 : 19.5,
     fontWeight: '800',
-    color: '#101828',
+    color: BrandTheme.darkForestGreen,
     letterSpacing: -0.5,
     fontFamily: getFontFamily('extrabold'),
     textAlign: 'center',
-    lineHeight: isSmallScreen ? 28 : 32,
+    lineHeight: isSmallScreen ? 22 : 26,
   },
   heroTitleGreen: {
-    color: '#055726',
+    color: BrandTheme.forestGreen,
   },
 
   // Hero Illustration
@@ -276,18 +285,18 @@ const styles = StyleSheet.create({
     height: isSmallScreen ? 210 : 250,
   },
 
-  // Features Card (White Floating Box)
+  // Features Card
   featuresCard: {
     width: '100%',
-    backgroundColor: '#FFFFFF',
+    backgroundColor: BrandTheme.creamCanvas,
     borderRadius: 24,
     paddingVertical: 20,
     paddingHorizontal: 16,
     marginTop: 8,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#F2F4F7',
-    shadowColor: '#101828',
+    borderColor: BrandTheme.sandBorder,
+    shadowColor: BrandTheme.darkForestGreen,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
     shadowRadius: 16,
@@ -308,15 +317,17 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: '#E8F5E9',
+    backgroundColor: BrandTheme.warmOffWhite,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
+    borderWidth: 1,
+    borderColor: BrandTheme.sandBorder,
   },
   featureTitleText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#1D2939',
+    color: BrandTheme.darkForestGreen,
     textAlign: 'center',
     lineHeight: 14,
     fontFamily: getFontFamily('semibold'),
@@ -327,11 +338,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 52,
     borderRadius: 16,
-    backgroundColor: '#055726',
+    backgroundColor: BrandTheme.forestGreen,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#055726',
+    shadowColor: BrandTheme.forestGreen,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -359,12 +370,12 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 12.5,
     fontWeight: '600',
-    color: '#475467',
+    color: BrandTheme.mutedSageText,
     fontFamily: getFontFamily('semibold'),
   },
   badgeDot: {
     fontSize: 14,
-    color: '#98A2B3',
+    color: BrandTheme.sandBorder,
     marginHorizontal: 10,
   },
 });

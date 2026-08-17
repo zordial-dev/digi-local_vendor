@@ -79,9 +79,12 @@ export const safeFetch = async (
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
-      'Bypass-Tunnel-Reminder': 'true',
       ...((options.headers as Record<string, string>) || {})
     };
+
+    if (url.includes('localtunnel.me')) {
+      headers['Bypass-Tunnel-Reminder'] = 'true';
+    }
 
     if (accessToken && !headers['Authorization'] && !headers['authorization']) {
       headers['Authorization'] = `Bearer ${accessToken}`;

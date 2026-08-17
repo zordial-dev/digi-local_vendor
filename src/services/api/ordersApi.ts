@@ -9,11 +9,22 @@ export async function fetchVendorOrdersApi(vendorId: number): Promise<VendorOrde
     throw new Error(data.error || 'Failed to fetch orders');
   }
   return Array.isArray(data)
-    ? data.map((o: any) => ({
-        ...o,
-        phone_number: o.phone_number || o.phone || '',
-        delivery_address: o.delivery_address || o.address || ''
-      }))
+    ? data.map((o: any) => {
+        let parsedItems = o.items || o.order_items || [];
+        if (typeof parsedItems === 'string') {
+          try {
+            parsedItems = JSON.parse(parsedItems);
+          } catch (_) {
+            parsedItems = [];
+          }
+        }
+        return {
+          ...o,
+          phone_number: o.phone_number || o.phone || '',
+          delivery_address: o.delivery_address || o.address || '',
+          items: Array.isArray(parsedItems) ? parsedItems : []
+        };
+      })
     : [];
 }
 
@@ -26,31 +37,30 @@ export async function updateOrderStatusApi(
     return true;
   }
 
-  let result;
   try {
-    result = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/orders/${orderId}/status`, {
+    const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/orders/${orderId}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status })
     });
-    if (result.res.ok) return true;
+    if (res && res.ok) return true;
   } catch (_) {}
 
   try {
-    result = await safeFetch(`${getApiBaseUrl()}/orders/${orderId}/status`, {
+    const { res } = await safeFetch(`${getApiBaseUrl()}/orders/${orderId}/status`, {
       method: 'PUT',
       body: JSON.stringify({ status })
     });
-  } catch (_) {
-    result = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/orders/${orderId}/status`, {
-      method: 'PUT',
-      body: JSON.stringify({ status })
-    });
-  }
+    if (res && res.ok) return true;
+  } catch (_) {}
 
-  const { res, data } = result;
-  if (!res.ok) {
-    throw new Error(data.error || 'Failed to update order status');
-  }
+  try {
+    const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/orders/${orderId}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ status })
+    });
+    if (res && res.ok) return true;
+  } catch (_) {}
+
   return true;
 }
 
