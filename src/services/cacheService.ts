@@ -5,7 +5,7 @@ import { VendorDashboardData, Society } from './api/types';
 const memoryCache = new Map<string, { data: any; timestamp: number; ttl: number }>();
 
 const CACHE_PREFIX = '@digilocal_cache:';
-const DEFAULT_TTL_MS = 1000 * 60 * 60 * 24; // 24 Hours default TTL
+const DEFAULT_TTL_MS = 1000 * 30; // 30 seconds limited cache TTL (strictly prevents stale data retention)
 
 export const CACHE_KEYS = {
   DASHBOARD: (vendorId: number) => `dashboard_v${vendorId}`,
@@ -14,6 +14,28 @@ export const CACHE_KEYS = {
   SOCIETIES: 'societies_list',
   PAYMENTS: (vendorId: number) => `payments_v${vendorId}`,
 };
+
+/**
+ * Strip large base64 data URLs before writing to AsyncStorage to prevent SQLITE_FULL
+ */
+function sanitizeForStorage(value: any): any {
+  if (!value || typeof value !== 'object') return value;
+  if (Array.isArray(value)) {
+    return value.map(sanitizeForStorage);
+  }
+  const clean: Record<string, any> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (typeof v === 'string' && v.startsWith('data:image/') && v.length > 500) {
+      // Don't persist multi-megabyte base64 strings to disk SQLite
+      clean[k] = '';
+    } else if (typeof v === 'object' && v !== null) {
+      clean[k] = sanitizeForStorage(v);
+    } else {
+      clean[k] = v;
+    }
+  }
+  return clean;
+}
 
 /**
  * Set an item in memory (L1) and AsyncStorage (L2)
@@ -25,15 +47,22 @@ export async function setCache<T>(key: string, data: T, ttlMs: number = DEFAULT_
     ttl: ttlMs,
   };
 
-  // 1. L1 Memory Cache (instant)
+  // 1. L1 Memory Cache (instant, stores full object)
   memoryCache.set(key, record);
 
-  // 2. L2 Persistent Storage
+  // 2. L2 Persistent Storage (stores sanitized lightweight object)
   try {
     const fullKey = CACHE_PREFIX + key;
-    await AsyncStorage.setItem(fullKey, JSON.stringify(record));
-  } catch (err) {
-    console.warn('[Cache] Failed to persist cache to AsyncStorage:', err);
+    const sanitizedRecord = {
+      ...record,
+      data: sanitizeForStorage(data),
+    };
+    await AsyncStorage.setItem(fullKey, JSON.stringify(sanitizedRecord));
+  } catch (err: any) {
+    // If disk is full, clear older cached records
+    if (err?.message?.includes('SQLITE_FULL') || err?.message?.includes('database or disk is full')) {
+      clearAllAppCache().catch(() => {});
+    }
   }
 }
 

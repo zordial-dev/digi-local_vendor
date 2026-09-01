@@ -52,39 +52,39 @@ export const CustomAlertModal: React.FC<CustomAlertModalProps> = ({
   const getIcon = () => {
     switch (type) {
       case 'success':
-        return <CheckCircle2 size={36} color="#10B981" />;
+        return <CheckCircle2 size={36} color="#16A34A" />;
       case 'error':
-        return <XCircle size={36} color="#EF4444" />;
+        return <XCircle size={36} color="#DC2626" />;
       case 'warning':
-        return <AlertTriangle size={36} color="#F59E0B" />;
+        return <AlertTriangle size={36} color="#D97706" />;
       default:
-        return <Info size={36} color="#C5A880" />;
+        return <Info size={36} color="#541D26" />;
     }
   };
 
   const getHeaderBg = () => {
     switch (type) {
       case 'success':
-        return 'rgba(16, 185, 129, 0.12)';
+        return '#F0FDF4';
       case 'error':
-        return 'rgba(239, 68, 68, 0.12)';
+        return '#FEF2F2';
       case 'warning':
-        return 'rgba(245, 158, 11, 0.12)';
+        return '#FFFBEB';
       default:
-        return 'rgba(197, 168, 128, 0.12)';
+        return '#F7EEF0';
     }
   };
 
   const getBtnBg = () => {
     switch (type) {
       case 'success':
-        return '#1E3A29';
+        return '#541D26';
       case 'error':
-        return '#B91C1C';
+        return '#DC2626';
       case 'warning':
-        return '#B91C1C'; // Red for warning confirm actions like Delete
+        return '#DC2626'; // Red for warning confirm actions like Delete
       default:
-        return '#18281F';
+        return '#541D26';
     }
   };
 
@@ -154,7 +154,7 @@ export const CustomAlertModal: React.FC<CustomAlertModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(24, 40, 31, 0.75)',
+    backgroundColor: 'rgba(40, 13, 18, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
@@ -167,9 +167,9 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
     elevation: 10,
-    shadowColor: '#18281F',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.2,
     shadowRadius: 16,
@@ -185,7 +185,7 @@ const styles = StyleSheet.create({
   titleText: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#211A19',
     textAlign: 'center',
     marginBottom: 8,
     letterSpacing: 0.5,
@@ -193,7 +193,7 @@ const styles = StyleSheet.create({
   messageText: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#6B7C70',
+    color: '#78716C',
     textAlign: 'center',
     lineHeight: 18,
     marginBottom: 24,
@@ -207,14 +207,14 @@ const styles = StyleSheet.create({
     flex: 1,
     height: 48,
     borderRadius: 14,
-    backgroundColor: '#EFE8D8',
+    backgroundColor: '#EEE5DA',
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   cancelBtnText: {
-    color: '#18281F',
+    color: '#211A19',
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -236,7 +236,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   confirmBtnText: {
-    color: '#F8F5EE',
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 1,

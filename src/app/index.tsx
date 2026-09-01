@@ -26,8 +26,16 @@ import {
   Bell,
   Camera,
   Image as ImageIcon,
+  Clock,
+  AlertTriangle,
+  AlertOctagon,
+  PhoneCall,
+  RefreshCw,
+  ShieldAlert,
+  CheckCircle2,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromDevice, captureImageFromDevice, PickedImageResult } from '../utils/imagePickerHelper';
 import { Colors, BrandTheme, APP_LOGO_URL } from '../constants/theme';
 import {
   VendorUser,
@@ -36,6 +44,7 @@ import {
   VendorSubscription,
   VendorPayment,
   fetchVendorDashboardApi,
+  fetchVendorStatusApi,
   updateOrderStatusApi,
   updateVendorPushTokenApi,
   deleteVendorPushTokenApi,
@@ -46,7 +55,9 @@ import {
   getCachedDashboard,
   uploadMediaApi,
   updateVendorProfileApi,
-  uploadVendorLogoApi
+  uploadVendorLogoApi,
+  VendorStatusResponse,
+  clearAllAppCache,
 } from '../services/apiService';
 import {
   clearSavedCredentials,
@@ -75,6 +86,8 @@ import { PayoutsScreenComponent } from '../components/PayoutsScreen';
 import { AlarmOverlay } from '../components/AlarmOverlay';
 import { StoreDigitalCardModal } from '../components/StoreDigitalCardModal';
 import { CustomAlertModal, CustomAlertState, AlertType } from '../components/CustomAlertModal';
+import { ToastContainer } from '../components/ToastNotification';
+import { isServiceCategory } from '../utils/translations';
 
 export default function App() {
   const rawInsets = useSafeAreaInsets();
@@ -90,6 +103,10 @@ export default function App() {
   const [showLogoPickerModal, setShowLogoPickerModal] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const drawerAnim = useRef(new Animated.Value(300)).current;
+
+  // Vendor Approval Lifecycle State ('pending' | 'accepted' | 'rejected')
+  const [vendorApprovalStatus, setVendorApprovalStatus] = useState<'pending' | 'accepted' | 'rejected'>('pending');
+  const [vendorRejectionReason, setVendorRejectionReason] = useState<string>('');
 
   // Initial Splash Screen Display Timer
   useEffect(() => {
@@ -144,9 +161,23 @@ export default function App() {
   const knownOrderIdsRef = useRef<Set<string | number>>(new Set());
   const isFirstLoadRef = useRef(true);
 
+  // Blocked account alert modal state
+  const [blockedAccountInfo, setBlockedAccountInfo] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    reason?: string;
+  } | null>(null);
+
   const currentUserRef = useRef<VendorUser | null>(null);
   useEffect(() => {
     currentUserRef.current = currentUser;
+    if (currentUser?.status) {
+      const s = String(currentUser.status).toLowerCase();
+      if (s === 'rejected') setVendorApprovalStatus('rejected');
+      else if (s === 'active' || s === 'accepted') setVendorApprovalStatus('accepted');
+      else setVendorApprovalStatus('pending');
+    }
   }, [currentUser]);
 
   // Initialize High-Priority Order Alerts & Lockscreen Notification Channel
@@ -194,54 +225,45 @@ export default function App() {
 
   const theme = Colors.light;
 
-  // Load Vendor Dashboard Data
-  const loadDashboardData = async (vendorId: number) => {
+  // Load Vendor Dashboard Data with SWR (Cache Hydration + Live Server Query)
+  const loadDashboardData = async (vendorId: number, forceRefresh: boolean = false) => {
     try {
-      const data = await fetchVendorDashboardApi(vendorId);
-      if (data.vendor) {
-        setCurrentUser(prev => {
-          if (
-            prev &&
-            prev.vendor_id === data.vendor.vendor_id &&
-            prev.store_name === data.vendor.store_name &&
-            prev.status === data.vendor.status &&
-            prev.phone_number === data.vendor.phone_number &&
-            prev.gst_number === data.vendor.gst_number &&
-            prev.opening_time === data.vendor.opening_time &&
-            prev.closing_time === data.vendor.closing_time &&
-            prev.society_name === data.vendor.society_name &&
-            prev.email === data.vendor.email
-          ) {
-            return prev;
-          }
-          saveVendorUser(data.vendor);
-          return data.vendor;
-        });
+      // 1. Instant Cache Hydration: immediately populate state so products and orders appear with 0ms delay!
+      const cached = await getCachedDashboard(vendorId);
+      if (cached) {
+        if (Array.isArray(cached.items) && cached.items.length > 0) {
+          setItems(prev => (prev.length === 0 ? (cached.items || []) : prev));
+        }
+        if (Array.isArray(cached.orders) && cached.orders.length > 0) {
+          setOrders(prev => (prev.length === 0 ? (cached.orders || []) : prev));
+        }
+        if (cached.subscription) {
+          setSubscription(prev => (prev === null ? (cached.subscription || null) : prev));
+        }
+        if (Array.isArray(cached.payments) && cached.payments.length > 0) {
+          setPayments(prev => (prev.length === 0 ? (cached.payments || []) : prev));
+        }
       }
 
-      const newItems = data.items || [];
-      setItems(prev => {
-        if (JSON.stringify(prev) === JSON.stringify(newItems)) {
-          return prev;
-        }
-        return newItems;
-      });
+      // 2. ALWAYS fetch fresh live updates directly from the backend server
+      const data = await fetchVendorDashboardApi(vendorId, true);
 
-      const newSub = data.subscription || null;
-      setSubscription(prev => {
-        if (JSON.stringify(prev) === JSON.stringify(newSub)) {
-          return prev;
-        }
-        return newSub;
-      });
+      if (data.vendor) {
+        saveVendorUser(data.vendor);
+        setCurrentUser(data.vendor);
+      }
 
-      const newPayments = data.payments || [];
-      setPayments(prev => {
-        if (JSON.stringify(prev) === JSON.stringify(newPayments)) {
-          return prev;
-        }
-        return newPayments;
-      });
+      if (Array.isArray(data.items)) {
+        setItems(data.items);
+      }
+
+      if (data.subscription !== undefined) {
+        setSubscription(data.subscription);
+      }
+
+      if (Array.isArray(data.payments)) {
+        setPayments(data.payments);
+      }
 
       const newOrders = data.orders || [];
 
@@ -263,12 +285,8 @@ export default function App() {
       newOrders.forEach(o => idsSet.add(o.order_id));
       knownOrderIdsRef.current = idsSet;
 
-      setOrders(prev => {
-        if (JSON.stringify(prev) === JSON.stringify(newOrders)) {
-          return prev;
-        }
-        return newOrders;
-      });
+      // Always commit fresh orders from server
+      setOrders(newOrders);
     } catch (err: any) {
       console.error('Error loading dashboard data:', err);
     }
@@ -280,14 +298,49 @@ export default function App() {
       try {
         const savedUrl = await getSavedApiBaseUrlStorage();
         if (savedUrl) {
-          console.log(`[App] Restored custom API URL: ${savedUrl}`);
           setApiBaseUrl(savedUrl);
         }
         const savedVendor = await getSavedVendorUser();
         if (savedVendor && typeof savedVendor === 'object') {
           const vendorData: VendorUser = savedVendor.vendor || savedVendor;
           if (vendorData && vendorData.vendor_id && vendorData.store_name) {
-            console.log(`[App] Restored vendor session: ${vendorData.store_name}`);
+            // 🛡️ Single Status Guard on App Startup (Called ONLY ONCE)
+            const statusRes = await fetchVendorStatusApi(vendorData.vendor_id);
+            if (
+              statusRes &&
+              (statusRes.is_blocked ||
+                statusRes.status === 'blocked' ||
+                statusRes.action === 'logout' ||
+                statusRes.code === 'VENDOR_BLOCKED')
+            ) {
+              console.warn('⚠️ Vendor account is blocked on app launch. Purging session storage and logging out...');
+              await clearSavedCredentials();
+              await clearAllAppCache();
+              setCurrentUser(null);
+              setShowLogin(true);
+              setBlockedAccountInfo({
+                visible: true,
+                title: 'Account Blocked by Admin',
+                message:
+                  statusRes.message ||
+                  statusRes.error ||
+                  'Your vendor store account has been blocked by administrator. Access denied.',
+                reason: statusRes.block_reason || 'Policy or compliance violation',
+              });
+              return;
+            }
+
+            if (statusRes) {
+              if (statusRes.is_rejected || statusRes.status === 'rejected') {
+                setVendorApprovalStatus('rejected');
+                setVendorRejectionReason(statusRes.rejection_reason || statusRes.message || '');
+              } else if (statusRes.is_accepted || statusRes.status === 'accepted' || statusRes.status === 'active') {
+                setVendorApprovalStatus('accepted');
+              } else {
+                setVendorApprovalStatus('pending');
+              }
+            }
+
             setCurrentUser(vendorData);
 
             // Instant 0ms Cache Hydration
@@ -313,17 +366,14 @@ export default function App() {
 
     registerForPushNotificationsAsync().then(token => {
       if (token) {
-        console.log(`[App] Registered Expo Push Token: ${token}`);
         updateVendorPushTokenApi(currentUser.vendor_id, token);
       }
-    }).catch(err => {
-      console.log('[App] Push token registration skipped:', err);
-    });
+    }).catch((_err) => {});
 
-    loadDashboardData(currentUser.vendor_id);
+    loadDashboardData(currentUser.vendor_id, true);
     const interval = setInterval(() => {
-      loadDashboardData(currentUser.vendor_id);
-    }, 10000);
+      loadDashboardData(currentUser.vendor_id, true);
+    }, 6000);
 
     return () => clearInterval(interval);
   }, [currentUser]);
@@ -335,9 +385,7 @@ export default function App() {
       return;
     }
 
-    console.log(`[App] Initializing Socket.io for vendor ${currentUser.vendor_id}`);
     connectSocket(currentUser.vendor_id, async (newOrder: VendorOrder) => {
-      console.log('🚨 [App] New order received via Socket.io:', newOrder);
       // Trigger the modal, notifications and continuous alarm loop
       setActiveAlarmOrder(newOrder);
       await triggerOrderNotification(newOrder);
@@ -350,6 +398,43 @@ export default function App() {
   }, [currentUser]);
 
   const handleLoginSuccess = async (vendor: VendorUser) => {
+    // 🛡️ Single Status Guard on Login Entry (Called ONLY ONCE)
+    const statusRes = await fetchVendorStatusApi(vendor.vendor_id);
+    if (
+      statusRes &&
+      (statusRes.is_blocked ||
+        statusRes.status === 'blocked' ||
+        statusRes.action === 'logout' ||
+        statusRes.code === 'VENDOR_BLOCKED')
+    ) {
+      console.warn('⚠️ Vendor account is blocked. Purging session storage and denying login...');
+      await clearSavedCredentials();
+      await clearAllAppCache();
+      setCurrentUser(null);
+      setShowLogin(true);
+      setBlockedAccountInfo({
+        visible: true,
+        title: 'Account Blocked by Admin',
+        message:
+          statusRes.message ||
+          statusRes.error ||
+          'Your vendor store account has been blocked by administrator. Access denied.',
+        reason: statusRes.block_reason || 'Policy or compliance violation',
+      });
+      return;
+    }
+
+    if (statusRes) {
+      if (statusRes.is_rejected || statusRes.status === 'rejected') {
+        setVendorApprovalStatus('rejected');
+        setVendorRejectionReason(statusRes.rejection_reason || statusRes.message || '');
+      } else if (statusRes.is_accepted || statusRes.status === 'accepted' || statusRes.status === 'active') {
+        setVendorApprovalStatus('accepted');
+      } else {
+        setVendorApprovalStatus('pending');
+      }
+    }
+
     setCurrentUser(vendor);
     saveVendorUser(vendor);
     isFirstLoadRef.current = true;
@@ -369,15 +454,10 @@ export default function App() {
     setupOrderAlertChannel(true).then(() => {
       registerForPushNotificationsAsync().then(token => {
         if (token) {
-          console.log(`[App] Push Token registered on login: ${token}`);
           updateVendorPushTokenApi(vendor.vendor_id, token);
         }
-      }).catch(err => {
-        console.log('[App] Push token registration skipped:', err);
-      });
-    }).catch(err => {
-      console.log('[App] Notification permissions check error:', err);
-    });
+      }).catch((_err) => {});
+    }).catch((_err) => {});
   };
 
   const handleLogout = async () => {
@@ -470,7 +550,7 @@ export default function App() {
 
   // Not logged in
   if (!currentUser) {
-    if (!showLogin) {
+    if (!showLogin && !blockedAccountInfo) {
       return (
         <WelcomeLandingScreen
           onGetStarted={() => setShowLogin(true)}
@@ -484,20 +564,152 @@ export default function App() {
         onLoginSuccess={handleLoginSuccess}
         onBackToWelcome={() => setShowLogin(false)}
         isDarkMode={false}
+        initialBlockedInfo={blockedAccountInfo}
+        onClearBlockedInfo={() => setBlockedAccountInfo(null)}
       />
     );
   }
 
-  const processAndUploadLogo = async (asset: ImagePicker.ImagePickerAsset) => {
-    if (!currentUser || !asset.uri) return;
+  // ── Render Dedicated Red Rejection Screen if merchant is REJECTED ──
+  if (vendorApprovalStatus === 'rejected') {
+    return (
+      <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: '#FEF2F2' }]}>
+        <StatusBar barStyle="dark-content" backgroundColor="#FEF2F2" />
+        
+        {/* Top Header */}
+        <View style={[styles.adminHeader, { backgroundColor: '#FFFFFF', borderBottomColor: '#FEE2E2' }]}>
+          <Text style={[styles.headerTitle, { color: '#991B1B', fontWeight: '800' }]}>Merchant Portal</Text>
+          <TouchableOpacity
+            style={[styles.hamburgerBtn, { backgroundColor: '#FEE2E2' }]}
+            onPress={handleLogout}
+            activeOpacity={0.8}
+          >
+            <LogOut size={16} color="#DC2626" />
+          </TouchableOpacity>
+        </View>
+
+        {/* Rejection Content Card */}
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 24 }}>
+          <View style={{
+            width: 80,
+            height: 80,
+            borderRadius: 40,
+            backgroundColor: '#FEE2E2',
+            borderWidth: 8,
+            borderColor: '#FEF2F2',
+            justifyContent: 'center',
+            alignItems: 'center',
+            marginBottom: 20
+          }}>
+            <AlertOctagon size={40} color="#DC2626" />
+          </View>
+
+          <Text style={{
+            fontSize: 22,
+            fontWeight: '800',
+            color: '#991B1B',
+            textAlign: 'center',
+            marginBottom: 12,
+            fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
+          }}>
+            Application Rejected
+          </Text>
+
+          <Text style={{
+            fontSize: 14.5,
+            color: '#4B5563',
+            textAlign: 'center',
+            lineHeight: 22,
+            marginBottom: 20,
+            paddingHorizontal: 8,
+            fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular'
+          }}>
+            Merchant application was rejected by admin. Please contact support.
+          </Text>
+
+          {vendorRejectionReason ? (
+            <View style={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: 12,
+              padding: 14,
+              width: '100%',
+              borderWidth: 1,
+              borderColor: '#FCA5A5',
+              marginBottom: 24
+            }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: '#991B1B', marginBottom: 4 }}>
+                Reason from Admin:
+              </Text>
+              <Text style={{ fontSize: 13, color: '#374151', lineHeight: 18 }}>
+                {vendorRejectionReason}
+              </Text>
+            </View>
+          ) : null}
+
+          <TouchableOpacity
+            style={{
+              width: '100%',
+              backgroundColor: '#DC2626',
+              borderRadius: 14,
+              paddingVertical: 14,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 12,
+              flexDirection: 'row',
+              gap: 8
+            }}
+            onPress={() => {
+              showAlert('Contact DigiLocal Support', 'Please email us at support@digilocal.in or call our helpline 1800-123-4567 for assistance with your merchant application.', 'info');
+            }}
+            activeOpacity={0.85}
+          >
+            <PhoneCall size={18} color="#FFFFFF" />
+            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>Contact Support</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{
+              width: '100%',
+              backgroundColor: '#FFFFFF',
+              borderRadius: 14,
+              paddingVertical: 13,
+              borderWidth: 1.5,
+              borderColor: '#E7DFD5',
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 10,
+              flexDirection: 'row',
+              gap: 8
+            }}
+            onPress={() => loadDashboardData(currentUser.vendor_id, true)}
+            activeOpacity={0.85}
+          >
+            <RefreshCw size={16} color="#541D26" />
+            <Text style={{ color: '#211A19', fontSize: 14, fontWeight: '700' }}>Check Status Again</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={{ paddingVertical: 10 }}
+            onPress={handleLogout}
+            activeOpacity={0.7}
+          >
+            <Text style={{ color: '#6B7280', fontSize: 13.5, fontWeight: '600' }}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  }
+
+  const processAndUploadLogo = async (picked: PickedImageResult) => {
+    if (!currentUser || !picked.uri) return;
     try {
       showAlert('Uploading Logo', 'Uploading and saving your custom store logo...', 'info');
-      const fileName = asset.fileName || `store_logo_${Date.now()}.jpg`;
-      const mimeType = asset.mimeType || 'image/jpeg';
+      const fileName = picked.fileName || `store_logo_${Date.now()}.jpg`;
+      const mimeType = picked.mimeType || 'image/jpeg';
 
       const uploadResult = await uploadVendorLogoApi(
         currentUser.vendor_id,
-        asset.uri,
+        picked.base64 ? `data:${mimeType};base64,${picked.base64}` : picked.uri,
         fileName,
         mimeType
       );
@@ -517,19 +729,13 @@ export default function App() {
   const handlePickFromCamera = async () => {
     setShowLogoPickerModal(false);
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        showAlert('Permission Required', 'Camera permission is required to capture your store logo.', 'warning');
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const captured = await captureImageFromDevice({
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
       });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        await processAndUploadLogo(result.assets[0]);
+      if (captured && captured.uri) {
+        await processAndUploadLogo(captured);
       }
     } catch (err: any) {
       showAlert('Camera Error', err.message || 'Failed to take photo', 'error');
@@ -539,19 +745,13 @@ export default function App() {
   const handlePickFromGallery = async () => {
     setShowLogoPickerModal(false);
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        showAlert('Permission Required', 'Gallery access is required to pick your store logo.', 'warning');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const picked = await pickImageFromDevice({
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
       });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        await processAndUploadLogo(result.assets[0]);
+      if (picked && picked.uri) {
+        await processAndUploadLogo(picked);
       }
     } catch (err: any) {
       showAlert('Gallery Error', err.message || 'Failed to pick image', 'error');
@@ -595,9 +795,11 @@ export default function App() {
           <Text style={styles.headerTitle} numberOfLines={1}>
             {currentUser?.store_name || 'MY STORE'}
           </Text>
-          <Text style={styles.headerSubtitle} numberOfLines={1}>
-            {currentUser?.society_name ? `📍 ${currentUser.society_name}` : 'Tap logo to customize'}
-          </Text>
+          {currentUser?.society_name ? (
+            <Text style={styles.headerSubtitle} numberOfLines={1}>
+              📍 {currentUser.society_name}
+            </Text>
+          ) : null}
         </View>
 
         <View style={styles.headerRightContainer}>
@@ -611,6 +813,70 @@ export default function App() {
         </View>
       </View>
 
+      {/* ─── Clear Pending Status: Full-Width Prominent Banner ─── */}
+      {vendorApprovalStatus === 'pending' ? (
+        <View style={{
+          backgroundColor: '#FFFBEB',
+          borderBottomWidth: 1.5,
+          borderBottomColor: '#FDE68A',
+          paddingVertical: 12,
+          paddingHorizontal: 16,
+        }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+              <View style={{
+                width: 26,
+                height: 26,
+                borderRadius: 13,
+                backgroundColor: '#FEF3C7',
+                justifyContent: 'center',
+                alignItems: 'center',
+              }}>
+                <Clock size={15} color="#D97706" strokeWidth={2.5} />
+              </View>
+              <Text style={{
+                fontSize: 14,
+                fontWeight: '800',
+                color: '#92400E',
+                letterSpacing: 0.2,
+                fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
+              }}>
+                Application Under Review
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => loadDashboardData(currentUser.vendor_id, true)}
+              style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 4,
+                backgroundColor: '#FEF3C7',
+                paddingHorizontal: 10,
+                paddingVertical: 5,
+                borderRadius: 8,
+                borderWidth: 0.5,
+                borderColor: '#FDE68A'
+              }}
+              activeOpacity={0.7}
+            >
+              <RefreshCw size={12} color="#D97706" />
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#D97706' }}>Refresh</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={{
+            fontSize: 12,
+            color: '#78350F',
+            lineHeight: 17,
+            marginTop: 2,
+            fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular'
+          }}>
+            Your merchant application has been submitted and is currently awaiting verification. Once approved, your store and products will go live on the DigiLocal marketplace.
+          </Text>
+        </View>
+      ) : null}
+
       {/* Active Screen */}
       <View style={styles.screenContainer}>
         <View style={{ flex: 1, display: currentTab === 'menu' ? 'flex' : 'none' }}>
@@ -618,9 +884,11 @@ export default function App() {
             vendorId={currentUser.vendor_id}
             items={items}
             isLoading={loading}
-            onRefresh={() => loadDashboardData(currentUser.vendor_id)}
+            onRefresh={() => loadDashboardData(currentUser.vendor_id, true)}
             isDarkMode={false}
             openAddProductTrigger={openAddProductTrigger}
+            businessType={currentUser.business_type === 'SERVICE' || isServiceCategory(currentUser.category, currentUser.business_type) ? 'SERVICE' : 'PRODUCT'}
+            isPendingApproval={vendorApprovalStatus === 'pending'}
           />
         </View>
 
@@ -630,17 +898,22 @@ export default function App() {
             orders={orders}
             storeItems={items}
             isLoading={loading}
-            onRefresh={() => loadDashboardData(currentUser.vendor_id)}
+            onRefresh={() => loadDashboardData(currentUser.vendor_id, true)}
             isDarkMode={false}
+            businessType={currentUser.business_type === 'SERVICE' || isServiceCategory(currentUser.category, currentUser.business_type) ? 'SERVICE' : 'PRODUCT'}
+            isPendingApproval={vendorApprovalStatus === 'pending'}
+            onNavigateToMenu={() => setCurrentTab('menu')}
+            onNavigateToSettings={() => setCurrentTab('settings')}
           />
         </View>
 
         <View style={{ flex: 1, display: currentTab === 'payouts' ? 'flex' : 'none' }}>
           <PayoutsScreenComponent
             payments={payments}
+            orders={orders}
             vendor={currentUser}
             isLoading={loading}
-            onRefresh={() => loadDashboardData(currentUser.vendor_id)}
+            onRefresh={() => loadDashboardData(currentUser.vendor_id, true)}
           />
         </View>
 
@@ -650,10 +923,11 @@ export default function App() {
             subscription={subscription}
             payments={payments}
             onLogout={handleLogout}
-            onRefresh={() => loadDashboardData(currentUser.vendor_id)}
+            onRefresh={() => loadDashboardData(currentUser.vendor_id, true)}
             isDarkMode={false}
             onToggleDarkMode={() => { }}
             onTestAlarm={handleTriggerTestAlarm}
+            onExploreVendors={() => setCurrentTab('menu')}
           />
         </View>
       </View>
@@ -664,26 +938,26 @@ export default function App() {
           width={Dimensions.get('window').width}
           height={68 + (insets.bottom > 0 ? insets.bottom : 8)}
         />
-        {/* Tab 1: Menu */}
+        {/* Tab 1: Menu / Services */}
         <TouchableOpacity
           style={styles.bottomTabItem}
           onPress={() => setCurrentTab('menu')}
           activeOpacity={0.7}
         >
-          <Menu size={22} color={currentTab === 'menu' ? BrandTheme.darkForestGreen : BrandTheme.mutedSageText} />
+          <Menu size={22} color={currentTab === 'menu' ? '#541D26' : '#78716C'} />
           <Text style={[styles.bottomTabText, currentTab === 'menu' && styles.bottomTabTextActive]}>
-            Menu
+            {(currentUser?.business_type === 'SERVICE' || isServiceCategory(currentUser?.category, currentUser?.business_type)) ? 'Services' : 'Menu'}
           </Text>
         </TouchableOpacity>
 
-        {/* Tab 2: Orders */}
+        {/* Tab 2: Orders / Enquiries */}
         <TouchableOpacity
           style={styles.bottomTabItem}
           onPress={() => setCurrentTab('orders')}
           activeOpacity={0.7}
         >
           <View style={{ position: 'relative' }}>
-            <ClipboardList size={22} color={currentTab === 'orders' ? BrandTheme.darkForestGreen : BrandTheme.mutedSageText} />
+            <ClipboardList size={22} color={currentTab === 'orders' ? '#541D26' : '#78716C'} />
             {orders.length > 0 ? (
               <View style={styles.badgeCount}>
                 <Text style={styles.badgeText}>{orders.length}</Text>
@@ -691,11 +965,11 @@ export default function App() {
             ) : null}
           </View>
           <Text style={[styles.bottomTabText, currentTab === 'orders' && styles.bottomTabTextActive]}>
-            Orders
+            {(currentUser?.business_type === 'SERVICE' || isServiceCategory(currentUser?.category, currentUser?.business_type)) ? 'Enquiries' : 'Orders'}
           </Text>
         </TouchableOpacity>
 
-        {/* Tab 3: Prominent Add Product Button in Centre */}
+        {/* Tab 3: Prominent Add Product / Service Button in Centre */}
         <View style={styles.centerAddBtnWrapper}>
           <TouchableOpacity
             style={styles.centerAddBtn}
@@ -705,9 +979,11 @@ export default function App() {
             }}
             activeOpacity={0.85}
           >
-            <Plus size={28} color="#FFFFFF" strokeWidth={2.5} />
+            <Plus size={28} color="#FFFFFF" strokeWidth={2.8} />
           </TouchableOpacity>
-          <Text style={styles.centerAddBtnText}>Add Item</Text>
+          <Text style={styles.centerAddBtnText}>
+            {(currentUser?.business_type === 'SERVICE' || isServiceCategory(currentUser?.category, currentUser?.business_type)) ? 'Add Service' : 'Add Item'}
+          </Text>
         </View>
 
         {/* Tab 4: Payouts */}
@@ -716,7 +992,7 @@ export default function App() {
           onPress={() => setCurrentTab('payouts')}
           activeOpacity={0.7}
         >
-          <CreditCard size={22} color={currentTab === 'payouts' ? BrandTheme.darkForestGreen : BrandTheme.mutedSageText} />
+          <CreditCard size={22} color={currentTab === 'payouts' ? '#541D26' : '#78716C'} />
           <Text style={[styles.bottomTabText, currentTab === 'payouts' && styles.bottomTabTextActive]}>
             Payouts
           </Text>
@@ -728,7 +1004,7 @@ export default function App() {
           onPress={() => setCurrentTab('settings')}
           activeOpacity={0.7}
         >
-          <Settings size={22} color={currentTab === 'settings' ? BrandTheme.darkForestGreen : BrandTheme.mutedSageText} />
+          <Settings size={22} color={currentTab === 'settings' ? '#541D26' : '#78716C'} />
           <Text style={[styles.bottomTabText, currentTab === 'settings' && styles.bottomTabTextActive]}>
             Settings
           </Text>
@@ -811,6 +1087,7 @@ export default function App() {
           visible={showDigitalCard}
           vendor={currentUser}
           onClose={() => setShowDigitalCard(false)}
+          onExploreVendors={() => setCurrentTab('menu')}
         />
       )}
 
@@ -863,6 +1140,9 @@ export default function App() {
           </View>
         </Pressable>
       </Modal>
+
+      {/* Viewport-Level Floating Toast Notifications */}
+      <ToastContainer bottomOffset={78 + (insets.bottom > 0 ? insets.bottom : 8)} />
     </View>
   );
 }
@@ -870,7 +1150,7 @@ export default function App() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: BrandTheme.warmOffWhite, // Warm Off-White App Background (#EDEDE4)
+    backgroundColor: BrandTheme.warmOffWhite, // Warm Off-White App Background (#F8F6F0)
   },
   logoModalBackdrop: {
     flex: 1,
@@ -882,11 +1162,11 @@ const styles = StyleSheet.create({
   logoModalCard: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: '#FAF8F3',
+    backgroundColor: '#FAF8F5',
     borderRadius: 20,
     padding: 22,
     borderWidth: 1,
-    borderColor: '#ECE8DD',
+    borderColor: '#E7DFD5',
     alignItems: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
@@ -897,13 +1177,13 @@ const styles = StyleSheet.create({
   logoModalTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#211A19',
     marginBottom: 4,
     textAlign: 'center',
   },
   logoModalSubtitle: {
     fontSize: 12,
-    color: '#6B7C70',
+    color: '#78716C',
     marginBottom: 18,
     textAlign: 'center',
   },
@@ -916,13 +1196,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2DEC8',
+    borderColor: '#E7DFD5',
     marginBottom: 10,
   },
   logoModalOptionText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#18281F',
+    color: '#211A19',
   },
   logoModalCancelBtn: {
     width: '100%',
@@ -964,7 +1244,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 12,
-    backgroundColor: '#EAE6DB',
+    backgroundColor: '#EEE5DA',
     borderWidth: 1.5,
     borderColor: BrandTheme.sandBorder,
     justifyContent: 'center',
@@ -1062,7 +1342,7 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   bottomTabTextActive: {
-    color: BrandTheme.darkForestGreen,
+    color: '#541D26',
     fontWeight: '800',
   },
   centerAddBtnWrapper: {
@@ -1075,22 +1355,22 @@ const styles = StyleSheet.create({
     width: 54,
     height: 54,
     borderRadius: 27,
-    backgroundColor: BrandTheme.warmTanGold, // Warm Tan Gold
+    backgroundColor: '#541D26', // Deep Maroon / Wine
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: BrandTheme.warmTanGold,
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 8,
     elevation: 6,
     borderWidth: 4,
-    borderColor: '#FAF8F3', // Cream border
+    borderColor: '#FAF8F5', // Surface Ivory border
     marginTop: -32,
   },
   centerAddBtnText: {
     fontSize: 9.5,
-    fontWeight: '700',
-    color: BrandTheme.mutedSageText,
+    fontWeight: '800',
+    color: '#541D26',
     marginTop: 4,
     textAlign: 'center',
   },

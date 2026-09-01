@@ -13,6 +13,7 @@ import {
   Pressable,
   Linking,
   Platform,
+  Switch,
 } from 'react-native';
 import { CustomTimePicker } from './CustomTimePicker';
 import {
@@ -41,9 +42,16 @@ import {
   Clock,
   Camera,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  MapPin,
+  Sparkles,
+  CheckSquare,
+  Square,
+  Eye,
+  EyeOff
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromDevice, captureImageFromDevice, PickedImageResult } from '../utils/imagePickerHelper';
 import { Colors } from '../constants/theme';
 import {
   VendorUser,
@@ -70,6 +78,7 @@ interface SettingsScreenProps {
   isDarkMode: boolean;
   onToggleDarkMode: () => void;
   onTestAlarm?: () => void;
+  onExploreVendors?: () => void;
 }
 
 // ── FAQ Accordion Item ────────────────────────────────────────
@@ -83,7 +92,7 @@ const FAQItem: React.FC<{ question: string; answer: string }> = ({ question, ans
     >
       <View style={faqStyles.itemHeader}>
         <Text style={faqStyles.question}>{question}</Text>
-        {open ? <ChevronUp size={16} color="#18281F" /> : <ChevronDown size={16} color="#6B7C70" />}
+        {open ? <ChevronUp size={16} color="#211A19" /> : <ChevronDown size={16} color="#78716C" />}
       </View>
       {open ? <Text style={faqStyles.answer}>{answer}</Text> : null}
     </TouchableOpacity>
@@ -93,7 +102,7 @@ const FAQItem: React.FC<{ question: string; answer: string }> = ({ question, ans
 const faqStyles = StyleSheet.create({
   item: {
     borderBottomWidth: 1,
-    borderBottomColor: '#E4DCC9',
+    borderBottomColor: '#E7DFD5',
     paddingVertical: 12,
   },
   itemHeader: {
@@ -104,13 +113,13 @@ const faqStyles = StyleSheet.create({
   question: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#18281F',
+    color: '#211A19',
     flex: 1,
     paddingRight: 8,
   },
   answer: {
     fontSize: 12,
-    color: '#6B7C70',
+    color: '#78716C',
     lineHeight: 18,
     marginTop: 8,
   },
@@ -151,7 +160,7 @@ const docStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
-    backgroundColor: '#F7F4EE',
+    backgroundColor: '#FAF8F5',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 20,
@@ -160,7 +169,7 @@ const docStyles = StyleSheet.create({
   handleBar: {
     width: 40,
     height: 4,
-    backgroundColor: '#E4DCC9',
+    backgroundColor: '#E7DFD5',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 16,
@@ -174,117 +183,190 @@ const docStyles = StyleSheet.create({
   title: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#211A19',
     flex: 1,
   },
   closeBtn: {
     width: 32,
     height: 32,
     borderRadius: 16,
-    backgroundColor: '#E4DCC9',
+    backgroundColor: '#E7DFD5',
     justifyContent: 'center',
     alignItems: 'center',
   },
   closeBtnText: {
     fontSize: 14,
-    color: '#6B7C70',
+    color: '#78716C',
     fontWeight: '700',
   },
   body: {
     fontSize: 13,
-    color: '#6B7C70',
+    color: '#78716C',
     lineHeight: 22,
     marginBottom: 24,
   },
   doneBtn: {
     height: 48,
     borderRadius: 14,
-    backgroundColor: '#34533C',
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
   },
   doneBtnText: {
-    color: '#F7F4EE',
+    color: '#FAF8F5',
     fontSize: 14,
     fontWeight: '700',
   },
 });
 
 // ── Privacy Policy & Terms Content ───────────────────────────
-const PRIVACY_CONTENT = `DigiLocal Privacy Policy — Effective: July 2026
+const PRIVACY_CONTENT = `DigiLocal Vendor Privacy Policy
+Effective Date: 10/08/2026 | Last Updated: 18/08/2026
+Operating Entity: Zordial Technologies Private Limited
+Platform: DigiLocal Technologies (com.digilocal.vendor)
+
+This Privacy Policy explains how Zordial Technologies Private Limited, operating the DigiLocal platform ("DigiLocal", "we", "us" or "our"), collects, uses, stores and protects information when you use the DigiLocal Vendor application (com.digilocal.vendor) and related services.
+
+DigiLocal Vendor is a merchant platform that enables local shops and suppliers operating within or servicing residential societies and gated communities to manage their stores, products, orders, customers and payouts.
 
 1. INFORMATION WE COLLECT
-We collect information you provide during vendor registration, including name, store name, email, phone number, GST number, and society name. We also collect order data, menu items, and subscription details to operate the platform.
+1.1 Vendor Personal Information: Full name, mobile number, email address, account credentials, OTP authentication information, profile information, and account verification records.
+1.2 Business Information: Store name, shop address, business category, society name, society ID, store logo, product catalogue, product images, and operating information.
+1.3 Government and Tax Information: GSTIN, PAN, and tax compliance information where applicable.
+1.4 Banking and Payout Information: Account holder name, bank account number, IFSC code, UPI ID, payout records, and transaction references (used solely for processing T+1 vendor disbursements).
 
-2. HOW WE USE YOUR DATA
-Your data is used solely to provide and improve the DigiLocal Vendor Platform. We use it to:
-• Process orders and send real-time notifications.
-• Manage subscription plans and renewals.
-• Display your storefront to residents of your registered society.
+2. CUSTOMER INFORMATION ACCESSIBLE TO VENDORS
+When a customer places an order, the vendor receives order fulfilment data (customer name, customer phone, tower/block, flat/unit number, delivery address, ordered items, quantity, order value, and order status).
+⚠️ Vendor Data-Use Restrictions:
+Customer data is strictly for order fulfilment. Vendors must NOT copy, permanently store, sell, export, share, or misuse customer phone numbers for personal marketing or unsolicited communications. Misuse leads to immediate account termination and legal action.
 
-3. DATA SHARING
-We do not sell your personal data to third parties. Data is shared only with essential service providers (e.g., push notification services) needed to operate the platform.
+3. DEVICE PERMISSIONS
+• Notifications: New order alerts, order updates, payment notifications.
+• Alarms / Background Alerts: High-priority audio chimes & full-screen alerts for incoming orders.
+• Microphone: Voice-based search and speech-to-text processing (not stored permanently).
+• Camera & Photos: Uploading store logos, product pictures, and banners.
+• Technical: IP address, device ID, app version, FCM push tokens, and network diagnostic logs.
 
-4. DATA SECURITY
-All data is stored securely in encrypted databases. API communication uses HTTPS. Push tokens and credentials are stored in device-encrypted secure storage.
+4. HOW WE USE INFORMATION
+To authenticate accounts via OTP, manage catalogues, process customer orders, dispatch live alerts, compute commissions, process automated T+1 bank payouts, resolve disputes, prevent fraud, and comply with statutory regulations.
 
-5. YOUR RIGHTS
-You may request deletion of your vendor account and all associated data at any time by using the "Delete Account" option in Settings.
+5. THIRD-PARTY PROVIDERS
+• Firebase / Google (Phone Auth OTP, FCM push alerts, cloud services)
+• SMS Gateways (MSG91 / Firebase)
+• Banking & Payment Partners (settlement transfers)
+• Cloud Infrastructure (AWS, Google Cloud, Render)
 
-6. CONTACT
-For any privacy-related queries, email us at: privacy@digilocal.in`;
+6. DATA SECURITY
+We employ AES-256 encryption, access controls, secure HTTPS APIs, and role-based permissions.
 
-const TERMS_CONTENT = `DigiLocal Terms & Conditions — Effective: July 2026
+7. DATA RETENTION & VENDOR RIGHTS
+Data is retained as necessary for orders, payouts, fraud prevention, and statutory tax compliance. Vendors may request account closure or data correction by contacting support.
 
-1. PLATFORM USE
-DigiLocal Vendor App is exclusively for registered vendors within society communities. By registering, you agree to provide accurate information about your store and products.
+8. GRIEVANCE & PRIVACY CONTACT
+• Email: products@zordial.com
+• Helpline: +91 94613 53008
+• Operating Entity: Zordial Technologies Private Limited
+• Address: Near Tonk Road, Pratap Nagar, Jaipur, Rajasthan, India
 
-2. ORDER MANAGEMENT
-As a vendor, you are responsible for:
-• Accepting or declining orders within a reasonable time.
-• Ensuring item availability and accurate pricing.
-• Maintaining up-to-date menu items and operating hours.
+9. GOVERNING LAW
+This Privacy Policy is governed by the applicable laws of India.`;
 
-3. SUBSCRIPTION & BILLING
-• Annual subscription fee: ₹2,999/year.
-• Subscriptions must be renewed before the expiry date to maintain platform access.
-• Renewal requests submitted through the app are processed by DigiLocal Admin within 24-48 hours.
+const TERMS_CONTENT = `DigiLocal Vendor Terms & Conditions
+Effective Date: 10/08/2026 | Last Updated: 18/08/2026
+Operating Entity: Zordial Technologies Private Limited
+Brand: DigiLocal Technologies (com.digilocal.vendor)
 
-4. PROHIBITED CONDUCT
-Vendors may not:
-• List illegal or regulated items.
-• Provide false contact or pricing information.
-• Misuse customer data shared during ordering.
+These Terms & Conditions ("Terms") govern your registration and use of the DigiLocal Vendor application and related services.
+By registering as a vendor or using DigiLocal Vendor, you agree to these Terms.
 
-5. TERMINATION
-DigiLocal reserves the right to suspend or terminate vendor accounts that violate these terms.
+1. VENDOR ELIGIBILITY
+To register, you must be legally authorized to operate your business, authorized to sell within/service the registered society, provide accurate registration info, and comply with all applicable laws and society/RWA rules.
 
-6. CONTACT
-For disputes or queries, email: support@digilocal.in`;
+2. VENDOR ACCOUNT & SECURITY
+You are responsible for keeping OTPs and login credentials confidential, preventing unauthorized access, and maintaining updated business profiles.
 
-const ABOUT_CONTENT = `About DigiLocal — Empowering Local Commerce
+3. BUSINESS & STATUTORY INFORMATION
+Vendors must provide accurate details (Store name, Shop address, GSTIN, PAN, Bank/IFSC info). False or fraudulent documentation leads to immediate account suspension or termination.
 
-🌟 OUR MISSION
-DigiLocal connects local vendors with residents of residential societies, creating a seamless, sustainable, and instant local commerce ecosystem.
+4. PRODUCT CATALOGUE & PRICING
+Listings must clearly state product names, descriptions, selling prices, MRP, quantity, pack size, availability, and precise units of measurement (e.g. 1 kg, 500 g, 1 litre, 500 ml, 1 packet, 1 piece, 1 box).
 
-🏪 WHAT WE DO
-We provide vendors with a powerful digital storefront, order management, and real-time notification system — right on their phone.
+5. PRODUCT QUALITY & PROHIBITED GOODS
+Vendors must supply genuine, safe, non-expired products. Prohibited items: counterfeit items, adulterated food, illegal goods, narcotics, unauthorized medicines, or hazardous materials.
 
-🛡️ OUR VALUES
-• Sustainable: Supporting local businesses and reducing logistics emissions.
-• Instant: Real-time orders with loud alert notifications.
-• Powerful: Complete vendor management from catalog to revenue tracking.
+6. STOCK & INVENTORY
+Vendors must promptly toggle products "In Stock" or "Out of Stock". Repeated acceptance of orders for unavailable products may result in account review or suspension.
 
-👨‍💼 FOR VENDORS
-Register once, manage your menu, receive live order alarms, track subscription, and share your digital store QR with society residents.
+7. ORDER PROCESSING & CANCELLATIONS
+Orders progress through PENDING ➔ ACCEPTED ➔ PREPARING ➔ OUT FOR DELIVERY ➔ DELIVERED / COMPLETED. Vendors must respond to order alerts promptly. Repeated unwarranted cancellations lead to penalties or account suspension.
 
-📬 CONTACT US
-Email: hello@digilocal.in
-Phone: +91 98765 43210
-Website: www.digilocal.in
+8. DELIVERY & SOCIETY RULES
+Vendors and delivery personnel must strictly follow society/RWA gate-entry rules, visitor logs, delivery timings, parking regulations, and resident safety standards.
 
-DigiLocal v1.0.0 — Made with ❤️ in India`;
+9. CUSTOMER INFORMATION CONFIDENTIALITY
+Customer details are strictly confidential for order fulfillment only. Vendors must NOT use customer numbers for independent marketing, unsolicited messages, or unrelated commercial purposes.
+
+10. PAYMENTS & T+1 PAYOUTS
+Eligible completed orders are settled on a T+1 schedule (targeted for processing on the next applicable business day, subject to banking holidays). Payouts may be adjusted for platform fees, commissions, taxes, and dispute refunds.
+
+11. REFUNDS & DISPUTES
+Customer complaints regarding missing, damaged, expired, or defective products will be investigated. Where attributable to the vendor, refunds or deductions will apply.
+
+12. INTELLECTUAL PROPERTY & INDEMNITY
+DigiLocal branding and software are owned by Zordial Technologies Private Limited. Vendors indemnify DigiLocal against losses arising from unlawful products, data misuse, or rule violations.
+
+13. TERMINATION & SUSPENSION
+DigiLocal reserves the right to suspend or terminate accounts for fraud, customer data misuse, expired goods, or serious society violations.
+
+14. GRIEVANCE & SUPPORT CONTACT
+• Email: products@zordial.com
+• Helpline: +91 94613 53008
+• Operating Entity: Zordial Technologies Private Limited
+• Address: Near Tonk Road, Pratap Nagar, Jaipur, Rajasthan, India
+
+15. GOVERNING LAW & JURISDICTION
+Governed by the laws of India. Disputes are subject to the exclusive jurisdiction of the courts of Jaipur, Rajasthan.`;
+
+const ABOUT_CONTENT = `About DigiLocal
+Powering Local Businesses Inside Communities
+
+DigiLocal is a hyperlocal digital commerce platform built to connect local vendors with residents of residential societies and gated communities.
+We believe that the neighbourhood shops people already trust should have access to simple, modern digital tools without having to build their own technology.
+With DigiLocal Vendor, local merchants can manage their business digitally—from products and inventory to customer orders, deliveries and payouts.
+
+🛒 WHAT DIGILOCAL DOES
+• Create and manage digital store
+• Add products and manage pricing
+• Define product quantities and units (kg, litre, packet, piece, box)
+• Update stock availability in real time
+• Receive instant customer orders with loud sound alarms
+• Manage order status (Preparing, Out for Delivery, Delivered)
+• Track sales and earnings with live analytics
+• Receive automated T+1 payouts directly into bank accounts
+• Serve customers within participating communities efficiently
+
+🏢 BUILT FOR LOCAL COMMERCE
+DigiLocal is designed specifically for the unique needs of residential societies, gated communities and local neighbourhood commerce. Instead of relying only on traditional offline ordering, vendors can use DigiLocal to create a convenient digital connection with residents while continuing to operate their local businesses.
+
+🌟 OUR VISION
+To make local commerce faster, simpler and more connected. We want residents to discover and order everyday essentials from trusted nearby businesses while giving local vendors the technology they need to grow digitally.
+
+🤝 OUR COMMITMENT
+• Local First: Supporting neighbourhood businesses & community commerce.
+• Simple Technology: Easy-to-use digital tools for vendors.
+• Reliable Service: Rapid response to orders & smooth fulfillment.
+• Transparency: Clear breakdown of orders, commissions & payouts.
+• Community Focus: Built for vendors, residents & housing societies.
+
+🏢 OPERATED BY
+Zordial Technologies Private Limited
+Brand: DigiLocal Technologies
+Support: products@zordial.com
+Helpline: +91 94613 53008
+Address: Near Tonk Road, Pratap Nagar, Jaipur, Rajasthan, India
+
+DigiLocal — Your Society. Your Vendor. Your Doorstep.`;
 
 // ── Password Modal ────────────────────────────────────────────
 const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (cur: string, nw: string) => void }> = ({
@@ -295,14 +377,16 @@ const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (
   const [confirm, setConfirm] = useState('');
   const [showCur, setShowCur] = useState(false);
   const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [err, setErr] = useState('');
 
   const handleSave = () => {
     if (!current || !newPw || !confirm) { setErr('All fields are required.'); return; }
-    if (newPw !== confirm) { setErr('New passwords do not match.'); return; }
-    if (newPw.length < 6) { setErr('New password must be at least 6 characters.'); return; }
+    if (current.trim() === newPw.trim()) { setErr('New password should be different from previous password.'); return; }
+    if (newPw.trim() !== confirm.trim()) { setErr('New passwords do not match.'); return; }
+    if (newPw.trim().length < 6) { setErr('New password must be at least 6 characters.'); return; }
     setErr('');
-    onSave(current, newPw);
+    onSave(current.trim(), newPw.trim());
     setCurrent(''); setNewPw(''); setConfirm('');
     onClose();
   };
@@ -325,22 +409,25 @@ const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (
           {[
             { label: 'Current Password', val: current, set: setCurrent, show: showCur, toggle: () => setShowCur(s => !s) },
             { label: 'New Password', val: newPw, set: setNewPw, show: showNew, toggle: () => setShowNew(s => !s) },
-            { label: 'Confirm New Password', val: confirm, set: setConfirm, show: showNew, toggle: () => setShowNew(s => !s) },
+            { label: 'Confirm New Password', val: confirm, set: setConfirm, show: showConfirm, toggle: () => setShowConfirm(s => !s) },
           ].map(({ label, val, set, show, toggle }) => (
             <View key={label} style={{ marginBottom: 14 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#374151', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>{label}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: '#E5E7EB', borderRadius: 12, paddingHorizontal: 12, height: 48, backgroundColor: '#F9FAFB' }}>
-                <Lock size={16} color="#9CA3AF" style={{ marginRight: 10 }} />
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#78716C', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>{label}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: '#E7DFD5', borderRadius: 12, paddingHorizontal: 12, height: 48, backgroundColor: '#FAF8F5' }}>
+                <Lock size={16} color="#78716C" style={{ marginRight: 10 }} />
                 <TextInput
-                  style={{ flex: 1, fontSize: 14, color: '#18281F', height: '100%' }}
+                  style={{ flex: 1, fontSize: 14, color: '#211A19', height: '100%' }}
                   secureTextEntry={!show}
                   value={val}
                   onChangeText={set}
                   placeholder="••••••••"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor="#78716C"
                   autoCapitalize="none"
                   autoCorrect={false}
                 />
+                <TouchableOpacity onPress={toggle} style={{ padding: 4 }} activeOpacity={0.7}>
+                  {show ? <Eye size={18} color="#541D26" /> : <EyeOff size={18} color="#78716C" />}
+                </TouchableOpacity>
               </View>
             </View>
           ))}
@@ -360,50 +447,123 @@ const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (
 const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => (
   <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
     <View style={docStyles.overlay}>
-      <View style={[docStyles.sheet, { maxHeight: '92%' }]}>
+      <View style={[docStyles.sheet, { maxHeight: '94%' }]}>
         <View style={docStyles.handleBar} />
         <View style={docStyles.header}>
           <Text style={docStyles.title}>Help & Support</Text>
           <TouchableOpacity style={docStyles.closeBtn} onPress={onClose}><Text style={docStyles.closeBtnText}>✕</Text></TouchableOpacity>
         </View>
         <ScrollView showsVerticalScrollIndicator={false}>
-          <Text style={{ fontSize: 12, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 10 }}>
-            Frequently Asked Questions
-          </Text>
-          <FAQItem question="How do I receive live order alarms?" answer="When a resident places an order, the app automatically plays a loud alarm sound and shows a full-screen alert. Go to Settings → Sound & Notification Alert to test your alarm. Make sure your phone volume is on and DigiLocal has notification permissions." />
-          <FAQItem question="How is total revenue calculated?" answer="Your total revenue is the sum of all completed order amounts. It is automatically updated in your dashboard as orders change status to COMPLETED." />
-          <FAQItem question="How do I update my store timings?" answer="Go to Settings → Store Rules & Website Configurations → Operating Timings. Enter your opening and closing time (e.g. 08:00 AM and 10:00 PM) and tap SAVE STORE CONFIGURATION." />
-          <FAQItem question="Why are my items showing as unavailable?" answer="Items can be toggled In Stock / Out of Stock from the Manage Menu tab. Tap the toggle next to any item to change its availability for residents." />
-          <FAQItem question="How do I renew my subscription?" answer="Go to Settings → Subscription & Plan and tap Request Plan Renewal. Our team will process your renewal request within 24 hours." />
-          <FAQItem question="What is the Digital Store QR Card?" answer="Your unique QR code links to your store's public ordering page. Share it with society residents so they can scan and place orders directly — no app download needed!" />
+          {/* Welcome Banner */}
+          <View style={{ backgroundColor: '#F0F7F2', borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#D1E5D7' }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#211A19', marginBottom: 4 }}>
+              We're Here to Help
+            </Text>
+            <Text style={{ fontSize: 12.5, color: '#3A4D3F', lineHeight: 18 }}>
+              Welcome to DigiLocal Vendor. If you need assistance with your account, orders, payments, products, or any other feature, our support team is here to help.
+            </Text>
+          </View>
 
-          <Text style={{ fontSize: 12, fontWeight: '700', color: '#9CA3AF', textTransform: 'uppercase', letterSpacing: 0.5, marginTop: 20, marginBottom: 10 }}>
-            Contact Support
+          {/* Common Help Topics Header */}
+          <Text style={{ fontSize: 12, fontWeight: '800', color: '#211A19', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 }}>
+            Common Help Topics
+          </Text>
+
+          <FAQItem
+            question="1. Account & Login"
+            answer="• Trouble logging in or receiving an OTP&#10;• Updating your mobile number or email address&#10;• Account verification & store activation issues&#10;• Password or account-security concerns"
+          />
+          <FAQItem
+            question="2. Store & Profile"
+            answer="• Updating store information & description&#10;• Changing store category or society details&#10;• Uploading or changing your store logo&#10;• Updating business or GST information"
+          />
+          <FAQItem
+            question="3. Products & Catalogue"
+            answer="• Adding or editing products&#10;• Updating prices and stock status&#10;• Setting product units (kg, litre, packet, piece, etc.)&#10;• Uploading product images&#10;• Marking products as Out of Stock"
+          />
+          <FAQItem
+            question="4. Orders"
+            answer="• New order notifications & live audio alarms&#10;• Accepting or rejecting orders promptly&#10;• Updating order status (Preparing, Out for Delivery, Delivered)&#10;• Society entry & delivery-related issues&#10;• Cancelled or disputed orders"
+          />
+          <FAQItem
+            question="5. Payments & Payouts"
+            answer="• Checking live earnings & dashboard stats&#10;• Viewing payout history & transaction logs&#10;• Bank-account & IFSC verification&#10;• T+1 settlement queries & timeline&#10;• Commission or platform-fee queries"
+          />
+          <FAQItem
+            question="6. Customer Issues"
+            answer="If a customer reports a missing, incorrect, damaged, expired or defective product, please contact DigiLocal Support promptly and cooperate with the resolution process."
+          />
+
+          {/* Contact Support Section */}
+          <Text style={{ fontSize: 12, fontWeight: '800', color: '#211A19', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 18, marginBottom: 10 }}>
+            Contact DigiLocal Support
           </Text>
 
           <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F3FA', borderRadius: 12, padding: 14, marginBottom: 10 }}
-            onPress={() => Linking.openURL('mailto:support@digilocal.in')}
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FAF8F5', borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#E7DFD5' }}
+            onPress={() => Linking.openURL('mailto:products@zordial.com')}
             activeOpacity={0.85}
           >
-            <Mail size={18} color="#18281F" style={{ marginRight: 12 }} />
-            <View>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#18281F' }}>Email Support</Text>
-              <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 1 }}>support@digilocal.in</Text>
+            <Mail size={20} color="#541D26" style={{ marginRight: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#211A19' }}>Email Support</Text>
+              <Text style={{ fontSize: 12, color: '#78716C', marginTop: 1 }}>products@zordial.com</Text>
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#F0F3FA', borderRadius: 12, padding: 14, marginBottom: 24 }}
-            onPress={() => Linking.openURL('tel:+919876543210')}
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FAF8F5', borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E7DFD5' }}
+            onPress={() => Linking.openURL('tel:+919461353008')}
             activeOpacity={0.85}
           >
-            <Phone size={18} color="#18281F" style={{ marginRight: 12 }} />
-            <View>
-              <Text style={{ fontSize: 13, fontWeight: '700', color: '#18281F' }}>Call Support</Text>
-              <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 1 }}>+91 98765 43210</Text>
+            <Phone size={20} color="#541D26" style={{ marginRight: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#211A19' }}>Helpline & Phone</Text>
+              <Text style={{ fontSize: 12, color: '#78716C', marginTop: 1 }}>+91 94613 53008</Text>
             </View>
           </TouchableOpacity>
+
+          {/* Operating Entity & Address Info */}
+          <View style={{ backgroundColor: '#FAF8F5', borderRadius: 12, padding: 13, borderWidth: 1, borderColor: '#E7DFD5', marginBottom: 14 }}>
+            <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#541D26', textTransform: 'uppercase', marginBottom: 6 }}>
+              🏢 Operating Entity Details
+            </Text>
+            <Text style={{ fontSize: 12, color: '#211A19', fontWeight: '600' }}>
+              Zordial Technologies Private Limited
+            </Text>
+            <Text style={{ fontSize: 11.5, color: '#4B5563', marginTop: 2 }}>
+              Platform: DigiLocal Technologies
+            </Text>
+            <Text style={{ fontSize: 11.5, color: '#4B5563', marginTop: 2 }}>
+              Address: Near Tonk Road, Pratap Nagar, Jaipur, Rajasthan, India
+            </Text>
+          </View>
+
+          {/* When Contacting Support Checklist */}
+          <View style={{ backgroundColor: '#FFFBEB', borderRadius: 12, padding: 13, borderWidth: 1, borderColor: '#FDE68A', marginBottom: 14 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', marginBottom: 6 }}>
+              📌 When Contacting Support
+            </Text>
+            <Text style={{ fontSize: 11.5, color: '#78350F', lineHeight: 17 }}>
+              Please provide the following whenever applicable:
+            </Text>
+            <Text style={{ fontSize: 11.5, color: '#78350F', marginTop: 4, lineHeight: 17 }}>
+              • Vendor/store name&#10;• Registered mobile number&#10;• Order ID & Society name&#10;• Description of the issue&#10;• Relevant screenshots or photographs
+            </Text>
+            <Text style={{ fontSize: 11, color: '#92400E', fontStyle: 'italic', marginTop: 5 }}>
+              This helps us resolve your issue faster.
+            </Text>
+          </View>
+
+          {/* Important Security Notice */}
+          <View style={{ backgroundColor: '#FEF2F2', borderRadius: 12, padding: 13, borderWidth: 1, borderColor: '#FECACA', marginBottom: 20 }}>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: '#991B1B', marginBottom: 4 }}>
+              ⚠️ Important Security Notice
+            </Text>
+            <Text style={{ fontSize: 11.5, color: '#7F1D1D', lineHeight: 16 }}>
+              DigiLocal Support will never ask you to share your OTP, password, UPI PIN, ATM PIN or other confidential authentication credentials. For security reasons, do not share such information with anyone claiming to represent DigiLocal.
+            </Text>
+          </View>
         </ScrollView>
         <TouchableOpacity style={docStyles.doneBtn} onPress={onClose} activeOpacity={0.9}>
           <Text style={docStyles.doneBtnText}>Close</Text>
@@ -458,7 +618,7 @@ const pickerModalStyles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1.5,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -469,14 +629,14 @@ const pickerModalStyles = StyleSheet.create({
   header: {
     padding: 16,
     borderBottomWidth: 1.5,
-    borderBottomColor: '#FAF8F3',
-    backgroundColor: '#FAF8F3',
+    borderBottomColor: '#FAF8F5',
+    backgroundColor: '#FAF8F5',
     alignItems: 'center',
   },
   title: {
     fontSize: 15,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#211A19',
     letterSpacing: 0.5,
   },
 });
@@ -491,6 +651,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   isDarkMode = false,
   onToggleDarkMode,
   onTestAlarm,
+  onExploreVendors,
 }) => {
   const theme = isDarkMode ? Colors.dark : Colors.light;
 
@@ -529,6 +690,15 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [timePickerTarget, setTimePickerTarget] = useState<'open' | 'close' | null>(null);
 
+
+  const [businessType, setBusinessType] = useState<'PRODUCT' | 'SERVICE'>(vendor.business_type || 'PRODUCT');
+  const [professionCategory, setProfessionCategory] = useState(vendor.profession_category || '');
+  const [experienceYears, setExperienceYears] = useState(vendor.experience_years ? String(vendor.experience_years) : '');
+  const [qualifications, setQualifications] = useState(vendor.qualifications || '');
+  const [aboutBio, setAboutBio] = useState(vendor.about || vendor.description || '');
+  const [startingPrice, setStartingPrice] = useState(vendor.starting_price ? String(vendor.starting_price) : '');
+  const [workingDays, setWorkingDays] = useState(vendor.working_days || 'Mon – Sat');
+  const [whatsappNumber, setWhatsappNumber] = useState(vendor.whatsapp_number || vendor.phone_number || '');
 
   const [gstPercent, setGstPercent] = useState('5');
   const [serviceChargePercent, setServiceChargePercent] = useState('0');
@@ -581,6 +751,14 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
     try {
       await updateStoreSettingsApi(vendor.vendor_id, {
         store_name: vendor.store_name,
+        business_type: businessType,
+        profession_category: professionCategory.trim(),
+        experience_years: experienceYears ? parseInt(experienceYears, 10) || 0 : undefined,
+        qualifications: qualifications.trim(),
+        about: aboutBio.trim(),
+        starting_price: startingPrice ? parseFloat(startingPrice) || 0 : undefined,
+        working_days: workingDays.trim(),
+        whatsapp_number: whatsappNumber.trim(),
         phone_number: cleanPhone,
         gst_number: submittedGstNumber,
         opening_timing: openTime.trim(),
@@ -591,7 +769,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
         min_order_value: parseFloat(minOrderVal) || 0,
         max_quantity_limit: parseInt(maxQtyLimit) || 10,
       });
-      showAlert('Settings Updated', 'Store configurations saved successfully!', 'success');
+      showAlert('Settings Updated', 'Business configurations saved successfully!', 'success');
       await onRefresh();
     } catch (err: any) {
       showAlert('Update Failed', err.message || 'Failed to save store settings.', 'error');
@@ -648,16 +826,16 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
     );
   };
 
-  const processAndUploadLogo = async (asset: ImagePicker.ImagePickerAsset) => {
-    if (!asset.uri) return;
+  const processAndUploadLogo = async (picked: PickedImageResult) => {
+    if (!picked.uri) return;
     try {
       showAlert('Uploading Logo', 'Uploading and saving your store logo...', 'info');
-      const fileName = asset.fileName || `store_logo_${Date.now()}.jpg`;
-      const mimeType = asset.mimeType || 'image/jpeg';
+      const fileName = picked.fileName || `store_logo_${Date.now()}.jpg`;
+      const mimeType = picked.mimeType || 'image/jpeg';
 
       const uploadResult = await uploadVendorLogoApi(
         vendor.vendor_id,
-        asset.uri,
+        picked.base64 ? `data:${mimeType};base64,${picked.base64}` : picked.uri,
         fileName,
         mimeType
       );
@@ -674,19 +852,13 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   const handlePickFromCamera = async () => {
     setShowLogoPickerModal(false);
     try {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
-        showAlert('Permission Required', 'Camera permission is required to take a photo of your store logo.', 'warning');
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const captured = await captureImageFromDevice({
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
       });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        await processAndUploadLogo(result.assets[0]);
+      if (captured && captured.uri) {
+        await processAndUploadLogo(captured);
       }
     } catch (err: any) {
       showAlert('Camera Error', err.message || 'Failed to capture photo', 'error');
@@ -696,19 +868,13 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   const handlePickFromGallery = async () => {
     setShowLogoPickerModal(false);
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        showAlert('Permission Required', 'Gallery access is required to choose your store logo.', 'warning');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      const picked = await pickImageFromDevice({
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
       });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        await processAndUploadLogo(result.assets[0]);
+      if (picked && picked.uri) {
+        await processAndUploadLogo(picked);
       }
     } catch (err: any) {
       showAlert('Gallery Error', err.message || 'Failed to pick image', 'error');
@@ -723,14 +889,14 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
 
   // Support & Legal 2x2 grid items
   const supportCards = [
-    { icon: HelpCircle, label: 'Help & Support', sub: 'FAQs & Contact', onPress: () => setShowHelp(true), color: '#34533C' },
-    { icon: Info, label: 'About Us', sub: 'Our story & mission', onPress: () => setShowAbout(true), color: '#C4A066' },
-    { icon: Shield, label: 'Privacy Policy', sub: 'Data safety', onPress: () => setShowPrivacy(true), color: '#059669' },
-    { icon: FileText, label: 'Terms & Conditions', sub: 'Store & platform rules', onPress: () => setShowTerms(true), color: '#E6C35C' },
+    { icon: HelpCircle, label: 'Help & Support', sub: 'FAQs & Contact', onPress: () => setShowHelp(true), color: '#541D26' },
+    { icon: Info, label: 'About Us', sub: 'Our story & mission', onPress: () => setShowAbout(true), color: '#C8A878' },
+    { icon: Shield, label: 'Privacy Policy', sub: 'Data safety', onPress: () => setShowPrivacy(true), color: '#16A34A' },
+    { icon: FileText, label: 'Terms & Conditions', sub: 'Store & platform rules', onPress: () => setShowTerms(true), color: '#C8A878' },
   ];
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: '#EDEDE4' }]} contentContainerStyle={styles.content}>
+    <ScrollView style={[styles.container, { backgroundColor: '#F8F6F0' }]} contentContainerStyle={styles.content}>
 
       {/* Store Header Card */}
       <View style={styles.card}>
@@ -756,7 +922,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
             <Text style={styles.storeTitle}>{vendor.store_name}</Text>
             <Text style={styles.vendorName}>Owner: {vendor.vendor_name}</Text>
             <TouchableOpacity onPress={handleUploadStoreLogo} style={{ marginTop: 3 }}>
-              <Text style={{ fontSize: 11.5, color: '#0E6B3D', fontWeight: '700' }}>
+              <Text style={{ fontSize: 11.5, color: '#541D26', fontWeight: '700' }}>
                 {vendor.logo_url || vendor.image_url ? 'Change Store Logo' : '+ Add Store Logo'}
               </Text>
             </TouchableOpacity>
@@ -765,23 +931,23 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
 
         {/* Digital Card Button */}
         <TouchableOpacity style={styles.digitalCardBtn} onPress={() => setShowQR(true)} activeOpacity={0.88}>
-          <QrCode size={15} color="#18281F" style={{ marginRight: 8 }} />
+          <QrCode size={15} color="#211A19" style={{ marginRight: 8 }} />
           <Text style={styles.digitalCardBtnText}>View Digital Store Card & QR</Text>
-          <ExternalLink size={13} color="#18281F" style={{ marginLeft: 'auto' }} />
+          <ExternalLink size={13} color="#211A19" style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
       </View>
 
       {/* Subscription Card */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Calendar size={17} color="#18281F" style={{ marginRight: 8 }} />
+          <Calendar size={17} color="#211A19" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Subscription & Plan</Text>
         </View>
 
         <View style={styles.subDetailsRow}>
           <View style={styles.subCol}>
             <Text style={styles.subLabel}>Status</Text>
-            <Text style={[styles.subValue, { color: isExpired ? '#EF4444' : '#18281F' }]}>
+            <Text style={[styles.subValue, { color: isExpired ? '#EF4444' : '#211A19' }]}>
               {subscription?.status || (isExpired ? 'EXPIRED' : 'ACTIVE')}
             </Text>
           </View>
@@ -815,12 +981,19 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       {/* Business Profile Info */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Building size={17} color="#18281F" style={{ marginRight: 8 }} />
+          <Building size={17} color="#211A19" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Business Profile Details</Text>
         </View>
 
         {[
-          { icon: Building, text: `Society: ${vendor.society_name || 'DigiLocal Society'}` },
+          { 
+            icon: Building, 
+            text: (() => {
+              const locName = vendor.society_name || vendor.area || vendor.location || 'DigiLocal Area';
+              return `Location: ${locName}`;
+            })()
+          },
+          { icon: Store, text: `Shop Number: ${vendor.shop_number || (vendor as any).shop_no || 'N/A'}` },
           { icon: Phone, text: `Contact: ${vendor.phone_number || 'N/A'}` },
           { icon: Mail, text: `Email: ${vendor.email}` },
           { icon: ShieldCheck, text: `GST: ${vendor.gst_number || 'N/A'}` },
@@ -835,14 +1008,127 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       {/* Store Rules & Website Configurations */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Sliders size={17} color="#18281F" style={{ marginRight: 8 }} />
-          <Text style={styles.cardTitle}>Store Rules & Configurations</Text>
+          <Sliders size={17} color="#211A19" style={{ marginRight: 8 }} />
+          <Text style={styles.cardTitle}>Business Profile & Rules</Text>
         </View>
 
-        <Text style={styles.sectionHeading}>1. Store Profile & Branding</Text>
-        <Text style={styles.configLabel}>WhatsApp / Phone Number</Text>
+        {/* Business Type Selector (Product vs Service) */}
+        <Text style={[styles.sectionHeading, { marginTop: 2, marginBottom: 6 }]}>1. Business Category Model</Text>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 2, marginBottom: 12, width: '100%' }}>
+          <TouchableOpacity
+            style={[
+              styles.bizTypeBtn,
+              businessType === 'PRODUCT' && styles.bizTypeBtnActive,
+            ]}
+            onPress={() => setBusinessType('PRODUCT')}
+            activeOpacity={0.8}
+          >
+            <Store size={15} color={businessType === 'PRODUCT' ? '#FFFFFF' : '#541D26'} />
+            <Text style={[styles.bizTypeBtnText, businessType === 'PRODUCT' && styles.bizTypeBtnTextActive]} numberOfLines={1}>
+              Product Merchant
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.bizTypeBtn,
+              businessType === 'SERVICE' && styles.bizTypeBtnActive,
+            ]}
+            onPress={() => setBusinessType('SERVICE')}
+            activeOpacity={0.8}
+          >
+            <Sparkles size={15} color={businessType === 'SERVICE' ? '#FFFFFF' : '#541D26'} />
+            <Text style={[styles.bizTypeBtnText, businessType === 'SERVICE' && styles.bizTypeBtnTextActive]} numberOfLines={1}>
+              Service Provider
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {businessType === 'SERVICE' ? (
+          <>
+            <Text style={styles.sectionHeading}>2. Professional Credentials & Bio</Text>
+            <Text style={styles.configLabel}>Profession / Specialization *</Text>
+            <TextInput
+              style={[styles.configInput, { color: '#211A19' }]}
+              value={professionCategory}
+              onChangeText={setProfessionCategory}
+              placeholder="e.g. Physiotherapist, Electrician, Tuition Teacher, CA"
+              placeholderTextColor="#9CA3AF"
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.configLabel}>Experience (Years)</Text>
+                <TextInput
+                  style={[styles.configInput, { color: '#211A19' }]}
+                  value={experienceYears}
+                  onChangeText={setExperienceYears}
+                  keyboardType="numeric"
+                  placeholder="e.g. 8"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.configLabel}>Starting Fee (₹)</Text>
+                <TextInput
+                  style={[styles.configInput, { color: '#211A19' }]}
+                  value={startingPrice}
+                  onChangeText={setStartingPrice}
+                  keyboardType="numeric"
+                  placeholder="e.g. 399"
+                  placeholderTextColor="#9CA3AF"
+                />
+              </View>
+            </View>
+
+            <Text style={styles.configLabel}>Qualifications & Certifications</Text>
+            <TextInput
+              style={[styles.configInput, { color: '#211A19' }]}
+              value={qualifications}
+              onChangeText={setQualifications}
+              placeholder="e.g. MBBS, MD, Certified Yoga Coach, B.Tech"
+              placeholderTextColor="#9CA3AF"
+            />
+
+            <Text style={styles.configLabel}>Professional Bio / About Services</Text>
+            <TextInput
+              style={[styles.configInput, { color: '#211A19', height: 75, textAlignVertical: 'top' }]}
+              value={aboutBio}
+              onChangeText={setAboutBio}
+              multiline
+              numberOfLines={3}
+              placeholder="Describe your expertise, experience, and service guarantees..."
+              placeholderTextColor="#9CA3AF"
+            />
+
+            <Text style={styles.configLabel}>Working Days</Text>
+            <TextInput
+              style={[styles.configInput, { color: '#211A19' }]}
+              value={workingDays}
+              onChangeText={setWorkingDays}
+              placeholder="e.g. Mon – Sat (Sundays on appointment)"
+              placeholderTextColor="#9CA3AF"
+            />
+
+            <Text style={styles.configLabel}>WhatsApp Business Number</Text>
+            <TextInput
+              style={[styles.configInput, { color: '#211A19' }]}
+              value={whatsappNumber}
+              onChangeText={setWhatsappNumber}
+              keyboardType="phone-pad"
+              maxLength={10}
+              placeholder="10-digit WhatsApp number"
+              placeholderTextColor="#9CA3AF"
+            />
+          </>
+        ) : null}
+
+        <Text style={styles.sectionHeading}>
+          {businessType === 'SERVICE' ? '3. Contact & Statutory' : '2. Store Profile & Branding'}
+        </Text>
+        <Text style={styles.configLabel}>Primary Contact Phone Number</Text>
         <TextInput
-          style={[styles.configInput, { color: '#18281F' }]}
+          style={[styles.configInput, { color: '#211A19' }]}
           value={phone}
           onChangeText={(t) => {
             const digitsOnly = t.replace(/[^0-9]/g, '');
@@ -855,7 +1141,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
         />
         <Text style={styles.configLabel}>PAN Number</Text>
         <TextInput
-          style={[styles.configInput, { color: '#' }]}
+          style={[styles.configInput, { color: '#211A19' }]}
           value={panNum}
           onChangeText={(t) => {
             const cleaned = t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
@@ -879,7 +1165,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
 
         <Text style={styles.configLabel}>GSTIN Number (Optional)</Text>
         <TextInput
-          style={[styles.configInput, { color: "#18281F", marginTop: 4 }]}
+          style={[styles.configInput, { color: "#211A19", marginTop: 4 }]}
           value={gstNum}
           onChangeText={(t) => {
             const cleaned = t.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
@@ -893,7 +1179,9 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           placeholder="e.g. 22AAAAA0000A1Z5" placeholderTextColor="#9CA3AF"
         />
 
-        <Text style={styles.sectionHeading}>2. Operating Timings</Text>
+        <Text style={styles.sectionHeading}>
+          {businessType === 'SERVICE' ? '4. Operating Hours' : '3. Operating Timings'}
+        </Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={styles.configLabel}>Opening Time</Text>
@@ -905,9 +1193,9 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               }}
               activeOpacity={0.8}
             >
-              <Clock size={15} color="#18281F" style={{ marginRight: 8 }} />
+              <Clock size={15} color="#211A19" style={{ marginRight: 8 }} />
               <Text style={styles.dropdownTriggerText}>{openTime || '08:00 AM'}</Text>
-              <ChevronDown size={14} color="#04130aff" />
+              <ChevronDown size={14} color="#211A19" />
             </TouchableOpacity>
           </View>
           <View style={{ flex: 1 }}>
@@ -920,38 +1208,42 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               }}
               activeOpacity={0.8}
             >
-              <Clock size={15} color="#18281F" style={{ marginRight: 8 }} />
+              <Clock size={15} color="#211A19" style={{ marginRight: 8 }} />
               <Text style={styles.dropdownTriggerText}>{closeTime || '10:00 PM'}</Text>
               <ChevronDown size={14} color="#9CA3AF" />
             </TouchableOpacity>
           </View>
         </View>
 
-        <Text style={styles.sectionHeading}>3. Taxes & Charges</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.configLabel}>GST Tax (%)</Text>
-            <TextInput style={[styles.configInput, { color: '#18281F' }]} value={gstPercent} onChangeText={setGstPercent} keyboardType="numeric" placeholder="5.0" placeholderTextColor="#9CA3AF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.configLabel}>Service Charge (%)</Text>
-            <TextInput style={[styles.configInput, { color: '#18281F' }]} value={serviceChargePercent} onChangeText={setServiceChargePercent} keyboardType="numeric" placeholder="0.0" placeholderTextColor="#9CA3AF" />
-          </View>
-        </View>
-        <Text style={styles.configLabel}>Delivery / Packaging Charge (₹)</Text>
-        <TextInput style={[styles.configInput, { color: '#18281F' }]} value={deliveryCharge} onChangeText={setDeliveryCharge} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
+        {businessType === 'PRODUCT' ? (
+          <>
+            <Text style={styles.sectionHeading}>4. Taxes & Charges</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.configLabel}>GST Tax (%)</Text>
+                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={gstPercent} onChangeText={setGstPercent} keyboardType="numeric" placeholder="5.0" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.configLabel}>Service Charge (%)</Text>
+                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={serviceChargePercent} onChangeText={setServiceChargePercent} keyboardType="numeric" placeholder="0.0" placeholderTextColor="#9CA3AF" />
+              </View>
+            </View>
+            <Text style={styles.configLabel}>Delivery / Packaging Charge (₹)</Text>
+            <TextInput style={[styles.configInput, { color: '#211A19' }]} value={deliveryCharge} onChangeText={setDeliveryCharge} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
 
-        <Text style={styles.sectionHeading}>4. Order Restrictions & Limits</Text>
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.configLabel}>Min Order Value (₹)</Text>
-            <TextInput style={[styles.configInput, { color: '#18281F' }]} value={minOrderVal} onChangeText={setMinOrderVal} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.configLabel}>Max Item Qty Limit</Text>
-            <TextInput style={[styles.configInput, { color: '#18281F' }]} value={maxQtyLimit} onChangeText={setMaxQtyLimit} keyboardType="numeric" placeholder="10" placeholderTextColor="#9CA3AF" />
-          </View>
-        </View>
+            <Text style={styles.sectionHeading}>5. Order Restrictions & Limits</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.configLabel}>Min Order Value (₹)</Text>
+                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={minOrderVal} onChangeText={setMinOrderVal} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.configLabel}>Max Item Qty Limit</Text>
+                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={maxQtyLimit} onChangeText={setMaxQtyLimit} keyboardType="numeric" placeholder="10" placeholderTextColor="#9CA3AF" />
+              </View>
+            </View>
+          </>
+        ) : null}
 
         <TouchableOpacity
           style={styles.saveConfigsBtn}
@@ -962,7 +1254,9 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           {savingSettings ? <ActivityIndicator color="#ffffff" /> : (
             <>
               <Check size={15} color="#FFFFFF" style={{ marginRight: 6 }} />
-              <Text style={styles.saveConfigsBtnText}>SAVE STORE CONFIGURATION</Text>
+              <Text style={styles.saveConfigsBtnText}>
+                {businessType === 'SERVICE' ? 'SAVE SERVICE PROFILE' : 'SAVE STORE CONFIGURATION'}
+              </Text>
             </>
           )}
         </TouchableOpacity>
@@ -971,7 +1265,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       {/* Sound & Notification Alert */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <BellRing size={17} color="#18281F" style={{ marginRight: 8 }} />
+          <BellRing size={17} color="#211A19" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Sound & Notification Alert</Text>
         </View>
         <TouchableOpacity
@@ -987,11 +1281,11 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       {/* Account & Security */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <ShieldCheck size={17} color="#18281F" style={{ marginRight: 8 }} />
+          <ShieldCheck size={17} color="#211A19" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Account & Security</Text>
         </View>
         <TouchableOpacity style={styles.settingsRowItem} onPress={() => setShowPassword(true)} activeOpacity={0.85}>
-          <Lock size={16} color="#18281F" style={{ marginRight: 12 }} />
+          <Lock size={16} color="#211A19" style={{ marginRight: 12 }} />
           <View style={{ flex: 1 }}>
             <Text style={styles.settingsRowLabel}>Password & Security</Text>
             <Text style={styles.settingsRowSub}>Change your account password</Text>
@@ -1003,7 +1297,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       {/* Support & Legal — 2x2 Grid */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <HelpCircle size={17} color="#18281F" style={{ marginRight: 8 }} />
+          <HelpCircle size={17} color="#211A19" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Support & Legal</Text>
         </View>
         <View style={styles.supportGrid}>
@@ -1051,7 +1345,12 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       </View>
 
       {/* ── Modals ── */}
-      <StoreDigitalCardModal visible={showQR} vendor={vendor} onClose={() => setShowQR(false)} />
+      <StoreDigitalCardModal
+        visible={showQR}
+        vendor={vendor}
+        onClose={() => setShowQR(false)}
+        onExploreVendors={onExploreVendors}
+      />
       <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} />
       <DocumentModal visible={showAbout} title="About DigiLocal" content={ABOUT_CONTENT} onClose={() => setShowAbout(false)} />
       <DocumentModal visible={showPrivacy} title="Privacy Policy" content={PRIVACY_CONTENT} onClose={() => setShowPrivacy(false)} />
@@ -1109,7 +1408,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               onPress={handlePickFromCamera}
               activeOpacity={0.8}
             >
-              <Camera size={20} color="#0E6B3D" style={{ marginRight: 12 }} />
+              <Camera size={20} color="#541D26" style={{ marginRight: 12 }} />
               <Text style={styles.logoModalOptionText}>Take Photo with Camera</Text>
             </TouchableOpacity>
 
@@ -1118,7 +1417,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               onPress={handlePickFromGallery}
               activeOpacity={0.8}
             >
-              <ImageIcon size={20} color="#0E6B3D" style={{ marginRight: 12 }} />
+              <ImageIcon size={20} color="#541D26" style={{ marginRight: 12 }} />
               <Text style={styles.logoModalOptionText}>Choose from Gallery</Text>
             </TouchableOpacity>
 
@@ -1149,11 +1448,11 @@ const styles = StyleSheet.create({
   logoModalCard: {
     width: '100%',
     maxWidth: 340,
-    backgroundColor: '#FAF8F3',
+    backgroundColor: '#FAF8F5',
     borderRadius: 20,
     padding: 22,
     borderWidth: 1,
-    borderColor: '#ECE8DD',
+    borderColor: '#E7DFD5',
     alignItems: 'center',
     shadowColor: '#000000',
     shadowOffset: { width: 0, height: 8 },
@@ -1164,13 +1463,13 @@ const styles = StyleSheet.create({
   logoModalTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#211A19',
     marginBottom: 4,
     textAlign: 'center',
   },
   logoModalSubtitle: {
     fontSize: 12,
-    color: '#6B7C70',
+    color: '#78716C',
     marginBottom: 18,
     textAlign: 'center',
   },
@@ -1183,13 +1482,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E2DEC8',
+    borderColor: '#E7DFD5',
     marginBottom: 10,
   },
   logoModalOptionText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#18281F',
+    color: '#211A19',
   },
   logoModalCancelBtn: {
     width: '100%',
@@ -1206,9 +1505,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
     padding: 18,
-    shadowColor: '#18281F',
+    shadowColor: '#211A19',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.04,
     shadowRadius: 8,
@@ -1219,7 +1518,7 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 18,
-    backgroundColor: '#18281F',
+    backgroundColor: '#211A19',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -1232,14 +1531,14 @@ const styles = StyleSheet.create({
     width: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#C4A066',
+    backgroundColor: '#C8A878',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFFFFF',
   },
-  storeTitle: { fontSize: 17, fontWeight: '800', color: '#18281F' },
-  vendorName: { fontSize: 12, color: '#6B7C70', marginTop: 2 },
+  storeTitle: { fontSize: 17, fontWeight: '800', color: '#211A19' },
+  vendorName: { fontSize: 12, color: '#78716C', marginTop: 2 },
   badgeRow: { marginTop: 6 },
   statusBadge: {
     alignSelf: 'flex-start',
@@ -1250,38 +1549,38 @@ const styles = StyleSheet.create({
   digitalCardBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EFE8D8',
+    backgroundColor: '#EEE5DA',
     borderRadius: 12,
     paddingHorizontal: 14,
     paddingVertical: 11,
     marginTop: 14,
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
   },
-  digitalCardBtnText: { fontSize: 13, fontWeight: '700', color: '#18281F' },
+  digitalCardBtnText: { fontSize: 13, fontWeight: '700', color: '#211A19' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
-  cardTitle: { fontSize: 14, fontWeight: '800', color: '#18281F' },
+  cardTitle: { fontSize: 14, fontWeight: '800', color: '#211A19' },
   subDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
   subCol: { flex: 1 },
-  subLabel: { fontSize: 10, fontWeight: '700', color: '#6B7C70', textTransform: 'uppercase', letterSpacing: 0.5 },
-  subValue: { fontSize: 18, fontWeight: '900', color: '#18281F', marginTop: 2 },
-  expiryText: { fontSize: 12, color: '#6B7C70', marginBottom: 12 },
+  subLabel: { fontSize: 10, fontWeight: '700', color: '#78716C', textTransform: 'uppercase', letterSpacing: 0.5 },
+  subValue: { fontSize: 18, fontWeight: '900', color: '#211A19', marginTop: 2 },
+  expiryText: { fontSize: 12, color: '#78716C', marginBottom: 12 },
   renewBtn: {
     flexDirection: 'row',
     height: 46,
     borderRadius: 12,
-    backgroundColor: '#18281F',
+    backgroundColor: '#211A19',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 4,
   },
   renewBtnText: { color: '#F8F5EE', fontSize: 13, fontWeight: '700' },
   infoLine: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7 },
-  infoLineText: { fontSize: 13, fontWeight: '500', color: '#18281F' },
+  infoLineText: { fontSize: 13, fontWeight: '500', color: '#211A19' },
   sectionHeading: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#6B7C70',
+    color: '#78716C',
     textTransform: 'uppercase',
     letterSpacing: 1.0,
     marginTop: 14,
@@ -1291,7 +1590,7 @@ const styles = StyleSheet.create({
   configLabel: {
     fontSize: 10,
     fontWeight: '700',
-    color: '#6B7C70',
+    color: '#78716C',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
     marginTop: 6,
@@ -1300,22 +1599,22 @@ const styles = StyleSheet.create({
   },
   configInput: {
     borderWidth: 1.5,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
     borderRadius: 10,
     paddingHorizontal: 10,
     height: 42,
     fontSize: 13,
-    backgroundColor: '#FAF8F3',
+    backgroundColor: '#FAF8F5',
   },
   dropdownTrigger: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
     borderRadius: 11,
     paddingHorizontal: 12,
     height: 44,
-    backgroundColor: '#FAF8F3',
+    backgroundColor: '#FAF8F5',
   },
   dropdownTriggerText: {
     flex: 1,
@@ -1327,7 +1626,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: 46,
     borderRadius: 12,
-    backgroundColor: '#C4A066',
+    backgroundColor: '#C8A878',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 18,
@@ -1337,7 +1636,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: 44,
     borderRadius: 12,
-    backgroundColor: '#18281F',
+    backgroundColor: '#211A19',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1347,8 +1646,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 9,
   },
-  settingsRowLabel: { fontSize: 13, fontWeight: '700', color: '#18281F' },
-  settingsRowSub: { fontSize: 11, color: '#6B7C70', marginTop: 2 },
+  settingsRowLabel: { fontSize: 13, fontWeight: '700', color: '#211A19' },
+  settingsRowSub: { fontSize: 11, color: '#78716C', marginTop: 2 },
   // Support 2x2 grid
   supportGrid: {
     flexDirection: 'row',
@@ -1357,11 +1656,11 @@ const styles = StyleSheet.create({
   },
   supportGridItem: {
     width: '47%',
-    backgroundColor: '#FAF8F3',
+    backgroundColor: '#FAF8F5',
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
   },
   supportIconBox: {
     width: 36,
@@ -1371,8 +1670,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 8,
   },
-  supportGridLabel: { fontSize: 12, fontWeight: '700', color: '#18281F' },
-  supportGridSub: { fontSize: 10.5, color: '#6B7C70', marginTop: 2 },
+  supportGridLabel: { fontSize: 12, fontWeight: '700', color: '#211A19' },
+  supportGridSub: { fontSize: 10.5, color: '#78716C', marginTop: 2 },
   logoutBtn: {
     flexDirection: 'row',
     height: 50,
@@ -1383,15 +1682,42 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  logoutBtnText: { color: '#B91C1C', fontSize: 14, fontWeight: '800' },
+  logoutBtnText: { color: '#DC2626', fontSize: 14, fontWeight: '800' },
   deleteAccountBtn: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 10,
   },
-  deleteAccountText: { fontSize: 13, color: '#6B7C70', fontWeight: '600' },
+  deleteAccountText: { fontSize: 13, color: '#78716C', fontWeight: '600' },
   versionFooter: { alignItems: 'center', paddingVertical: 10, paddingBottom: 0 },
-  versionText: { fontSize: 13, fontWeight: '700', color: '#18281F' },
-  versionSub: { fontSize: 11, color: '#6B7C70', marginTop: 3 },
+  versionText: { fontSize: 13, fontWeight: '700', color: '#211A19' },
+  versionSub: { fontSize: 11, color: '#78716C', marginTop: 3 },
+  bizTypeBtn: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 10,
+    paddingHorizontal: 6,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#E7DFD5',
+    backgroundColor: '#FAF8F5',
+  },
+  bizTypeBtnActive: {
+    backgroundColor: '#211A19',
+    borderColor: '#211A19',
+  },
+  bizTypeBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#541D26',
+    textAlign: 'center',
+  },
+  bizTypeBtnTextActive: {
+    color: '#FFFFFF',
+  },
 });

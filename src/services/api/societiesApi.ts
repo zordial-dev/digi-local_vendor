@@ -4,33 +4,13 @@ import { getCachedSocieties, setCachedSocieties } from '../cacheService';
 
 // ── Onboarding & Societies APIs ───────────────────────────────
 
-export const DEFAULT_FALLBACK_SOCIETIES: Society[] = [
-  { society_id: 1, society_name: 'Greenwood Palms', location: 'Phase 1, Sector 4', status: 'approved' },
-  { society_id: 2, society_name: 'Anupam Heights', location: 'Near Central Park', status: 'approved' },
-  { society_id: 3, society_name: 'Galaxy Enclave', location: 'Main Road, Sector 12', status: 'approved' },
-  { society_id: 4, society_name: 'Royal Palms Towers', location: 'Airport Road', status: 'approved' },
-  { society_id: 5, society_name: 'Sunshine Apartments', location: 'Lakeview Area', status: 'approved' },
-  { society_id: 6, society_name: 'Shanti Niketan Co-op', location: 'Civil Lines', status: 'approved' },
-  { society_id: 7, society_name: 'Silver Oak Heights', location: 'Ring Road', status: 'approved' },
-  { society_id: 8, society_name: 'Orchid Park Residency', location: 'Tech Zone 2', status: 'approved' },
-  { society_id: 9, society_name: 'Godrej Palm Retreat', location: 'Sector 150', status: 'approved' },
-  { society_id: 10, society_name: 'ATS One Hamlet', location: 'Sector 104', status: 'approved' },
-  { society_id: 11, society_name: 'Mahagun Moderne', location: 'Sector 78', status: 'approved' },
-  { society_id: 12, society_name: 'Jaypee Greens Aman', location: 'Sector 151', status: 'approved' },
-];
-
 export async function fetchSocietiesApi(searchQuery?: string): Promise<Society[]> {
   try {
     const url = searchQuery && searchQuery.trim() !== ''
       ? `${getApiBaseUrl()}/societies?search=${encodeURIComponent(searchQuery.trim())}`
       : `${getApiBaseUrl()}/societies`;
 
-    const fetchPromise = safeFetch(url);
-    const timeoutPromise = new Promise<{ res: { ok: false; status: number }; data: any }>((resolve) =>
-      setTimeout(() => resolve({ res: { ok: false, status: 408 }, data: null }), 2500)
-    );
-
-    const { res, data } = await Promise.race([fetchPromise, timeoutPromise]);
+    const { res, data } = await safeFetch(url);
     if (res.ok && data) {
       let list: Society[] = [];
       if (Array.isArray(data)) list = data;
@@ -47,24 +27,16 @@ export async function fetchSocietiesApi(searchQuery?: string): Promise<Society[]
       }
     }
   } catch (err) {
-    console.error('Error fetching societies:', err);
+    console.error('Error fetching live societies from backend:', err);
   }
 
-  // Check persistent cache
+  // Check limited cache if network is temporarily unreachable
   if (!searchQuery) {
     const cached = await getCachedSocieties();
     if (cached && cached.length > 0) return cached;
   }
 
-  // Fast fallback filtering
-  if (searchQuery && searchQuery.trim() !== '') {
-    const q = searchQuery.trim().toLowerCase();
-    const filtered = DEFAULT_FALLBACK_SOCIETIES.filter(s =>
-      s.society_name.toLowerCase().includes(q) || (s.location && s.location.toLowerCase().includes(q))
-    );
-    return filtered.length > 0 ? filtered : DEFAULT_FALLBACK_SOCIETIES;
-  }
-  return DEFAULT_FALLBACK_SOCIETIES;
+  return [];
 }
 
 export async function createSocietyApi(payload: {
@@ -72,6 +44,13 @@ export async function createSocietyApi(payload: {
   location: string;
   secretary_name: string;
   secretary_mobile: string;
+  location_type?: string;
+  rwa_contact?: string;
+  landmark?: string;
+  maps_link?: string;
+  total_units?: string | number;
+  business_type?: string;
+  category?: string;
   status?: string;
 }): Promise<{ message: string; society_id: number; society: Society }> {
   const { res, data } = await safeFetch(`${getApiBaseUrl()}/societies`, {
@@ -80,7 +59,7 @@ export async function createSocietyApi(payload: {
   });
 
   if (!res.ok) {
-    throw new Error(data.error || 'Failed to onboard society');
+    throw new Error(data?.error || 'Failed to onboard location');
   }
   return data;
 }

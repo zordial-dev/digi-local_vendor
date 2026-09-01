@@ -14,6 +14,7 @@ import {
   Modal,
   Image,
   Alert,
+  Linking,
   NativeModules,
   TurboModuleRegistry,
 } from 'react-native';
@@ -23,6 +24,7 @@ import {
   Lock,
   Mail,
   AlertTriangle,
+  AlertCircle,
   ShieldCheck,
   Store,
   Building,
@@ -31,6 +33,7 @@ import {
   EyeOff,
   UserCheck,
   User,
+  UserPlus,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -43,14 +46,19 @@ import {
   ChevronDown,
   ChevronRight,
   Camera,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ShoppingBag,
+  Wrench,
+  MapPin,
+  Search,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { pickImageFromDevice, captureImageFromDevice } from '../utils/imagePickerHelper';
 import Svg, { Path } from 'react-native-svg';
 import { Colors, APP_LOGO_URL } from '../constants/theme';
-import { DigiLocalLogo } from './DigiLocalLogo';
-import { loginVendorApi, registerVendorApi, fetchSocietiesApi, createSocietyApi, VendorUser, Society, sendOtpApi, verifyOtpApi, loginVendorWithOtpApi, forgotPasswordOtpApi, resetPasswordWithOtpApi } from '../services/apiService';
+import { loginVendorApi, registerVendorApi, VendorUser, sendOtpApi, verifyOtpApi, loginVendorWithOtpApi, forgotPasswordOtpApi, resetPasswordWithOtpApi, checkVendorPhoneApi, checkVendorEmailApi, fetchLocationSuggestionsApi } from '../services/apiService';
 import { getSavedCredentials, saveCredentials } from '../services/authStorage';
+import { isServiceCategory } from '../utils/translations';
 
 // Clean user-facing error message formatter for production
 const formatUserFacingError = (err: any, fallbackMessage: string): string => {
@@ -87,10 +95,47 @@ const formatUserFacingError = (err: any, fallbackMessage: string): string => {
 
 
 
+export interface CountryCodeItem {
+  code: string;
+  flag: string;
+  name: string;
+  dialCode: string;
+}
+
+export const POPULAR_COUNTRY_CODES: CountryCodeItem[] = [
+  { code: 'IN', flag: '🇮🇳', name: 'India', dialCode: '+91' },
+  { code: 'AE', flag: '🇦🇪', name: 'United Arab Emirates', dialCode: '+971' },
+  { code: 'US', flag: '🇺🇸', name: 'United States', dialCode: '+1' },
+  { code: 'GB', flag: '🇬🇧', name: 'United Kingdom', dialCode: '+44' },
+  { code: 'SA', flag: '🇸🇦', name: 'Saudi Arabia', dialCode: '+966' },
+  { code: 'SG', flag: '🇸🇬', name: 'Singapore', dialCode: '+65' },
+  { code: 'CA', flag: '🇨🇦', name: 'Canada', dialCode: '+1' },
+  { code: 'AU', flag: '🇦🇺', name: 'Australia', dialCode: '+61' },
+  { code: 'DE', flag: '🇩🇪', name: 'Germany', dialCode: '+49' },
+  { code: 'FR', flag: '🇫🇷', name: 'France', dialCode: '+33' },
+  { code: 'NP', flag: '🇳🇵', name: 'Nepal', dialCode: '+977' },
+  { code: 'BD', flag: '🇧🇩', name: 'Bangladesh', dialCode: '+880' },
+  { code: 'LK', flag: '🇱🇰', name: 'Sri Lanka', dialCode: '+94' },
+  { code: 'MY', flag: '🇲🇾', name: 'Malaysia', dialCode: '+60' },
+  { code: 'QA', flag: '🇶🇦', name: 'Qatar', dialCode: '+974' },
+  { code: 'OM', flag: '🇴🇲', name: 'Oman', dialCode: '+968' },
+  { code: 'KW', flag: '🇰🇼', name: 'Kuwait', dialCode: '+965' },
+  { code: 'BH', flag: '🇧🇭', name: 'Bahrain', dialCode: '+973' },
+  { code: 'ID', flag: '🇮🇩', name: 'Indonesia', dialCode: '+62' },
+  { code: 'PH', flag: '🇵🇭', name: 'Philippines', dialCode: '+63' },
+  { code: 'ZA', flag: '🇿🇦', name: 'South Africa', dialCode: '+27' },
+  { code: 'NZ', flag: '🇳🇿', name: 'New Zealand', dialCode: '+64' },
+  { code: 'IE', flag: '🇮🇪', name: 'Ireland', dialCode: '+353' },
+  { code: 'IT', flag: '🇮🇹', name: 'Italy', dialCode: '+39' },
+  { code: 'ES', flag: '🇪🇸', name: 'Spain', dialCode: '+34' },
+];
+
 interface LoginScreenProps {
   onLoginSuccess: (vendor: VendorUser) => void;
   onBackToWelcome?: () => void;
   isDarkMode?: boolean;
+  initialBlockedInfo?: { visible: boolean; title: string; message: string; reason?: string } | null;
+  onClearBlockedInfo?: () => void;
 }
 
 const TERMS_TEXT = `Welcome to Digi Local Vendor Partner Terms & Conditions.
@@ -119,24 +164,43 @@ Your information is strictly used to connect your store with nearby residential 
 All account credentials are protected using industry-standard encryption protocols. We do not sell or rent vendor personal data to third parties.`;
 
 
-const BUSINESS_CATEGORIES = [
+const PRODUCT_CATEGORIES = [
   'Grocery & Supermarket',
   'Fruits & Vegetables',
-  'Resin Art & Handicrafts',
   'Dairy & Sweets',
   'Bakery & Snacks',
   'General Store',
   'Pharmacy & Healthcare',
   'Electronics & Repairs',
   'Hardware & Utilities',
+  'Resin Art & Handicrafts',
   'Laundry & Dry Cleaning',
-  'Services & Other'
+  'Other Goods & Products',
 ];
+
+const SERVICE_CATEGORIES = [
+  'Electrician & Repairs',
+  'AC & Appliance Service',
+  'Plumbing & Sanitary Works',
+  'Housekeeping & Deep Cleaning',
+  'Tuition & Coaching',
+  'Doctor / Clinic & Healthcare',
+  'CA, Tax & Accounting',
+  'Carpentry & Interior',
+  'Beauty, Salon & Spa',
+  'Driver & Vehicle Services',
+  'Event Services & Catering',
+  'Other Home Services',
+];
+
+const BUSINESS_CATEGORIES = PRODUCT_CATEGORIES;
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({
   onLoginSuccess,
   onBackToWelcome,
   isDarkMode = false,
+  initialBlockedInfo = null,
+  onClearBlockedInfo,
 }) => {
   const rawInsets = useSafeAreaInsets();
   const insets = rawInsets || { top: 0, bottom: 0, left: 0, right: 0 };
@@ -145,43 +209,55 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [regStep, setRegStep] = useState<1 | 2 | 3>(1);
 
+  // Blocked Account Modal State
+  const [blockedModalData, setBlockedModalData] = useState<{ visible: boolean; title: string; message: string; reason?: string } | null>(initialBlockedInfo || null);
+
+  useEffect(() => {
+    if (initialBlockedInfo?.visible) {
+      setBlockedModalData({
+        visible: true,
+        title: initialBlockedInfo.title || 'Account Blocked by Administrator',
+        message: initialBlockedInfo.message || 'Your vendor store account has been blocked by administrator. Access denied.',
+        reason: initialBlockedInfo.reason || 'Policy or compliance violation',
+      });
+    }
+  }, [initialBlockedInfo]);
+
+  // Business Classification: Product vs Service
+  const [businessType, setBusinessType] = useState<'PRODUCT' | 'SERVICE'>('PRODUCT');
+
   // Form fields (Login & Shared)
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(true);
 
-  // Step 1: Business Info
+  // Step 1: Business Info (Category & Classification)
+  const [areaName, setAreaName] = useState('');
+  const [areaSuggestions, setAreaSuggestions] = useState<Array<{ name: string; pincode: string; city: string; state: string }>>([]);
+  const [showAreaDropdown, setShowAreaDropdown] = useState(false);
+  const [isFetchingArea, setIsFetchingArea] = useState(false);
+  const areaDebounceRef = React.useRef<any>(null);
+  const [pincode, setPincode] = useState('');
+  const [city, setCity] = useState('');
+  const [stateName, setStateName] = useState('');
+  const [isFetchingPincode, setIsFetchingPincode] = useState(false);
+  const [pincodeError, setPincodeError] = useState('');
+  const [category, setCategory] = useState('');
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+
+  // Step 2: Shop Details (Owner details, Shop info, GST & Photos)
+  const [selectedCountryCode, setSelectedCountryCode] = useState<CountryCodeItem>(POPULAR_COUNTRY_CODES[0]);
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
+  const [countrySearchQuery, setCountrySearchQuery] = useState('');
   const [vendorName, setVendorName] = useState('');
   const [phone, setPhone] = useState('');
   const [isMobileVerified, setIsMobileVerified] = useState(false);
   const [storeName, setStoreName] = useState('');
-  const [category, setCategory] = useState('');
-  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-
-  // Step 2: Shop Details
-  const [shopAddress, setShopAddress] = useState('');
-  const [selectedSocietyId, setSelectedSocietyId] = useState<number | null>(null);
-  const [societyInputText, setSocietyInputText] = useState('');
-  const [showSocietyDropdown, setShowSocietyDropdown] = useState(false);
-  const [societies, setSocieties] = useState<Society[]>([]);
-  const [isSearchingSocieties, setIsSearchingSocieties] = useState(false);
-  const [allSocieties, setAllSocieties] = useState<Society[]>([]);
-
-  // Society Registration Modal
-  const [showRegisterSocietyModal, setShowRegisterSocietyModal] = useState(false);
-  const [newSocietyName, setNewSocietyName] = useState('');
-  const [newSocietyLocation, setNewSocietyLocation] = useState('');
-  const [newSocietyOwnerName, setNewSocietyOwnerName] = useState('');
-  const [newSocietyOwnerPhone, setNewSocietyOwnerPhone] = useState('');
-  const [registerSocietyLoading, setRegisterSocietyLoading] = useState(false);
-  const [registerSocietyError, setRegisterSocietyError] = useState('');
-  const [registerSocietySuccess, setRegisterSocietySuccess] = useState('');
-
-  const [pincode, setPincode] = useState('');
-  const [city, setCity] = useState('');
+  const [shopNumber, setShopNumber] = useState('');
   const [gst, setGst] = useState('');
   const [shopImages, setShopImages] = useState<string[]>([]);
+  const [showImageSourceModal, setShowImageSourceModal] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -220,8 +296,41 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     };
   }, []);
 
+  // Already Registered Modal States
+  const [showAlreadyRegisteredModal, setShowAlreadyRegisteredModal] = useState(false);
+  const [alreadyRegisteredType, setAlreadyRegisteredType] = useState<'mobile' | 'email' | 'both'>('mobile');
+  const [alreadyRegisteredMsg, setAlreadyRegisteredMsg] = useState('');
+  const [alreadyRegisteredValue, setAlreadyRegisteredValue] = useState('');
+
+  const triggerAlreadyRegisteredModal = (type: 'mobile' | 'email' | 'both', value?: string, customMsg?: string) => {
+    setAlreadyRegisteredType(type);
+    const val = value || (type === 'mobile' ? phone.trim() : email.trim().toLowerCase());
+    setAlreadyRegisteredValue(val);
+    if (customMsg) {
+      setAlreadyRegisteredMsg(customMsg);
+    } else if (type === 'mobile') {
+      setAlreadyRegisteredMsg(`The mobile number +91 ${val} is already registered with an existing vendor account. Please use another mobile number or sign in to your account.`);
+    } else if (type === 'email') {
+      setAlreadyRegisteredMsg(`The email address "${val}" is already registered with an existing vendor account. Please use another email ID or sign in to your account.`);
+    } else {
+      setAlreadyRegisteredMsg('This mobile number or email ID is already registered with an existing vendor account. Please use another email or mobile number.');
+    }
+    setShowAlreadyRegisteredModal(true);
+  };
+
+  // Not Registered Modal States (for Login flow)
+  const [showNotRegisteredModal, setShowNotRegisteredModal] = useState(false);
+  const [notRegisteredValue, setNotRegisteredValue] = useState('');
+
+  const triggerNotRegisteredModal = (val: string) => {
+    setNotRegisteredValue(val);
+    setShowNotRegisteredModal(true);
+  };
+
   // Forgot Password modal states
-  const [agreedToTerms, setAgreedToTerms] = useState(true);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+  const [policyTab, setPolicyTab] = useState<'terms' | 'privacy'>('terms');
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showRegSuccessModal, setShowRegSuccessModal] = useState(false);
@@ -239,11 +348,21 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [forgotSuccess, setForgotSuccess] = useState('');
   const [forgotOtpResendTimer, setForgotOtpResendTimer] = useState(0);
 
+  // Login with OTP Modal states
+  const [showLoginOtpModal, setShowLoginOtpModal] = useState(false);
+  const [loginOtpModalPhone, setLoginOtpModalPhone] = useState('');
+  const [loginOtpModalCode, setLoginOtpModalCode] = useState('');
+  const [loginOtpModalStep, setLoginOtpModalStep] = useState<1 | 2>(1);
+  const [loginOtpModalLoading, setLoginOtpModalLoading] = useState(false);
+  const [loginOtpModalError, setLoginOtpModalError] = useState('');
+  const [loginOtpModalTimer, setLoginOtpModalTimer] = useState(0);
+
   // Countdown timer for all OTP resends
   useEffect(() => {
     const timer = setInterval(() => {
       setForgotOtpResendTimer((prev) => (prev > 0 ? prev - 1 : 0));
       setLoginOtpTimer((prev) => (prev > 0 ? prev - 1 : 0));
+      setLoginOtpModalTimer((prev) => (prev > 0 ? prev - 1 : 0));
       setRegOtpTimer((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
@@ -262,208 +381,80 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               onLoginSuccess(res.vendor);
               return;
             }
-          } catch (e) {
-            console.log('Auto-login skipped:', e);
+          } catch (_e) {
+            // Auto-login skipped
           }
         }
       } catch (err) {
         console.error('Error during login screen init:', err);
       }
-      
-      // Pre-fetch societies in background on mount
-      fetchSocietiesApi('').then(res => {
-        if (Array.isArray(res) && res.length > 0) {
-          setAllSocieties(res);
-          setSocieties(res);
-        }
-      }).catch(() => {});
     };
     init();
   }, []);
 
-  // Load all registered societies (called on focus / tap)
-  const loadAllSocieties = async () => {
-    setShowSocietyDropdown(true);
-    if (allSocieties.length > 0) {
-      setSocieties(allSocieties);
-      return;
-    }
-    setIsSearchingSocieties(true);
-    try {
-      const res = await fetchSocietiesApi('');
-      const list = Array.isArray(res) && res.length > 0 ? res : [];
-      setAllSocieties(list);
-      setSocieties(list);
-    } catch (e) {
-      console.log('Society load error:', e);
-    } finally {
-      setIsSearchingSocieties(false);
-    }
-  };
-
-  const handleSocietySearch = async (text: string) => {
-    setSocietyInputText(text);
-    setSelectedSocietyId(null);
-
-    const query = text.trim().toLowerCase();
-    if (query.length === 0) {
-      setSocieties(allSocieties);
-      setShowSocietyDropdown(allSocieties.length > 0);
-      return;
-    }
-
-    // Synchronous local filter first for instant 0ms response
-    if (allSocieties.length > 0) {
-      const filtered = allSocieties.filter(soc =>
-        soc.society_name.toLowerCase().includes(query) ||
-        (soc.location && soc.location.toLowerCase().includes(query))
-      );
-      setSocieties(filtered);
-      setShowSocietyDropdown(true);
-      if (filtered.length > 0) return;
-    }
-
-    // Fast API fallback search if local results empty
-    setIsSearchingSocieties(true);
-    try {
-      const res = await fetchSocietiesApi(text.trim());
-      const list = Array.isArray(res) ? res : (res as any).societies || [];
-      setSocieties(list);
-      setShowSocietyDropdown(true);
-    } catch (e) {
-      console.log('Society search error:', e);
-    } finally {
-      setIsSearchingSocieties(false);
-    }
-  };
-
-  const handleRegisterSociety = async () => {
-    setRegisterSocietyError('');
-    const name = newSocietyName.trim();
-    const loc = newSocietyLocation.trim();
-    const secName = newSocietyOwnerName.trim();
-    const secMobile = newSocietyOwnerPhone.trim();
-
-    if (!name || name.length < 3) {
-      setRegisterSocietyError('Society name must be at least 3 characters.');
-      return;
-    }
-    if (!loc) {
-      setRegisterSocietyError('Society address / location is required.');
-      return;
-    }
-    if (!secName) {
-      setRegisterSocietyError('Secretary name is required.');
-      return;
-    }
-    if (!/^[a-zA-Z\s]+$/.test(secName)) {
-      setRegisterSocietyError('Secretary name must contain only alphabets.');
-      return;
-    }
-    if (!secMobile) {
-      setRegisterSocietyError('Secretary contact number is required.');
-      return;
-    }
-    if (!/^[6-9]\d{9}$/.test(secMobile)) {
-      setRegisterSocietyError('Secretary contact number must be a valid 10-digit mobile number starting with 6, 7, 8, or 9.');
-      return;
-    }
-
-    setRegisterSocietyLoading(true);
-    try {
-      const result = await createSocietyApi({
-        society_name: name,
-        location: loc,
-        secretary_name: secName,
-        secretary_mobile: secMobile,
-        status: 'PENDING',
-      });
-      const newSoc: Society = result.society || { society_id: result.society_id, society_name: name };
-      // Auto-select the newly registered society
-      setSelectedSocietyId(newSoc.society_id);
-      setSocietyInputText(newSoc.society_name);
-      setAllSocieties(prev => [newSoc, ...prev]);
-      setSocieties(prev => [newSoc, ...prev]);
-      setRegisterSocietySuccess(`"${name}" registered successfully!`);
-    } catch (err: any) {
-      setRegisterSocietyError(err.message || 'Failed to register society. Please try again.');
-    } finally {
-      setRegisterSocietyLoading(false);
-    }
-  };
-
-  const handleAddPhoto = async () => {
+  const handleAddPhoto = () => {
     if (shopImages.length >= 5) {
       setError('Maximum 5 photos allowed.');
       return;
     }
-    
-    Alert.alert(
-      'Select Image Source',
-      'Choose whether to take a new photo with your camera or select an existing one from your gallery:',
-      [
-        {
-          text: 'Camera',
-          onPress: handleTakePhoto,
-        },
-        {
-          text: 'Gallery',
-          onPress: handlePickFromGallery,
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ]
-    );
+    setShowImageSourceModal(true);
   };
 
   const handleTakePhoto = async () => {
+    setShowImageSourceModal(false);
     try {
-      const perm = await ImagePicker.requestCameraPermissionsAsync();
-      if (!perm.granted) {
-        setError('Permission to access camera is required to capture shop images.');
-        return;
-      }
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
+      const captured = await captureImageFromDevice({
         quality: 0.8,
         allowsEditing: true,
         aspect: [4, 3],
       });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        setShopImages(prev => [...prev, result.assets[0].uri].slice(0, 5));
+      if (captured && captured.uri) {
+        setShopImages(prev => [...prev, captured.base64 ? `data:${captured.mimeType || 'image/jpeg'};base64,${captured.base64}` : captured.uri].slice(0, 5));
         setError('');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error capturing photo:', err);
     }
   };
 
   const handlePickFromGallery = async () => {
+    setShowImageSourceModal(false);
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        setError('Permission to access gallery is required to upload shop images.');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+      const picked = await pickImageFromDevice({
         quality: 0.8,
         allowsEditing: true,
         aspect: [4, 3],
       });
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        setShopImages(prev => [...prev, result.assets[0].uri].slice(0, 5));
+      if (picked && picked.uri) {
+        setShopImages(prev => [...prev, picked.base64 ? `data:${picked.mimeType || 'image/jpeg'};base64,${picked.base64}` : picked.uri].slice(0, 5));
         setError('');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error picking photo:', err);
     }
   };
 
   const handleRemovePhoto = (index: number) => {
     setShopImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleLoginContactChange = (text: string) => {
+    const value = text.trim();
+
+    // Check if the user is typing a mobile number (contains only numbers)
+    const isNumericOnly = /^\d*$/.test(value);
+
+    if (isNumericOnly) {
+      // Rule 1: Mobile Number Validation (Strictly numbers, max 10 digits)
+      if (value.length <= 10) {
+        setEmail(value);
+        setError('');
+      }
+    } else {
+      // Rule 2: Email ID Validation (Allow letters, numbers, @, ., etc.)
+      setEmail(value);
+      setError('');
+    }
   };
 
   const handleLogin = async () => {
@@ -477,67 +468,240 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       return;
     }
 
-    const isMobile = /^[6-9]\d{9}$/.test(cleanInput);
     const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanInput);
+    const isPhone = /^\d{10}$/.test(cleanInput);
 
-    if (!isMobile && !isEmail) {
-      setError('Please enter a valid 10-digit Mobile Number or Email Address.');
+    if (!isEmail && !isPhone) {
+      setError('Please enter a valid 10-digit mobile number or a valid email address.');
       return;
     }
 
-    if (!agreedToTerms) {
-      setError('Please agree to the Terms & Conditions and Privacy Policy.');
-      return;
-    }
     setLoading(true);
     try {
       const res = await loginVendorApi(cleanInput.toLowerCase(), cleanPassword);
       if (rememberMe) {
         await saveCredentials(cleanInput, cleanPassword, res.vendor.vendor_id);
       }
-      onLoginSuccess(res.vendor);
+      const finalVendor: VendorUser = {
+        ...res.vendor,
+        business_type: res.vendor.business_type || (isServiceCategory(res.vendor.category) ? 'SERVICE' : 'PRODUCT'),
+      };
+      onLoginSuccess(finalVendor);
     } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      const errMsg = (err.message || '').toLowerCase();
+      if (err.isBlocked || err.code === 'VENDOR_BLOCKED' || errMsg.includes('blocked')) {
+        setBlockedModalData({
+          visible: true,
+          title: 'Account Blocked by Administrator',
+          message: err.message || 'Your vendor store account has been blocked by administrator. Access denied.',
+          reason: err.blockReason || 'Policy or compliance violation',
+        });
+      } else if (errMsg.includes('not found') || errMsg.includes('no account') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('does not exist')) {
+        triggerNotRegisteredModal(cleanInput);
+      } else {
+        setError(err.message || 'Login failed. Please check your credentials.');
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const panCheckRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+  const gstCheckRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+
+  const fetchLocationByPincode = async (pin: string) => {
+    const cleanPin = pin.trim();
+    if (cleanPin.length !== 6 || !/^\d{6}$/.test(cleanPin)) {
+      setPincodeError('');
+      return;
+    }
+
+    setIsFetchingPincode(true);
+    setPincodeError('');
+
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+      const response = await fetch(`https://api.postalpincode.in/pincode/${cleanPin}`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error('Network error');
+      }
+
+      const data = await response.json();
+      if (
+        Array.isArray(data) &&
+        data.length > 0 &&
+        data[0].Status === 'Success' &&
+        Array.isArray(data[0].PostOffice) &&
+        data[0].PostOffice.length > 0
+      ) {
+        const po = data[0].PostOffice[0];
+        const fetchedDistrict = po.District || po.Block || po.Division || '';
+        const fetchedState = po.State || '';
+
+        if (fetchedDistrict) setCity(fetchedDistrict);
+        if (fetchedState) setStateName(fetchedState);
+        setPincodeError('');
+      } else {
+        setPincodeError('Pincode not found. Please enter city and state manually.');
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        setPincodeError('Unable to auto-fetch location. Please enter city and state manually.');
+      }
+    } finally {
+      setIsFetchingPincode(false);
+    }
+  };
+
+  const fetchLocationByAreaName = async (text: string) => {
+    const cleanText = text.trim();
+    if (cleanText.length < 2) {
+      setAreaSuggestions([]);
+      return;
+    }
+
+    // If text contains a 6-digit pincode, auto-fill by pincode
+    const pinMatch = cleanText.match(/\b\d{6}\b/);
+    if (pinMatch) {
+      const foundPin = pinMatch[0];
+      setPincode(foundPin);
+      fetchLocationByPincode(foundPin);
+    }
+
+    setIsFetchingArea(true);
+    try {
+      const suggestions = await fetchLocationSuggestionsApi(cleanText);
+      if (Array.isArray(suggestions) && suggestions.length > 0) {
+        const formatted = suggestions.map(item => ({
+          name: item.area,
+          pincode: item.pincode,
+          city: item.city,
+          state: item.state,
+        }));
+        setAreaSuggestions(formatted);
+        setShowAreaDropdown(formatted.length > 0);
+
+        // Unconditionally autofill Pincode, City and State with top match
+        const topMatch = formatted[0];
+        if (topMatch) {
+          if (topMatch.pincode) setPincode(topMatch.pincode);
+          if (topMatch.city) setCity(topMatch.city);
+          if (topMatch.state) setStateName(topMatch.state);
+        }
+      } else {
+        setAreaSuggestions([]);
+        setShowAreaDropdown(false);
+      }
+    } catch (_) {
+      setAreaSuggestions([]);
+      setShowAreaDropdown(false);
+    } finally {
+      setIsFetchingArea(false);
+    }
+  };
+
+  const handleAreaChange = (text: string) => {
+    setAreaName(text);
+    if (areaDebounceRef.current) {
+      clearTimeout(areaDebounceRef.current);
+    }
+    if (text.trim().length >= 2) {
+      areaDebounceRef.current = setTimeout(() => {
+        fetchLocationByAreaName(text);
+      }, 300);
+    } else {
+      setAreaSuggestions([]);
+      setShowAreaDropdown(false);
+    }
+  };
+
+  const handleSelectSuggestion = (item: { name: string; pincode: string; city: string; state: string }) => {
+    setAreaName(item.name);
+    if (item.pincode) setPincode(item.pincode);
+    if (item.city) setCity(item.city);
+    if (item.state) setStateName(item.state);
+    setAreaSuggestions([]);
+    setShowAreaDropdown(false);
+  };
+
+  const handlePincodeChange = (text: string) => {
+    const digitsOnly = text.replace(/[^0-9]/g, '').slice(0, 6);
+    setPincode(digitsOnly);
+    setPincodeError('');
+    if (digitsOnly.length === 6) {
+      fetchLocationByPincode(digitsOnly);
     }
   };
 
   const handleNextStep1 = () => {
     setError('');
     setTouchedStep1(true);
-    const cleanVendor = vendorName.trim();
-    const cleanPhone = phone.trim();
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanPin = pincode.trim();
+    const cleanCity = city.trim();
+    const cleanState = stateName.trim();
+    const cleanArea = areaName.trim();
 
-    if (!selectedSocietyId) return;
-    if (!cleanVendor || cleanVendor.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanVendor)) return;
-    if (!cleanPhone || !/^[6-9]\d{9}$/.test(cleanPhone)) return;
-    if (!isMobileVerified) return;
-    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanEmail)) return;
+    if (!cleanArea || cleanArea.length < 2) return;
+    if (!cleanPin || !/^\d{6}$/.test(cleanPin)) return;
+    if (!cleanCity || cleanCity.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanCity)) return;
+    if (!cleanState || cleanState.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanState)) return;
     if (!category) return;
 
     setRegStep(2);
   };
 
-  const handleNextStep2 = () => {
+  const handleNextStep2 = async () => {
     setError('');
     setTouchedStep2(true);
+    const cleanVendor = vendorName.trim();
+    const cleanPhone = phone.trim();
+    const cleanEmail = email.trim().toLowerCase();
     const cleanStore = storeName.trim();
-    const cleanAddress = shopAddress.trim();
-    const cleanPin = pincode.trim();
-    const cleanCity = city.trim();
+    const cleanShopNumber = shopNumber.trim();
     const cleanGst = gst.trim().toUpperCase();
+    const isIndian = selectedCountryCode.dialCode === '+91';
+    const isPhoneValid = isIndian
+      ? (/^[6-9]\d{9}$/.test(cleanPhone))
+      : (cleanPhone.length >= 7 && cleanPhone.length <= 15 && /^\d{7,15}$/.test(cleanPhone));
 
+    if (!cleanVendor || cleanVendor.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanVendor)) return;
+    if (!cleanPhone || !isPhoneValid) return;
+    if (!isMobileVerified) return;
+    if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanEmail)) return;
     if (!cleanStore || cleanStore.length < 2) return;
-    if (!cleanAddress || cleanAddress.length < 5) return;
-    if (!cleanPin || !/^\d{6}$/.test(cleanPin)) return;
-    if (!cleanCity || cleanCity.length < 2 || !/^[a-zA-Z\s]+$/.test(cleanCity)) return;
+    if (!cleanShopNumber || cleanShopNumber.length < 1) return;
     if (!cleanGst || (cleanGst.length !== 15 && cleanGst.length !== 10)) return;
     if (!panCheckRegex.test(cleanGst) && !gstCheckRegex.test(cleanGst)) return;
     if (shopImages.length === 0) return;
 
-    setRegStep(3);
+    setLoading(true);
+    try {
+      // Pre-check phone duplicate
+      const phoneCheck = await checkVendorPhoneApi(cleanPhone);
+      if (phoneCheck && phoneCheck.exists) {
+        triggerAlreadyRegisteredModal('mobile', cleanPhone);
+        return;
+      }
+
+      // Pre-check email duplicate
+      const emailCheck = await checkVendorEmailApi(cleanEmail);
+      if (emailCheck && emailCheck.exists) {
+        triggerAlreadyRegisteredModal('email', cleanEmail);
+        return;
+      }
+
+      setRegStep(3);
+    } catch (_) {
+      setRegStep(3);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleRegister = async () => {
@@ -553,30 +717,113 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     if (!cleanPassword || cleanPassword.length < 8 || !hasUpperCase || !hasNumber || !hasSpecial) return;
     if (!cleanConfirm || cleanPassword !== cleanConfirm) return;
-    if (!agreedToTerms) return;
+    if (!agreedToTerms) {
+      setError('Please accept the Terms & Conditions and Privacy Policy to proceed.');
+      return;
+    }
     if (!isMobileVerified) return;
 
     setLoading(true);
     try {
+      const cleanArea = areaName.trim();
+      const fullAddress = [cleanArea, city.trim(), stateName.trim(), pincode.trim()].filter(Boolean).join(', ');
+
+      // Compress shop image to guarantee payload is under 50KB
+      let compressedShopImage = '';
+      if (shopImages.length > 0 && shopImages[0]) {
+        const rawImg = shopImages[0];
+        if (typeof window !== 'undefined' && typeof document !== 'undefined' && (window as any).Image) {
+          try {
+            compressedShopImage = await new Promise<string>((resolve) => {
+              const domImg = new (window as any).Image();
+              domImg.onload = () => {
+                const maxDim = 400;
+                let w = domImg.width || 400;
+                let h = domImg.height || 300;
+                if (w > h) {
+                  if (w > maxDim) {
+                    h = Math.round((h * maxDim) / w);
+                    w = maxDim;
+                  }
+                } else {
+                  if (h > maxDim) {
+                    w = Math.round((w * maxDim) / h);
+                    h = maxDim;
+                  }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = w;
+                canvas.height = h;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.drawImage(domImg, 0, 0, w, h);
+                  resolve(canvas.toDataURL('image/jpeg', 0.45));
+                } else {
+                  resolve(rawImg.length > 150000 ? '' : rawImg);
+                }
+              };
+              domImg.onerror = () => resolve(rawImg.length > 150000 ? '' : rawImg);
+              domImg.src = rawImg;
+            });
+          } catch (_) {
+            compressedShopImage = rawImg.length > 150000 ? '' : rawImg;
+          }
+        } else {
+          compressedShopImage = rawImg.length > 150000 ? '' : rawImg;
+        }
+      }
+
       const res = await registerVendorApi({
-        society_id: selectedSocietyId || undefined,
-        society_name: selectedSocietyId ? undefined : societyInputText.trim(),
-        store_name: storeName.trim(),
         vendor_name: vendorName.trim(),
+        store_name: storeName.trim(),
         email: email.trim().toLowerCase(),
-        password: cleanPassword,
         phone_number: phone.trim(),
+        password: cleanPassword,
+        area: cleanArea,
+        city: city.trim(),
+        state: stateName.trim(),
+        pincode: pincode.trim(),
+        whatsapp_number: phone.trim(),
+        shop_number: shopNumber.trim() || storeName.trim(),
+        shop_image: compressedShopImage,
+        category: category.trim(),
+        gstin: gst.trim().length === 15 ? gst.trim().toUpperCase() : undefined,
+        pan_number: gst.trim().length === 10 ? gst.trim().toUpperCase() : undefined,
         gst_number: gst.trim().toUpperCase() || undefined,
+        business_type: businessType,
+        address: fullAddress.trim(),
         otp: regOtp || undefined
       });
 
       if (rememberMe) {
         await saveCredentials(email.trim().toLowerCase(), cleanPassword, res.vendor_id);
       }
-      setRegisteredVendor(res.vendor);
+      const regVendor: VendorUser = {
+        ...res.vendor,
+        business_type: businessType,
+      };
+      setRegisteredVendor(regVendor);
       setShowRegSuccessModal(true);
     } catch (err: any) {
-      setError(err.message || 'Registration failed. Please check your details.');
+      console.error('❌ [REGISTRATION ERROR]:', err);
+      const errMsg = (err.message || '').toLowerCase();
+      if (
+        errMsg.includes('already exists') ||
+        errMsg.includes('already registered') ||
+        errMsg.includes('duplicate') ||
+        errMsg.includes('already in use') ||
+        errMsg.includes('in use')
+      ) {
+        if (errMsg.includes('email')) {
+          triggerAlreadyRegisteredModal('email', email.trim().toLowerCase());
+        } else if (errMsg.includes('mobile') || errMsg.includes('phone') || errMsg.includes('number')) {
+          triggerAlreadyRegisteredModal('mobile', phone.trim());
+        } else {
+          triggerAlreadyRegisteredModal('both', `${phone.trim()} / ${email.trim()}`);
+        }
+      } else {
+        setError(err.message || 'Registration failed. Please check your details.');
+      }
     } finally {
       setLoading(false);
     }
@@ -599,8 +846,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setLoading(true);
-    console.log('📲 [LOGIN OTP TRIGGERED]:', cleanInput);
     try {
+      // 1. Proactively check if vendor mobile is registered
+      const phoneCheck = await checkVendorPhoneApi(cleanInput);
+      if (phoneCheck && !phoneCheck.exists) {
+        setLoading(false);
+        triggerNotRegisteredModal(cleanInput);
+        return;
+      }
+
       const res = await sendOtpApi(cleanInput, 'login');
       setLoginOtpSent(true);
       setLoginOtpTimer(60);
@@ -612,8 +866,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
     } catch (err: any) {
       console.error('❌ [LOGIN OTP FAILED]:', err);
-      const userMessage = formatUserFacingError(err, 'Unable to send OTP at this time. Please try again or log in with your password.');
-      setError(userMessage);
+      const errMsg = (err.message || '').toLowerCase();
+      if (errMsg.includes('not found') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('no account') || errMsg.includes('does not exist')) {
+        triggerNotRegisteredModal(cleanInput);
+      } else {
+        const userMessage = formatUserFacingError(err, 'Unable to send OTP at this time. Please try again or log in with your password.');
+        setError(userMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -632,17 +891,35 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       const cleanInput = email.trim();
       await verifyOtpApi(cleanInput, loginOtp);
       const res = await loginVendorWithOtpApi(cleanInput, loginOtp);
-      onLoginSuccess(res.vendor);
+      const finalVendor: VendorUser = {
+        ...res.vendor,
+        business_type: res.vendor.business_type || (isServiceCategory(res.vendor.category) ? 'SERVICE' : 'PRODUCT'),
+      };
+      onLoginSuccess(finalVendor);
     } catch (err: any) {
       console.error('❌ [VERIFY OTP FAILED]:', err);
-      const userMessage = formatUserFacingError(err, 'Invalid OTP code. Please check the code and try again.');
-      setError(userMessage);
+      const errMsg = (err.message || '').toLowerCase();
+      if (errMsg.includes('not found') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('no account') || errMsg.includes('does not exist')) {
+        triggerNotRegisteredModal(email.trim());
+      } else {
+        const userMessage = formatUserFacingError(err, 'Invalid OTP code. Please check the code and try again.');
+        setError(userMessage);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleTriggerRegOtp = async () => {
+    if (!agreedToTerms) {
+      setTouchedStep3(true);
+      setError('Please accept the Terms & Conditions and Privacy Policy to proceed.');
+      return;
+    }
+    if (isMobileVerified) {
+      handleRegister();
+      return;
+    }
     handleSendMobileOtp();
   };
 
@@ -656,8 +933,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
 
     setLoading(true);
-    console.log('📱 [REGISTRATION OTP TRIGGERED]:', cleanPhone);
     try {
+      // 1. Pre-check if phone is already registered
+      try {
+        const phoneCheck = await checkVendorPhoneApi(cleanPhone);
+        if (phoneCheck && phoneCheck.exists) {
+          setLoading(false);
+          triggerAlreadyRegisteredModal('mobile', cleanPhone);
+          return;
+        }
+      } catch (_) {}
+
       const res = await sendOtpApi(cleanPhone, 'register');
       setRegOtp('');
       setRegOtpTimer(60);
@@ -670,8 +956,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
     } catch (err: any) {
       console.error('❌ [REGISTRATION OTP FAILED]:', err);
-      const userMessage = formatUserFacingError(err, 'Unable to send OTP at this time. Please try again or verify mobile number.');
-      setError(userMessage);
+      const errMsg = (err.message || '').toLowerCase();
+      if (
+        errMsg.includes('already exists') ||
+        errMsg.includes('already registered') ||
+        errMsg.includes('account with this mobile') ||
+        errMsg.includes('already in use')
+      ) {
+        triggerAlreadyRegisteredModal('mobile', cleanPhone);
+      } else {
+        const userMessage = formatUserFacingError(err, 'Unable to send OTP at this time. Please try again or verify mobile number.');
+        setError(userMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -691,7 +987,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       setIsMobileVerified(true);
       setShowRegOtpModal(false);
-      setSuccessMsg('Mobile number verified successfully!');
 
       if (regStep === 3) {
         handleRegister();
@@ -705,16 +1000,117 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   };
 
+  // Login with OTP Modal - Step 1: Send OTP (supports Mobile Number & Email ID)
+  const handleLoginOtpModalSend = async () => {
+    setLoginOtpModalError('');
+    const cleanContact = loginOtpModalPhone.trim();
+    if (!cleanContact) {
+      setLoginOtpModalError('Please enter your registered Mobile Number or Email ID.');
+      return;
+    }
+
+    const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanContact);
+    const isPhone = /^\d{10}$/.test(cleanContact) || /^[6-9]\d{9}$/.test(cleanContact);
+
+    if (!isEmail && !isPhone) {
+      setLoginOtpModalError('Please enter a valid 10-digit mobile number or a valid email address.');
+      return;
+    }
+
+    setLoginOtpModalLoading(true);
+    try {
+      // 1. Proactively check if email or phone exists on backend
+      const check = isEmail
+        ? await checkVendorEmailApi(cleanContact)
+        : await checkVendorPhoneApi(cleanContact);
+
+      if (check && !check.exists) {
+        setLoginOtpModalLoading(false);
+        setShowLoginOtpModal(false);
+        triggerNotRegisteredModal(cleanContact);
+        return;
+      }
+
+      await sendOtpApi(cleanContact, 'login');
+      setLoginOtpModalCode('');
+      setLoginOtpModalStep(2);
+      setLoginOtpModalTimer(60);
+    } catch (err: any) {
+      const errMsg = (err.message || '').toLowerCase();
+      if (errMsg.includes('not found') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('no account') || errMsg.includes('does not exist')) {
+        setShowLoginOtpModal(false);
+        triggerNotRegisteredModal(cleanContact);
+      } else {
+        setLoginOtpModalError(err.message || 'Failed to send OTP. Please try again.');
+      }
+    } finally {
+      setLoginOtpModalLoading(false);
+    }
+  };
+
+  // Login with OTP Modal - Step 2: Verify & Login
+  const handleLoginOtpModalVerify = async () => {
+    setLoginOtpModalError('');
+    if (!loginOtpModalCode || loginOtpModalCode.length < 4) {
+      setLoginOtpModalError('Please enter the 6-digit OTP code.');
+      return;
+    }
+
+    setLoginOtpModalLoading(true);
+    try {
+      const cleanContact = loginOtpModalPhone.trim();
+      await verifyOtpApi(cleanContact, loginOtpModalCode);
+      const res = await loginVendorWithOtpApi(cleanContact, loginOtpModalCode);
+      const finalVendor: VendorUser = {
+        ...res.vendor,
+        business_type: res.vendor.business_type || (isServiceCategory(res.vendor.category) ? 'SERVICE' : 'PRODUCT'),
+      };
+      setShowLoginOtpModal(false);
+      onLoginSuccess(finalVendor);
+    } catch (err: any) {
+      const errMsg = (err.message || '').toLowerCase();
+      if (errMsg.includes('not found') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('no account') || errMsg.includes('does not exist')) {
+        setShowLoginOtpModal(false);
+        triggerNotRegisteredModal(loginOtpModalPhone.trim());
+      } else {
+        setLoginOtpModalError(err.message || 'Invalid or expired OTP. Please try again.');
+      }
+    } finally {
+      setLoginOtpModalLoading(false);
+    }
+  };
+
   // Forgot Password - Step 1: Send OTP to email or mobile
   const handleSendOtp = async () => {
     setForgotError('');
     const cleanContact = forgotEmail.trim();
     if (!cleanContact) {
-      setForgotError('Please enter your registered Phone Number.');
+      setForgotError('Please enter your registered Phone Number or Email ID.');
       return;
     }
+
+    const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanContact);
+    const isPhone = /^\d{10}$/.test(cleanContact) || /^[6-9]\d{9}$/.test(cleanContact);
+
+    if (!isEmail && !isPhone) {
+      setForgotError('Please enter a valid 10-digit mobile number or email address.');
+      return;
+    }
+
     setForgotLoading(true);
     try {
+      // 1. Proactively check if email or phone is registered!
+      const check = isEmail
+        ? await checkVendorEmailApi(cleanContact)
+        : await checkVendorPhoneApi(cleanContact);
+
+      if (check && !check.exists) {
+        setForgotLoading(false);
+        setShowForgotModal(false);
+        triggerNotRegisteredModal(cleanContact);
+        return;
+      }
+
       const res = await forgotPasswordOtpApi(cleanContact);
       setForgotOtp('');
       setForgotStep(2);
@@ -723,7 +1119,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         setForgotError(`Simulated OTP Code for Testing: ${res.simulationOtp}`);
       }
     } catch (err: any) {
-      setForgotError(err.message || 'Failed to send OTP. Please try again.');
+      const errMsg = (err.message || '').toLowerCase();
+      if (errMsg.includes('not found') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('no account') || errMsg.includes('does not exist')) {
+        setShowForgotModal(false);
+        triggerNotRegisteredModal(cleanContact);
+      } else {
+        setForgotError(err.message || 'Failed to send OTP. Please try again.');
+      }
     } finally {
       setForgotLoading(false);
     }
@@ -779,27 +1181,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   // Real-time invalid field checks
-  const isVendorInvalid = mode === 'register' && regStep === 1 && vendorName.length > 0 && (vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName));
-  const isPhoneInvalid = mode === 'register' && regStep === 1 && phone.length > 0 && (phone.length < 10 || !/^[6-9]\d{9}$/.test(phone));
-  const isEmailInvalid = mode === 'register' && regStep === 1 && email.length > 0 && !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim());
-  const isStoreInvalid = mode === 'register' && regStep === 1 && storeName.length > 0 && storeName.trim().length < 2;
+  const isPincodeInvalid = mode === 'register' && regStep === 1 && pincode.length > 0 && !/^\d{6}$/.test(pincode.trim());
+  const isCityInvalid = mode === 'register' && regStep === 1 && city.length > 0 && (city.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(city));
+  const isStateInvalid = mode === 'register' && regStep === 1 && stateName.length > 0 && (stateName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(stateName));
 
-  const isAddressInvalid = mode === 'register' && regStep === 2 && shopAddress.length > 0 && shopAddress.trim().length < 5;
-  const isPincodeInvalid = mode === 'register' && regStep === 2 && pincode.length > 0 && !/^\d{6}$/.test(pincode.trim());
-  const isCityInvalid = mode === 'register' && regStep === 2 && city.length > 0 && (city.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(city));
-  const panCheckRegex = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
-  const gstCheckRegex = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+  const isVendorInvalid = mode === 'register' && regStep === 2 && vendorName.length > 0 && (vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName));
+  const isPhoneInvalid = mode === 'register' && regStep === 2 && phone.length > 0 && (phone.length < 10 || !/^[6-9]\d{9}$/.test(phone));
+  const isEmailInvalid = mode === 'register' && regStep === 2 && email.length > 0 && !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim());
+  const isStoreInvalid = mode === 'register' && regStep === 2 && storeName.length > 0 && storeName.trim().length < 2;
   const isGstInvalid = mode === 'register' && regStep === 2 && gst.length > 0 && !panCheckRegex.test(gst.toUpperCase().trim()) && !gstCheckRegex.test(gst.toUpperCase().trim());
 
   const isPasswordInvalid = mode === 'register' && regStep === 3 && password.length > 0 && (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password));
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: '#FAF7F0' }}
+      style={{ flex: 1, backgroundColor: '#F8F6F0' }}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="#FAF7F0" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F6F0" />
       <ScrollView
         contentContainerStyle={[
           styles.scrollContainer,
@@ -832,7 +1232,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 }}
                 activeOpacity={0.7}
               >
-                <ArrowLeft size={22} color="#055726" strokeWidth={2.4} />
+                <ArrowLeft size={22} color="#541D26" strokeWidth={2.4} />
               </TouchableOpacity>
 
               <Text style={styles.mainTitleRegisterInline} numberOfLines={1}>
@@ -850,7 +1250,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   style={{ alignSelf: 'flex-start', paddingVertical: 8, paddingRight: 16, marginBottom: 8 }}
                   activeOpacity={0.7}
                 >
-                  <ArrowLeft size={24} color="#055726" strokeWidth={2.5} />
+                  <ArrowLeft size={24} color="#541D26" strokeWidth={2.5} />
                 </TouchableOpacity>
               )}
 
@@ -867,7 +1267,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <Text style={{
                   fontSize: 28,
                   fontWeight: '800',
-                  color: '#055726',
+                  color: '#541D26',
                   textAlign: 'center',
                   fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_800Bold',
                   letterSpacing: -0.5,
@@ -951,7 +1351,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
           {successMsg ? (
             <View style={styles.successBox}>
-              <UserCheck color="#10B981" size={16} style={{ marginRight: 8 }} />
+              <UserCheck color="#16A34A" size={16} style={{ marginRight: 8 }} />
               <Text style={styles.successText}>{successMsg}</Text>
             </View>
           ) : null}
@@ -960,347 +1360,251 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             /* ===== LOGIN FORM ===== */
             <>
               {/* Mobile Number / Email ID */}
-              <Text style={styles.inputLabel}>Mobile Number / Email ID</Text>
-              <View style={styles.inputWrapper}>
-                <User color="#055726" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
+              <Text style={styles.inputLabel}>Mobile Number / Email ID *</Text>
+              <View style={[styles.inputWrapper, (error && !password) ? styles.inputWrapperError : undefined]}>
+                <User color="#541D26" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
                 <TextInput
                   style={styles.input}
                   placeholder="Enter mobile number or email id"
                   placeholderTextColor="#9CA3AF"
                   autoCapitalize="none"
-                  keyboardType="default"
+                  autoCorrect={false}
+                  keyboardType={/^\d+$/.test(email) ? "number-pad" : "email-address"}
                   editable={!loginOtpSent}
                   value={email}
-                  onChangeText={(text) => setEmail(text.trim())}
+                  onChangeText={handleLoginContactChange}
                 />
               </View>
               {/^\d+$/.test(email) && email.length > 0 && !/^[6-9]/.test(email) ? (
                 <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9</Text>
               ) : /^\d+$/.test(email) && email.length > 0 && email.length < 10 ? (
-                <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {email.length}/10)</Text>
-              ) : isEmailInvalid ? (
+                <Text style={[styles.inputErrorText, { color: '#78716C' }]}>Mobile number ({email.length}/10 digits)</Text>
+              ) : (!/^\d+$/.test(email) && email.length > 0 && (!email.includes('@') || !email.includes('.'))) ? (
                 <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
               ) : null}
 
-              {loginWithOtp ? (
-                <>
-                  {loginOtpSent ? (
-                    <>
-                      {/* OTP Input */}
-                      <Text style={[styles.inputLabel, { marginTop: 20, marginBottom: 8 }]}>Enter OTP *</Text>
-                      <View style={[styles.inputWrapper, { justifyContent: 'center' }]}>
-                        <TextInput
-                          style={[styles.input, { letterSpacing: 8, fontSize: 20, textAlign: 'center', fontWeight: '700' }]}
-                          placeholder="------"
-                          placeholderTextColor="#D1D5DB"
-                          keyboardType="number-pad"
-                          maxLength={6}
-                          value={loginOtp}
-                          onChangeText={setLoginOtp}
-                        />
-                      </View>
+              {/* Password */}
+              <Text style={[styles.inputLabel, { marginTop: 20, marginBottom: 8 }]}>Password *</Text>
+              <View style={[styles.inputWrapper, (error && password.length === 0) ? styles.inputWrapperError : undefined]}>
+                <Lock color="#541D26" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
+                <TextInput
+                  style={[styles.input, { paddingVertical: 0 }]}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#9CA3AF"
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType={showPassword ? 'none' : 'password'}
+                  value={password}
+                  onChangeText={setPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon} activeOpacity={0.7}>
+                  {showPassword ? <Eye color="#1F2937" size={20} /> : <EyeOff color="#1F2937" size={20} />}
+                </TouchableOpacity>
+              </View>
+              {isPasswordInvalid ? (
+                <Text style={styles.inputErrorText}>Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
+              ) : null}
 
-                      {/* Resend Link / Timer */}
-                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-                        <TouchableOpacity
-                          onPress={() => {
-                            setLoginOtpSent(false);
-                            setLoginOtp('');
-                          }}
-                        >
-                          <Text style={{ color: '#055726', fontSize: 13, fontWeight: '600' }}>← Change Email/Mobile</Text>
-                        </TouchableOpacity>
+              {/* Login with OTP (Left) & Forgot Password? (Right) */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 6 }}>
+                <TouchableOpacity
+                  style={styles.forgotPasswordRow}
+                  onPress={() => {
+                    setLoginOtpModalPhone(email);
+                    setLoginOtpModalCode('');
+                    setLoginOtpModalError('');
+                    setLoginOtpModalStep(1);
+                    setShowLoginOtpModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '700' }}>Login with OTP</Text>
+                </TouchableOpacity>
 
-                        {loginOtpTimer > 0 ? (
-                          <Text style={{ color: '#6B7280', fontSize: 13 }}>Resend in {loginOtpTimer}s</Text>
-                        ) : (
-                          <TouchableOpacity onPress={handleSendLoginOtp}>
-                            <Text style={{ color: '#055726', fontSize: 13, fontWeight: '700' }}>Resend OTP</Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
+                <TouchableOpacity
+                  style={styles.forgotPasswordRow}
+                  onPress={() => {
+                    setForgotEmail(email);
+                    setForgotStep(1);
+                    setForgotOtp('');
+                    setForgotError('');
+                    setForgotSuccess('');
+                    setForgotNewPass('');
+                    setForgotConfirmPass('');
+                    setShowForgotModal(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                </TouchableOpacity>
+              </View>
 
-                      {/* Verify & Login Button */}
-                      <TouchableOpacity
-                        style={[styles.submitButton, { marginTop: 24 }]}
-                        onPress={handleVerifyLoginOtp}
-                        disabled={loading}
-                        activeOpacity={0.9}
-                      >
-                        {loading ? (
-                          <ActivityIndicator color="#ffffff" />
-                        ) : (
-                          <Text style={styles.submitButtonText}>Verify & Login</Text>
-                        )}
-                      </TouchableOpacity>
-                    </>
-                  ) : (
-                    <>
-                      {/* Send OTP Button */}
-                      <TouchableOpacity
-                        style={[styles.submitButton, { marginTop: 24 }]}
-                        onPress={handleSendLoginOtp}
-                        disabled={loading}
-                        activeOpacity={0.9}
-                      >
-                        {loading ? (
-                          <ActivityIndicator color="#ffffff" />
-                        ) : (
-                          <Text style={styles.submitButtonText}>Send OTP</Text>
-                        )}
-                      </TouchableOpacity>
-                    </>
-                  )}
-
-                  {/* Toggle Mode */}
-                  <TouchableOpacity
-                    style={{ alignItems: 'center', marginTop: 18 }}
-                    onPress={() => {
-                      setLoginWithOtp(false);
-                      setLoginOtpSent(false);
-                      setLoginOtp('');
-                      setError('');
-                      setSuccessMsg('');
-                    }}
-                  >
-                    <Text style={{ color: '#055726', fontSize: 13, fontWeight: '700' }}>Login with Password instead</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  {/* Password */}
-                  <Text style={[styles.inputLabel, { marginTop: 20, marginBottom: 8 }]}>Password</Text>
-                  <View style={styles.inputWrapper}>
-                    <Lock color="#055726" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
-                    <TextInput
-                      style={[styles.input, { paddingVertical: 0 }]}
-                      placeholder="Enter your password"
-                      placeholderTextColor="#9CA3AF"
-                      secureTextEntry={!showPassword}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      textContentType={showPassword ? 'none' : 'password'}
-                      value={password}
-                      onChangeText={setPassword}
-                    />
-                    <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon} activeOpacity={0.7}>
-                      {showPassword ? <EyeOff color="#1F2937" size={20} /> : <Eye color="#1F2937" size={20} />}
-                    </TouchableOpacity>
-                  </View>
-                  {isPasswordInvalid ? (
-                    <Text style={styles.inputErrorText}>Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
-                  ) : null}
-
-                  {/* Login with OTP & Forgot Password Links */}
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <TouchableOpacity
-                      style={styles.forgotPasswordRow}
-                      onPress={() => {
-                        setLoginWithOtp(true);
-                        setLoginOtpSent(false);
-                        setLoginOtp('');
-                        setError('');
-                        setSuccessMsg('');
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={{ color: '#055726', fontSize: 13, fontWeight: '700' }}>Login with OTP</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={styles.forgotPasswordRow}
-                      onPress={() => {
-                        setForgotEmail(email);
-                        setForgotStep(1);
-                        setForgotOtp('');
-                        setForgotError('');
-                        setForgotSuccess('');
-                        setForgotNewPass('');
-                        setForgotConfirmPass('');
-                        setShowForgotModal(true);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {/* Login Button */}
-                  <TouchableOpacity
-                    style={[styles.submitButton, { marginTop: 24 }]}
-                    onPress={handleLogin}
-                    disabled={loading}
-                    activeOpacity={0.9}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#ffffff" />
-                    ) : (
-                      <Text style={styles.submitButtonText}>Login</Text>
-                    )}
-                  </TouchableOpacity>
-                </>
-              )}
+              {/* Login Button */}
+              <TouchableOpacity
+                style={[styles.submitButton, { marginTop: 20 }]}
+                onPress={handleLogin}
+                disabled={loading}
+                activeOpacity={0.9}
+              >
+                {loading ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <Text style={styles.submitButtonText}>Login</Text>
+                )}
+              </TouchableOpacity>
             </>
           ) : (
             <>
               {/* ===== REGISTRATION STEP 1: Business Info ===== */}
               <View style={{ display: regStep === 1 ? 'flex' : 'none', width: '100%' }}>
-                {/* Select Housing Society */}
-                <Text style={[styles.inputLabel, { marginTop: 25 }]}>Select Housing Society *</Text>
-                <View style={{ position: 'relative', zIndex: 10, marginBottom: 4 }}>
-                  <View style={[styles.inputWrapper, selectedSocietyId ? styles.inputWrapperActive : undefined, (touchedStep1 && !selectedSocietyId) ? styles.inputWrapperError : undefined]}>
-                    <Building size={18} color="#9CA3AF" style={{ marginRight: 10 }} />
+                {/* 1. Enter Area / Locality / Sector */}
+                <Text style={[styles.inputLabel, { marginTop: 8 }]}>Area / Locality / Sector *</Text>
+
+                <View style={{ position: 'relative', zIndex: 30, marginBottom: 4 }}>
+                  <View style={[styles.inputWrapper, (touchedStep1 && (!areaName.trim() || areaName.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
+                    <MapPin size={18} color="#9CA3AF" style={{ marginRight: 10 }} />
                     <TextInput
                       style={styles.input}
-                      placeholder="Type society name (e.g. Greenwood, Anupam)..."
+                      placeholder="Enter area or sector"
                       placeholderTextColor="#9CA3AF"
-                      value={societyInputText}
-                      onFocus={loadAllSocieties}
-                      onChangeText={handleSocietySearch}
+                      value={areaName}
+                      onChangeText={handleAreaChange}
+                      onFocus={() => {
+                        if (areaSuggestions.length > 0) setShowAreaDropdown(true);
+                      }}
                     />
-                    {isSearchingSocieties ? (
-                      <ActivityIndicator size="small" color="#055726" style={{ marginRight: 6 }} />
-                    ) : selectedSocietyId ? (
-                      <Check size={18} color="#055726" />
-                    ) : (
-                      <ChevronDown size={18} color="#6B7280" />
-                    )}
+                    {isFetchingArea ? (
+                      <ActivityIndicator size="small" color="#541D26" />
+                    ) : (areaName.trim().length >= 2 && city) ? (
+                      <Check size={18} color="#541D26" />
+                    ) : null}
                   </View>
 
-                  {showSocietyDropdown ? (
-                    <View style={styles.dropdownBox}>
-                      <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }} keyboardShouldPersistTaps="handled">
-                        {societies.map(soc => (
+                  {/* Area Suggestions Dropdown */}
+                  {showAreaDropdown && areaSuggestions.length > 0 ? (
+                    <View style={[styles.dropdownBox, { marginTop: 4, maxHeight: 220 }]}>
+                      <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled" style={{ maxHeight: 220 }}>
+                        {areaSuggestions.map((item, idx) => (
                           <TouchableOpacity
-                            key={soc.society_id}
+                            key={`${item.name}_${item.pincode}_${idx}`}
                             style={[
                               styles.dropdownItem,
-                              selectedSocietyId === soc.society_id && styles.dropdownItemActive
+                              { borderBottomWidth: idx < areaSuggestions.length - 1 ? 1 : 0, borderBottomColor: '#F3F4F6' }
                             ]}
-                            onPress={() => {
-                              setSelectedSocietyId(soc.society_id);
-                              setSocietyInputText(soc.society_name);
-                              setShowSocietyDropdown(false);
-                            }}
+                            onPress={() => handleSelectSuggestion(item)}
+                            activeOpacity={0.8}
                           >
-                            <Building size={15} color="#055726" style={{ marginRight: 10 }} />
+                            <MapPin size={15} color="#541D26" style={{ marginRight: 10 }} />
                             <View style={{ flex: 1 }}>
-                              <Text style={styles.dropdownTitle}>{soc.society_name}</Text>
-                              {soc.location ? <Text style={styles.dropdownSub}>{soc.location}</Text> : null}
+                              <Text style={styles.dropdownTitle}>{item.name}</Text>
+                              <Text style={styles.dropdownSub}>
+                                {[item.city, item.state].filter(Boolean).join(', ')}{item.pincode ? ` • ${item.pincode}` : ''}
+                              </Text>
                             </View>
-                            {selectedSocietyId === soc.society_id ? <Check size={15} color="#055726" strokeWidth={3} /> : null}
+                            <ChevronRight size={14} color="#9CA3AF" />
                           </TouchableOpacity>
                         ))}
                       </ScrollView>
                     </View>
                   ) : null}
                 </View>
-                {touchedStep1 && !selectedSocietyId ? (
-                  <Text style={styles.inputErrorText}>Housing Society Selection is mandatory *. Please search and select your society.</Text>
+                {touchedStep1 && (!areaName.trim() || areaName.trim().length < 2) ? (
+                  <Text style={styles.inputErrorText}>Area / Locality is mandatory * (minimum 2 characters).</Text>
                 ) : null}
 
-                {societyInputText.trim().length >= 2 && societies.length === 0 ? (
-                  <TouchableOpacity
-                    style={[styles.unlistedButton, { marginBottom: 12 }]}
-                    onPress={() => {
-                      setShowSocietyDropdown(false);
-                      setNewSocietyName(societyInputText);
-                      setRegisterSocietyError('');
-                      setRegisterSocietySuccess('');
-                      setShowRegisterSocietyModal(true);
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={styles.unlistedButtonText}>+ Kindly help register our unlisted society</Text>
-                  </TouchableOpacity>
-                ) : null}
-                {/* Container for downward fields — enabled only when a society is selected */}
-                <View
-                  pointerEvents={selectedSocietyId ? 'auto' : 'none'}
-                  style={{ opacity: selectedSocietyId ? 1 : 0.4, width: '100%' }}
-                >
-                  {/* Owner Name */}
-                  <Text style={[styles.inputLabel, { marginTop: 12 }]}>Owner Name *</Text>
-                  <View style={[styles.inputWrapper, (touchedStep1 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim()))) ? styles.inputWrapperError : undefined]}>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter owner name"
-                      placeholderTextColor="#9CA3AF"
-                      value={vendorName}
-                      onChangeText={(text) => setVendorName(text.replace(/[^a-zA-Z\s]/g, ''))}
-                    />
-                  </View>
-                  {touchedStep1 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim())) ? (
-                    <Text style={styles.inputErrorText}>Owner Name is mandatory * (alphabets only, at least 2 characters).</Text>
-                  ) : isVendorInvalid ? (
-                    <Text style={styles.inputErrorText}>Owner name must contain only alphabets</Text>
-                  ) : null}
-
-                  {/* Mobile Number */}
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
-                    <Text style={styles.inputLabel}>Mobile Number *</Text>
-                    {isMobileVerified ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#D1FAE5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
-                        <Check size={12} color="#059669" style={{ marginRight: 4 }} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#059669' }}>Verified</Text>
-                      </View>
-                    ) : (
-                      phone.trim().length === 10 && /^[6-9]\d{9}$/.test(phone.trim()) ? (
-                        <TouchableOpacity onPress={handleSendMobileOtp} disabled={loading} activeOpacity={0.7}>
-                          <Text style={{ fontSize: 12, fontWeight: '700', color: '#055726', textDecorationLine: 'underline' }}>
-                            Verify via OTP
-                          </Text>
-                        </TouchableOpacity>
-                      ) : null
-                    )}
-                  </View>
-                  <View style={[styles.inputWrapper, (isPhoneInvalid || (touchedStep1 && (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.trim()) || !isMobileVerified))) ? styles.inputWrapperError : undefined]}>
-                    <View style={styles.countryCodeBadge}>
-                      <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
+                {/* Pincode & City (Side by Side Grid) */}
+                <View style={[styles.gridRow, { marginTop: 12 }]}>
+                  <View style={[styles.gridCol, { marginRight: 8 }]}>
+                    <Text style={styles.inputLabel}>Pincode *</Text>
+                    <View style={[styles.inputWrapper, (touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim()))) ? styles.inputWrapperError : undefined]}>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Pincode"
+                        placeholderTextColor="#9CA3AF"
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        value={pincode}
+                        onChangeText={handlePincodeChange}
+                      />
+                      {isFetchingPincode ? (
+                        <ActivityIndicator size="small" color="#541D26" />
+                      ) : null}
                     </View>
-                    <View style={styles.countryCodeDivider} />
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter 10-digit mobile number"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="number-pad"
-                      maxLength={10}
-                      value={phone}
-                      onChangeText={(text) => {
-                        const digitsOnly = text.replace(/[^0-9]/g, '').slice(0, 10);
-                        setPhone(digitsOnly);
-                        if (isMobileVerified) setIsMobileVerified(false);
-                      }}
-                    />
+                    {touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())) ? (
+                      <Text style={styles.inputErrorText}>Pincode is mandatory *.</Text>
+                    ) : null}
                   </View>
-                  {phone.length > 0 && !/^[6-9]/.test(phone) ? (
-                    <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
-                  ) : phone.length > 0 && phone.length < 10 ? (
-                    <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {phone.length}/10).</Text>
-                  ) : touchedStep1 && (!phone.trim() || !/^[6-9]\d{9}$/.test(phone.trim())) ? (
-                    <Text style={styles.inputErrorText}>Mobile Number is mandatory * (10-digit number starting with 6, 7, 8, or 9).</Text>
-                  ) : touchedStep1 && !isMobileVerified ? (
-                    <Text style={styles.inputErrorText}>Mobile OTP Verification is mandatory *. Please tap "Verify via OTP" beside your phone number.</Text>
-                  ) : null}
 
-                  {/* Email Address */}
-                  <Text style={[styles.inputLabel, { marginTop: 16 }]}>Email Address *</Text>
-                  <View style={[styles.inputWrapper, (touchedStep1 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim()))) ? styles.inputWrapperError : undefined]}>
-                    <TextInput
-                      style={styles.input}
-                      placeholder="Enter email address"
-                      placeholderTextColor="#9CA3AF"
-                      keyboardType="email-address"
-                      autoCapitalize="none"
-                      value={email}
-                      onChangeText={(text) => setEmail(text.trim())}
-                    />
+                  <View style={[styles.gridCol, { marginLeft: 8 }]}>
+                    <Text style={styles.inputLabel}>City *</Text>
+                    <View style={[styles.inputWrapper, (touchedStep1 && (!city.trim() || city.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="City"
+                        placeholderTextColor="#9CA3AF"
+                        value={city}
+                        onChangeText={setCity}
+                      />
+                    </View>
+                    {touchedStep1 && (!city.trim() || city.trim().length < 2) ? (
+                      <Text style={styles.inputErrorText}>City is mandatory *.</Text>
+                    ) : null}
                   </View>
-                  {touchedStep1 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) ? (
-                    <Text style={styles.inputErrorText}>Email Address is mandatory * (e.g. vendor@domain.com).</Text>
-                  ) : isEmailInvalid ? (
-                    <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
-                  ) : null}
+                </View>
+
+                {/* State */}
+                <Text style={[styles.inputLabel, { marginTop: 14 }]}>State *</Text>
+                <View style={[styles.inputWrapper, (touchedStep1 && (!stateName.trim() || stateName.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="State"
+                    placeholderTextColor="#9CA3AF"
+                    value={stateName}
+                    onChangeText={setStateName}
+                  />
+                </View>
+                {touchedStep1 && (!stateName.trim() || stateName.trim().length < 2) ? (
+                  <Text style={styles.inputErrorText}>State is mandatory *.</Text>
+                ) : null}
+
+                  {/* Business Classification */}
+                  <Text style={[styles.inputLabel, { marginTop: 16 }]}>Business Classification *</Text>
+                  <View style={styles.bizClassificationRow}>
+                    <TouchableOpacity
+                      style={[styles.bizClassCard, businessType === 'PRODUCT' && styles.bizClassCardActive]}
+                      onPress={() => {
+                        setBusinessType('PRODUCT');
+                        setCategory('');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bizClassIconBox, businessType === 'PRODUCT' && styles.bizClassIconBoxActive]}>
+                        <ShoppingBag size={18} color={businessType === 'PRODUCT' ? '#FFFFFF' : '#541D26'} />
+                      </View>
+                      <Text style={[styles.bizClassTitle, businessType === 'PRODUCT' && styles.bizClassTitleActive]}>
+                        Product Merchant
+                      </Text>
+                      <Text style={styles.bizClassSub}>Grocery, Bakery, Dairy, Chemist, Retail Goods</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.bizClassCard, businessType === 'SERVICE' && styles.bizClassCardActive]}
+                      onPress={() => {
+                        setBusinessType('SERVICE');
+                        setCategory('');
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <View style={[styles.bizClassIconBox, businessType === 'SERVICE' && styles.bizClassIconBoxActive]}>
+                        <Wrench size={18} color={businessType === 'SERVICE' ? '#FFFFFF' : '#541D26'} />
+                      </View>
+                      <Text style={[styles.bizClassTitle, businessType === 'SERVICE' && styles.bizClassTitleActive]}>
+                        Service Provider
+                      </Text>
+                      <Text style={styles.bizClassSub}>Electrician, AC Repair, Tuition, Clinic, CA</Text>
+                    </TouchableOpacity>
+                  </View>
 
                   {/* Business Category */}
                   <Text style={[styles.inputLabel, { marginTop: 16 }]}>Business Category *</Text>
@@ -1319,7 +1623,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     {showCategoryDropdown ? (
                       <View style={styles.dropdownBox}>
                         <ScrollView nestedScrollEnabled style={{ maxHeight: 200 }} keyboardShouldPersistTaps="handled">
-                          {BUSINESS_CATEGORIES.map(cat => (
+                          {(businessType === 'SERVICE' ? SERVICE_CATEGORIES : PRODUCT_CATEGORIES).map(cat => (
                             <TouchableOpacity
                               key={cat}
                               style={[
@@ -1332,7 +1636,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                               }}
                             >
                               <Text style={styles.dropdownTitle}>{cat}</Text>
-                              {category === cat ? <Check size={16} color="#055726" strokeWidth={2.5} /> : null}
+                              {category === cat ? <Check size={16} color="#541D26" strokeWidth={2.5} /> : null}
                             </TouchableOpacity>
                           ))}
                         </ScrollView>
@@ -1347,18 +1651,120 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TouchableOpacity
                     style={[styles.submitButton, { marginTop: 20 }]}
                     onPress={handleNextStep1}
+                    disabled={loading}
                     activeOpacity={0.9}
                   >
-                    <Text style={styles.submitButtonText}>Next</Text>
+                    {loading ? (
+                      <ActivityIndicator color="#ffffff" />
+                    ) : (
+                      <Text style={styles.submitButtonText}>Next</Text>
+                    )}
                   </TouchableOpacity>
-                </View>
               </View>
 
               {/* ===== REGISTRATION STEP 2: Shop Details ===== */}
               <View style={{ display: regStep === 2 ? 'flex' : 'none', width: '100%' }}>
+                {/* Owner Name */}
+                <Text style={[styles.inputLabel, { marginTop: 8 }]}>Owner Name *</Text>
+                <View style={[styles.inputWrapper, (touchedStep2 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim()))) ? styles.inputWrapperError : isVendorInvalid ? styles.inputWrapperError : undefined]}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter owner name"
+                    placeholderTextColor="#9CA3AF"
+                    value={vendorName}
+                    onChangeText={(text) => setVendorName(text.replace(/[^a-zA-Z\s]/g, ''))}
+                  />
+                </View>
+                {touchedStep2 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim())) ? (
+                  <Text style={styles.inputErrorText}>Owner Name is mandatory * (alphabets only, at least 2 characters).</Text>
+                ) : isVendorInvalid ? (
+                  <Text style={styles.inputErrorText}>Owner name must contain only alphabets</Text>
+                ) : null}
+
+                {/* Mobile Number */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                  <Text style={styles.inputLabel}>Mobile Number *</Text>
+                  {isMobileVerified ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#D1FAE5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
+                      <Check size={12} color="#16A34A" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 11, fontWeight: '700', color: '#16A34A' }}>Verified</Text>
+                    </View>
+                  ) : (
+                    (selectedCountryCode.dialCode === '+91' ? (phone.trim().length === 10 && /^[6-9]\d{9}$/.test(phone.trim())) : (phone.trim().length >= 7 && phone.trim().length <= 15)) ? (
+                      <TouchableOpacity onPress={handleSendMobileOtp} disabled={loading} activeOpacity={0.7}>
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: '#541D26', textDecorationLine: 'underline' }}>
+                          Verify via OTP
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null
+                  )}
+                </View>
+                <View style={[styles.inputWrapper, (isPhoneInvalid || (touchedStep2 && (!phone.trim() || !isMobileVerified))) ? styles.inputWrapperError : undefined]}>
+                  <TouchableOpacity
+                    style={styles.countryCodeBadge}
+                    onPress={() => {
+                      setCountrySearchQuery('');
+                      setShowCountryPicker(true);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.countryCodeText}>{selectedCountryCode.flag} {selectedCountryCode.dialCode}</Text>
+                    <ChevronDown size={14} color="#541D26" style={{ marginLeft: 3 }} />
+                  </TouchableOpacity>
+                  <View style={styles.countryCodeDivider} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder={selectedCountryCode.dialCode === '+91' ? 'Enter 10-digit mobile number' : 'Enter mobile number'}
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="number-pad"
+                    maxLength={selectedCountryCode.dialCode === '+91' ? 10 : 15}
+                    value={phone}
+                    onChangeText={(text) => {
+                      const maxLen = selectedCountryCode.dialCode === '+91' ? 10 : 15;
+                      const digitsOnly = text.replace(/[^0-9]/g, '').slice(0, maxLen);
+                      setPhone(digitsOnly);
+                      if (isMobileVerified) setIsMobileVerified(false);
+                    }}
+                  />
+                </View>
+                {selectedCountryCode.dialCode === '+91' && phone.length > 0 && !/^[6-9]/.test(phone) ? (
+                  <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
+                ) : selectedCountryCode.dialCode === '+91' && phone.length > 0 && phone.length < 10 ? (
+                  <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {phone.length}/10).</Text>
+                ) : selectedCountryCode.dialCode !== '+91' && phone.length > 0 && phone.length < 7 ? (
+                  <Text style={styles.inputErrorText}>Phone number must be at least 7 digits (currently {phone.length}).</Text>
+                ) : touchedStep2 && (!phone.trim() || (selectedCountryCode.dialCode === '+91' ? !/^[6-9]\d{9}$/.test(phone.trim()) : phone.trim().length < 7)) ? (
+                  <Text style={styles.inputErrorText}>
+                    {selectedCountryCode.dialCode === '+91'
+                      ? 'Mobile Number is mandatory * (10-digit number starting with 6, 7, 8, or 9).'
+                      : 'Mobile Number is mandatory * (7 to 15 digits).'}
+                  </Text>
+                ) : touchedStep2 && !isMobileVerified ? (
+                  <Text style={styles.inputErrorText}>Mobile OTP Verification is mandatory *. Please tap "Verify via OTP" beside your phone number.</Text>
+                ) : null}
+
+                {/* Email Address */}
+                <Text style={[styles.inputLabel, { marginTop: 16 }]}>Email Address *</Text>
+                <View style={[styles.inputWrapper, (touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim()))) ? styles.inputWrapperError : isEmailInvalid ? styles.inputWrapperError : undefined]}>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter email address"
+                    placeholderTextColor="#9CA3AF"
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    value={email}
+                    onChangeText={(text) => setEmail(text.trim())}
+                  />
+                </View>
+                {touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) ? (
+                  <Text style={styles.inputErrorText}>Email Address is mandatory * (e.g. vendor@domain.com).</Text>
+                ) : isEmailInvalid ? (
+                  <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
+                ) : null}
+
                 {/* Shop / Business Name */}
-                <Text style={[styles.inputLabel, { marginTop: 8 }]}>Shop / Business Name *</Text>
-                <View style={[styles.inputWrapper, (touchedStep2 && (!storeName.trim() || storeName.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
+                <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop / Business Name *</Text>
+                <View style={[styles.inputWrapper, (touchedStep2 && (!storeName.trim() || storeName.trim().length < 2)) ? styles.inputWrapperError : isStoreInvalid ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={styles.input}
                     placeholder="Enter shop / business name"
@@ -1373,67 +1779,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <Text style={styles.inputErrorText}>Business name must be at least 2 characters</Text>
                 ) : null}
 
-                {/* Shop Address */}
-                <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop Address *</Text>
-                <View style={[styles.inputWrapper, (touchedStep2 && (!shopAddress.trim() || shopAddress.trim().length < 5)) ? styles.inputWrapperError : undefined]}>
+                {/* Shop Number */}
+                <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop Number *</Text>
+                <View style={[styles.inputWrapper, (touchedStep2 && (!shopNumber.trim() || shopNumber.trim().length < 1)) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter shop address"
+                    placeholder="e.g. Shop No. 12, Ground Floor"
                     placeholderTextColor="#9CA3AF"
-                    value={shopAddress}
-                    onChangeText={setShopAddress}
+                    value={shopNumber}
+                    onChangeText={setShopNumber}
                   />
                 </View>
-                {touchedStep2 && (!shopAddress.trim() || shopAddress.trim().length < 5) ? (
-                  <Text style={styles.inputErrorText}>Shop Address is mandatory * (at least 5 characters).</Text>
-                ) : isAddressInvalid ? (
-                  <Text style={styles.inputErrorText}>Shop address must be at least 5 characters</Text>
+                {touchedStep2 && (!shopNumber.trim() || shopNumber.trim().length < 1) ? (
+                  <Text style={styles.inputErrorText}>Shop Number is mandatory * (e.g. Shop 12 or Booth 4).</Text>
                 ) : null}
 
-                {/* Pincode & City (Side by Side Grid) */}
-                <View style={[styles.gridRow, { marginTop: 16 }]}>
-                  <View style={[styles.gridCol, { marginRight: 8 }]}>
-                    <Text style={styles.inputLabel}>Pincode *</Text>
-                    <View style={[styles.inputWrapper, (touchedStep2 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim()))) ? styles.inputWrapperError : isPincodeInvalid ? styles.inputWrapperError : undefined]}>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Enter pincode"
-                        placeholderTextColor="#9CA3AF"
-                        keyboardType="number-pad"
-                        maxLength={6}
-                        value={pincode}
-                        onChangeText={setPincode}
-                      />
-                    </View>
-                    {touchedStep2 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())) ? (
-                      <Text style={styles.inputErrorText}>Pincode is mandatory * (6-digit number).</Text>
-                    ) : isPincodeInvalid ? (
-                      <Text style={styles.inputErrorText}>Enter 6-digit pincode</Text>
-                    ) : null}
-                  </View>
-
-                  <View style={[styles.gridCol, { marginLeft: 8 }]}>
-                    <Text style={styles.inputLabel}>City *</Text>
-                    <View style={[styles.inputWrapper, (touchedStep2 && (!city.trim() || city.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(city.trim()))) ? styles.inputWrapperError : isCityInvalid ? styles.inputWrapperError : undefined]}>
-                      <TextInput
-                        style={styles.input}
-                        placeholder="Enter city"
-                        placeholderTextColor="#9CA3AF"
-                        value={city}
-                        onChangeText={(text) => setCity(text.replace(/[^a-zA-Z\s]/g, ''))}
-                      />
-                    </View>
-                    {touchedStep2 && (!city.trim() || city.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(city.trim())) ? (
-                      <Text style={styles.inputErrorText}>City Name is mandatory * (alphabets only, at least 2 characters).</Text>
-                    ) : isCityInvalid ? (
-                      <Text style={styles.inputErrorText}>Enter valid city name</Text>
-                    ) : null}
-                  </View>
-                </View>
-
-                {/* GST Number */}
+                {/* GST / PAN Number */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>GST / PAN Number *</Text>
-                <View style={[styles.inputWrapper, (touchedStep2 && (!gst.trim() || (gst.trim().length !== 15 && gst.trim().length !== 10) || (!panCheckRegex.test(gst.toUpperCase().trim()) && !gstCheckRegex.test(gst.toUpperCase().trim())))) ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, (touchedStep2 && (!gst.trim() || (gst.trim().length !== 15 && gst.trim().length !== 10) || (!panCheckRegex.test(gst.toUpperCase().trim()) && !gstCheckRegex.test(gst.toUpperCase().trim())))) ? styles.inputWrapperError : isGstInvalid ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={styles.input}
                     placeholder="Enter 15-digit GSTIN or 10-digit PAN"
@@ -1458,7 +1821,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   activeOpacity={0.8}
                 >
                   <View style={styles.uploadPlusCircle}>
-                    <Plus size={20} color="#055726" strokeWidth={2.5} />
+                    <Plus size={20} color="#541D26" strokeWidth={2.5} />
                   </View>
                   <View style={{ alignItems: 'center' }}>
                     <Text style={styles.uploadTitle}>Add Photos</Text>
@@ -1490,9 +1853,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <TouchableOpacity
                   style={[styles.submitButton, { marginTop: 20 }]}
                   onPress={handleNextStep2}
+                  disabled={loading}
                   activeOpacity={0.9}
                 >
-                  <Text style={styles.submitButtonText}>Next</Text>
+                  {loading ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.submitButtonText}>Next</Text>
+                  )}
                 </TouchableOpacity>
               </View>
 
@@ -1503,22 +1871,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <View style={[styles.inputWrapper, (touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim()))) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
-                    placeholder="Enter password (8+ chars, uppercase, symbol)"
+                    placeholder="Min. 8 chars, 1 uppercase, 1 num, 1 sym"
                     placeholderTextColor="#9CA3AF"
                     secureTextEntry={!showPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
                     value={password}
                     onChangeText={setPassword}
                   />
-                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon} activeOpacity={0.7}>
-                    {showPassword ? <EyeOff color="#6B7280" size={20} /> : <Eye color="#6B7280" size={20} />}
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(!showPassword)}
+                    style={styles.eyeIcon}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    {showPassword ? (
+                      <Eye size={18} color="#6B7280" />
+                    ) : (
+                      <EyeOff size={18} color="#6B7280" />
+                    )}
                   </TouchableOpacity>
                 </View>
                 {touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim())) ? (
-                  <Text style={styles.inputErrorText}>Password is mandatory * (8+ chars with uppercase, number & special symbol @, #, $, !).</Text>
+                  <Text style={styles.inputErrorText}>Password must be at least 8 characters, include 1 uppercase, 1 number, and 1 special character.</Text>
                 ) : isPasswordInvalid ? (
-                  <Text style={styles.inputErrorText}>Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
+                  <Text style={styles.inputErrorText}>Password must contain uppercase, number & special character</Text>
                 ) : null}
 
                 {/* Confirm Password */}
@@ -1526,78 +1900,175 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <View style={[styles.inputWrapper, (touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim())) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
-                    placeholder="Re-enter password to confirm"
+                    placeholder="Re-enter password"
                     placeholderTextColor="#9CA3AF"
                     secureTextEntry={!showConfirmPassword}
-                    autoCapitalize="none"
-                    autoCorrect={false}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                   />
-                  <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeIcon} activeOpacity={0.7}>
-                    {showConfirmPassword ? <EyeOff color="#6B7280" size={20} /> : <Eye color="#6B7280" size={20} />}
+                  <TouchableOpacity
+                    onPress={() => setShowConfirmPassword(!showConfirmPassword)}
+                    style={styles.eyeIcon}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    {showConfirmPassword ? (
+                      <Eye size={18} color="#6B7280" />
+                    ) : (
+                      <EyeOff size={18} color="#6B7280" />
+                    )}
                   </TouchableOpacity>
                 </View>
                 {touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim()) ? (
-                  <Text style={styles.inputErrorText}>Confirm Password is mandatory and must match Password *.</Text>
-                ) : (confirmPassword && confirmPassword.trim() !== password.trim()) ? (
-                  <Text style={styles.inputErrorText}>Confirm Password does not match Password</Text>
+                  <Text style={styles.inputErrorText}>Passwords do not match.</Text>
                 ) : null}
 
-                {/* Details Summary Card */}
-                <View style={styles.summaryCard}>
-                  <Text style={styles.summaryTitle}>Registration Details</Text>
+                {/* Review Registration Details Card */}
+                <View style={[styles.summaryCard, { marginTop: 16 }]}>
+                  <Text style={styles.summaryTitle}>Review Your Details</Text>
 
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Owner:</Text>
-                    <Text style={styles.summaryVal}>{vendorName || '-'}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Mobile:</Text>
-                    <Text style={styles.summaryVal}>{phone || '-'}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Email:</Text>
-                    <Text style={styles.summaryVal}>{email || '-'}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Shop Name:</Text>
-                    <Text style={styles.summaryVal}>{storeName || '-'}</Text>
+                  {/* Section 1: Business Info */}
+                  <View style={{ marginBottom: 12, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#541D26', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      1. Business Info
+                    </Text>
+                    {/* Area / Locality */}
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Area / Sector:</Text>
+                      <Text style={styles.summaryVal}>{areaName || '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Pincode:</Text>
+                      <Text style={styles.summaryVal}>{pincode || '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>City:</Text>
+                      <Text style={styles.summaryVal}>{city || '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>State:</Text>
+                      <Text style={styles.summaryVal}>{stateName || '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Classification:</Text>
+                      <Text style={styles.summaryVal}>
+                        {businessType === 'SERVICE' ? 'Service Provider' : 'Product Merchant'}
+                      </Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Category:</Text>
+                      <Text style={styles.summaryVal}>{category || '-'}</Text>
+                    </View>
                   </View>
 
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Category:</Text>
-                    <Text style={styles.summaryVal}>{category || '-'}</Text>
-                  </View>
-                  <View style={styles.summaryRow}>
-                    <Text style={styles.summaryLabel}>Address:</Text>
-                    <Text style={styles.summaryVal}>{shopAddress || '-'}</Text>
+                  {/* Section 2: Shop Details */}
+                  <View>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#541D26', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                      2. Shop Details
+                    </Text>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Owner Name:</Text>
+                      <Text style={styles.summaryVal}>{vendorName || '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Mobile:</Text>
+                      <Text style={styles.summaryVal}>
+                        {phone ? `${selectedCountryCode.dialCode} ${phone}` : '-'} {isMobileVerified ? '✓ Verified' : ''}
+                      </Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Email:</Text>
+                      <Text style={styles.summaryVal}>{email || '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Shop Name:</Text>
+                      <Text style={styles.summaryVal}>{storeName || '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Shop Number:</Text>
+                      <Text style={styles.summaryVal}>{shopNumber || '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>GST / PAN:</Text>
+                      <Text style={styles.summaryVal}>{gst ? gst.toUpperCase() : '-'}</Text>
+                    </View>
+
+                    <View style={styles.summaryRow}>
+                      <Text style={styles.summaryLabel}>Shop Images:</Text>
+                      <Text style={styles.summaryVal}>
+                        {shopImages.length > 0 ? `${shopImages.length} photo(s) selected` : '-'}
+                      </Text>
+                    </View>
+
+                    {shopImages.length > 0 ? (
+                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4, marginLeft: 110 }}>
+                        {shopImages.slice(0, 4).map((uri, idx) => (
+                          <Image
+                            key={idx}
+                            source={{ uri }}
+                            style={{ width: 38, height: 38, borderRadius: 6, borderWidth: 1, borderColor: '#E5E7EB' }}
+                          />
+                        ))}
+                        {shopImages.length > 4 ? (
+                          <View style={{ width: 38, height: 38, borderRadius: 6, backgroundColor: '#F3F4F6', justifyContent: 'center', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 11, fontWeight: '600', color: '#4B5563' }}>+{shopImages.length - 4}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
                   </View>
                 </View>
 
-                {/* Terms & Privacy Agreement Checkbox */}
-                <View style={styles.termsCheckRow}>
+                {/* ─── Terms & Privacy Agreement Checkbox ─── */}
+                <View style={[styles.termsCheckRow, { marginTop: 18, marginBottom: 4 }]}>
                   <TouchableOpacity
-                    style={[styles.checkboxSquare, agreedToTerms && styles.checkboxSquareChecked, (touchedStep3 && !agreedToTerms) ? { borderColor: '#EF4444' } : undefined]}
-                    onPress={() => setAgreedToTerms(!agreedToTerms)}
+                    style={[
+                      styles.checkboxSquare,
+                      agreedToTerms && styles.checkboxSquareChecked,
+                      (touchedStep3 && !agreedToTerms) ? { borderColor: '#EF4444' } : undefined,
+                    ]}
+                    onPress={() => {
+                      if (!agreedToTerms) {
+                        setShowPolicyModal(true);
+                      } else {
+                        setAgreedToTerms(false);
+                      }
+                    }}
                     activeOpacity={0.8}
                   >
                     {agreedToTerms ? <Check size={13} color="#FFFFFF" strokeWidth={3} /> : null}
                   </TouchableOpacity>
                   <Text style={styles.termsCheckText}>
-                    I agree to the{' '}
-                    <Text style={styles.termsCheckLink} onPress={() => setShowTermsModal(true)}>
+                    I have read and agree to the{' '}
+                    <Text
+                      style={styles.termsCheckLink}
+                      onPress={() => setShowPolicyModal(true)}
+                    >
                       Terms & Conditions
                     </Text>
                     {' '}and{' '}
-                    <Text style={styles.termsCheckLink} onPress={() => setShowPrivacyModal(true)}>
+                    <Text
+                      style={styles.termsCheckLink}
+                      onPress={() => setShowPolicyModal(true)}
+                    >
                       Privacy Policy
                     </Text>
                     .
                   </Text>
                 </View>
+
                 {touchedStep3 && !agreedToTerms ? (
-                  <Text style={styles.inputErrorText}>Agreement to Terms & Conditions and Privacy Policy is mandatory *.</Text>
+                  <Text style={styles.inputErrorText}>Please accept the Terms & Conditions and Privacy Policy to proceed.</Text>
                 ) : null}
                 {touchedStep3 && !isMobileVerified ? (
                   <Text style={styles.inputErrorText}>Mobile OTP Verification is mandatory *. Please go back to Step 1 and verify your mobile number.</Text>
@@ -1613,7 +2084,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   {loading ? (
                     <ActivityIndicator color="#ffffff" />
                   ) : (
-                    <Text style={styles.submitButtonText}>Submit Registration</Text>
+                    <Text style={styles.submitButtonText}>Submit for Admin Approval</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -1636,6 +2107,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               onPress={() => {
                 setMode('register');
                 setRegStep(1);
+                setPhone('');
+                setEmail('');
+                setIsMobileVerified(false);
                 setError('');
                 setSuccessMsg('');
               }}
@@ -1645,11 +2119,243 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 Don't have a vendor account?{' '}
                 <Text style={styles.registerLinkText}>Register as Vendor</Text>
               </Text>
-              <ChevronRight size={15} color="#055726" strokeWidth={2.5} style={{ marginLeft: 2 }} />
+              <ChevronRight size={15} color="#541D26" strokeWidth={2.5} style={{ marginLeft: 2 }} />
             </TouchableOpacity>
           </View>
         ) : null}
       </ScrollView>
+
+      {/* ─── Already Registered Alert Modal ─── */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={showAlreadyRegisteredModal}
+        onRequestClose={() => setShowAlreadyRegisteredModal(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', paddingHorizontal: 24 }]}>
+          <View style={[styles.modalSheet, { borderRadius: 24, paddingVertical: 28, paddingHorizontal: 22, alignItems: 'center', width: '100%', maxWidth: 400 }]}>
+            {/* Warning / Alert Icon Badge */}
+            <View style={{
+              width: 64,
+              height: 64,
+              borderRadius: 32,
+              backgroundColor: '#FEF2F2',
+              borderWidth: 6,
+              borderColor: '#FEE2E2',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 16
+            }}>
+              <AlertCircle size={32} color="#DC2626" strokeWidth={2.2} />
+            </View>
+
+            {/* Title */}
+            <Text style={{
+              fontSize: 18,
+              fontWeight: '800',
+              color: '#1F2937',
+              textAlign: 'center',
+              marginBottom: 10,
+              fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
+            }}>
+              {alreadyRegisteredType === 'mobile'
+                ? 'Mobile Number Already Registered'
+                : alreadyRegisteredType === 'email'
+                  ? 'Email ID Already Registered'
+                  : 'Already Registered'}
+            </Text>
+
+            {/* Message Body */}
+            <Text style={{
+              fontSize: 13.5,
+              color: '#4B5563',
+              textAlign: 'center',
+              lineHeight: 20,
+              marginBottom: 24,
+              paddingHorizontal: 4,
+              fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular'
+            }}>
+              {alreadyRegisteredMsg || 'This mobile number or email ID is already registered. Please use another email or mobile number.'}
+            </Text>
+
+            {/* Action Buttons */}
+            <View style={{ width: '100%', gap: 10 }}>
+              {/* Primary: Use Another */}
+              <TouchableOpacity
+                style={[styles.modalDoneBtn, { width: '100%', backgroundColor: '#541D26' }]}
+                onPress={() => {
+                  setShowAlreadyRegisteredModal(false);
+                  if (alreadyRegisteredType === 'mobile') {
+                    setPhone('');
+                    setIsMobileVerified(false);
+                  } else if (alreadyRegisteredType === 'email') {
+                    setEmail('');
+                  } else {
+                    setPhone('');
+                    setEmail('');
+                    setIsMobileVerified(false);
+                  }
+                  setRegStep(1);
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalDoneBtnText}>
+                  {alreadyRegisteredType === 'mobile'
+                    ? 'Use Another Mobile Number'
+                    : alreadyRegisteredType === 'email'
+                      ? 'Use Another Email ID'
+                      : 'Use Another Email / Mobile'}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Secondary: Switch to Sign In */}
+              <TouchableOpacity
+                style={{
+                  width: '100%',
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  borderWidth: 1.5,
+                  borderColor: '#541D26',
+                  backgroundColor: '#F0FDF4',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onPress={() => {
+                  setShowAlreadyRegisteredModal(false);
+                  setMode('login');
+                  if (alreadyRegisteredType === 'mobile' && alreadyRegisteredValue) {
+                    setEmail(alreadyRegisteredValue);
+                  } else if (alreadyRegisteredType === 'email' && alreadyRegisteredValue) {
+                    setEmail(alreadyRegisteredValue);
+                  }
+                  setRegStep(1);
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={{
+                  color: '#541D26',
+                  fontSize: 14,
+                  fontWeight: '700',
+                  fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold'
+                }}>
+                  Sign In to Existing Account
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Mobile / Email Not Registered Alert Modal ─── */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={showNotRegisteredModal}
+        onRequestClose={() => setShowNotRegisteredModal(false)}
+      >
+        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', paddingHorizontal: 24 }]}>
+          <View style={[styles.modalSheet, { borderRadius: 24, paddingVertical: 28, paddingHorizontal: 22, alignItems: 'center', width: '100%', maxWidth: 400 }]}>
+            {/* User Plus / Info Badge */}
+            <View style={{
+              width: 68,
+              height: 68,
+              borderRadius: 34,
+              backgroundColor: '#F7EEF0',
+              borderWidth: 6,
+              borderColor: '#FAF8F5',
+              justifyContent: 'center',
+              alignItems: 'center',
+              marginBottom: 16
+            }}>
+              <UserPlus size={32} color="#541D26" strokeWidth={2.2} />
+            </View>
+
+            {/* Title */}
+            <Text style={{
+              fontSize: 19,
+              fontWeight: '800',
+              color: '#211A19',
+              textAlign: 'center',
+              marginBottom: 10,
+              fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
+            }}>
+              {notRegisteredValue.includes('@') ? 'Email ID Not Registered' : 'Mobile Number Not Registered'}
+            </Text>
+
+            {/* Description */}
+            <Text style={{
+              fontSize: 13.5,
+              color: '#78716C',
+              textAlign: 'center',
+              lineHeight: 20,
+              marginBottom: 24,
+              paddingHorizontal: 4,
+              fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular'
+            }}>
+              No vendor store account is registered with the {notRegisteredValue.includes('@') ? 'email address' : 'mobile number'}{' '}
+              <Text style={{ fontWeight: '700', color: '#211A19' }}>
+                {notRegisteredValue ? (notRegisteredValue.includes('@') ? notRegisteredValue : `+91 ${notRegisteredValue}`) : 'provided'}
+              </Text>
+              . Kindly register your vendor store account to get started on DigiLocal.
+            </Text>
+
+            {/* Action Buttons */}
+            <View style={{ width: '100%', gap: 10 }}>
+              {/* Primary: Register as Vendor */}
+              <TouchableOpacity
+                style={[styles.modalDoneBtn, { width: '100%', backgroundColor: '#541D26' }]}
+                onPress={() => {
+                  setShowNotRegisteredModal(false);
+                  setMode('register');
+                  setRegStep(1);
+                  setPhone('');
+                  setEmail('');
+                  setIsMobileVerified(false);
+                  setError('');
+                  setSuccessMsg('');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.modalDoneBtnText}>
+                  Register as Vendor
+                </Text>
+              </TouchableOpacity>
+
+              {/* Secondary: Try Another */}
+              <TouchableOpacity
+                style={{
+                  width: '100%',
+                  paddingVertical: 13,
+                  borderRadius: 14,
+                  borderWidth: 1.5,
+                  borderColor: '#E7DFD5',
+                  backgroundColor: '#FAF8F5',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                onPress={() => {
+                  setShowNotRegisteredModal(false);
+                  setEmail('');
+                  setForgotEmail('');
+                  setLoginOtpSent(false);
+                  setLoginOtp('');
+                  setError('');
+                }}
+                activeOpacity={0.85}
+              >
+                <Text style={{
+                  color: '#211A19',
+                  fontSize: 14,
+                  fontWeight: '700',
+                  fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold'
+                }}>
+                  {notRegisteredValue.includes('@') ? 'Try Another Email ID' : 'Try Another Mobile Number'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Registration Success Modal */}
       <Modal transparent animationType="fade" visible={showRegSuccessModal} onRequestClose={() => { }}>
@@ -1666,10 +2372,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </View>
             </View>
 
-            <Text style={styles.regSuccessTitle}>Registration Successful!</Text>
+            <Text style={styles.regSuccessTitle}>Registration Submitted!</Text>
 
             <Text style={styles.regSuccessDesc}>
-              Your vendor account has been created successfully. You can now manage your shop and start selling.
+              Your new registration has been submitted and is under review. Approval will be processed as soon as possible. We will notify you once it is activated.
             </Text>
 
             <TouchableOpacity
@@ -1688,42 +2394,195 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         </View>
       </Modal>
 
-      {/* Terms & Conditions Modal */}
-      <Modal transparent animationType="slide" visible={showTermsModal} onRequestClose={() => setShowTermsModal(false)}>
+      {/* ─── Image Source Selection Modal ─── */}
+      <Modal
+        visible={showImageSourceModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowImageSourceModal(false)}
+      >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
+          <View style={[styles.modalSheet, { paddingBottom: 24 }]}>
             <View style={styles.modalHandleBar} />
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Terms & Conditions</Text>
-              <TouchableOpacity onPress={() => setShowTermsModal(false)}>
-                <X color="#6B7280" size={20} />
+              <Text style={styles.modalTitle}>Add Shop Photo</Text>
+              <TouchableOpacity onPress={() => setShowImageSourceModal(false)}>
+                <X size={20} color="#6B7280" />
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 320, marginVertical: 10 }}>
-              <Text style={styles.termsBodyText}>{TERMS_TEXT}</Text>
-            </ScrollView>
-            <TouchableOpacity style={styles.modalDoneBtn} onPress={() => setShowTermsModal(false)}>
-              <Text style={styles.modalDoneBtnText}>I Understand & Agree</Text>
-            </TouchableOpacity>
+
+            <Text style={{ fontSize: 13, color: '#78716C', marginBottom: 16 }}>
+              Choose whether to take a new photo or select from your gallery:
+            </Text>
+
+            <View style={{ gap: 10 }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  backgroundColor: '#F7EEF0',
+                  borderRadius: 12,
+                  gap: 12,
+                }}
+                onPress={handleTakePhoto}
+                activeOpacity={0.8}
+              >
+                <Camera size={20} color="#541D26" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#541D26' }}>Take Photo with Camera</Text>
+                  <Text style={{ fontSize: 11.5, color: '#4B5563' }}>Use device camera to take a photo</Text>
+                </View>
+                <ChevronRight size={16} color="#541D26" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  backgroundColor: '#FAF8F5',
+                  borderWidth: 1,
+                  borderColor: '#E7DFD5',
+                  borderRadius: 12,
+                  gap: 12,
+                }}
+                onPress={handlePickFromGallery}
+                activeOpacity={0.8}
+              >
+                <ImageIcon size={20} color="#211A19" />
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#211A19' }}>Choose from Gallery / Files</Text>
+                  <Text style={{ fontSize: 11.5, color: '#4B5563' }}>Select photo from device library</Text>
+                </View>
+                <ChevronRight size={16} color="#9CA3AF" />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
 
-      {/* Privacy Policy Modal */}
-      <Modal transparent animationType="slide" visible={showPrivacyModal} onRequestClose={() => setShowPrivacyModal(false)}>
+      {/* ─── Country Code Picker Modal ─── */}
+      <Modal
+        visible={showCountryPicker}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowCountryPicker(false)}
+      >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
+          <View style={[styles.modalSheet, { maxHeight: '80%', paddingBottom: 20 }]}>
             <View style={styles.modalHandleBar} />
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Privacy Policy</Text>
-              <TouchableOpacity onPress={() => setShowPrivacyModal(false)}>
+              <Text style={styles.modalTitle}>Select Country Code</Text>
+              <TouchableOpacity onPress={() => setShowCountryPicker(false)}>
+                <X size={20} color="#6B7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Country Search Bar */}
+            <View style={[styles.inputWrapper, { marginHorizontal: 16, marginTop: 10, marginBottom: 8 }]}>
+              <Search size={16} color="#9CA3AF" style={{ marginRight: 8 }} />
+              <TextInput
+                style={styles.input}
+                placeholder="Search country or code (e.g. UAE, +1, UK)"
+                placeholderTextColor="#9CA3AF"
+                value={countrySearchQuery}
+                onChangeText={setCountrySearchQuery}
+                autoCorrect={false}
+              />
+            </View>
+
+            {/* Country List */}
+            <ScrollView style={{ paddingHorizontal: 16, marginTop: 4 }} keyboardShouldPersistTaps="handled">
+              {POPULAR_COUNTRY_CODES.filter(c =>
+                c.name.toLowerCase().includes(countrySearchQuery.toLowerCase()) ||
+                c.dialCode.includes(countrySearchQuery) ||
+                c.code.toLowerCase().includes(countrySearchQuery.toLowerCase())
+              ).map(item => (
+                <TouchableOpacity
+                  key={item.code}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    borderBottomWidth: 1,
+                    borderBottomColor: '#F3F4F6',
+                  }}
+                  onPress={() => {
+                    setSelectedCountryCode(item);
+                    setShowCountryPicker(false);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={{ fontSize: 22, marginRight: 12 }}>{item.flag}</Text>
+                  <Text style={{ flex: 1, fontSize: 14, fontWeight: '600', color: '#1F2937' }}>{item.name}</Text>
+                  <Text style={{ fontSize: 14, fontWeight: '700', color: '#541D26' }}>{item.dialCode}</Text>
+                  {selectedCountryCode.code === item.code ? (
+                    <Check size={16} color="#541D26" strokeWidth={3} style={{ marginLeft: 8 }} />
+                  ) : null}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ─── Unified Terms & Conditions & Privacy Policy Modal (Same Page) ─── */}
+      <Modal transparent animationType="slide" visible={showPolicyModal || showTermsModal || showPrivacyModal} onRequestClose={() => {
+        setShowPolicyModal(false);
+        setShowTermsModal(false);
+        setShowPrivacyModal(false);
+      }}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { maxHeight: '90%', paddingBottom: 20 }]}>
+            <View style={styles.modalHandleBar} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Terms & Privacy Policy</Text>
+              <TouchableOpacity onPress={() => {
+                setShowPolicyModal(false);
+                setShowTermsModal(false);
+                setShowPrivacyModal(false);
+              }}>
                 <X color="#6B7280" size={20} />
               </TouchableOpacity>
             </View>
-            <ScrollView style={{ maxHeight: 320, marginVertical: 10 }}>
-              <Text style={styles.termsBodyText}>{PRIVACY_TEXT}</Text>
+
+            <ScrollView style={{ maxHeight: 420, marginVertical: 10, paddingHorizontal: 2 }} showsVerticalScrollIndicator>
+              {/* Section 1: Terms & Conditions */}
+              <View style={{ marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 8, borderBottomWidth: 1.5, borderBottomColor: '#541D26', marginBottom: 12 }}>
+                  <FileText size={18} color="#541D26" />
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#541D26', fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold' }}>
+                    1. Terms & Conditions
+                  </Text>
+                </View>
+                <Text style={styles.termsBodyText}>{TERMS_TEXT}</Text>
+              </View>
+
+              {/* Section 2: Privacy Policy (Directly on Same Page) */}
+              <View style={{ marginTop: 12, paddingTop: 16, borderTopWidth: 2, borderTopColor: '#E5E7EB', marginBottom: 10 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: 8, borderBottomWidth: 1.5, borderBottomColor: '#541D26', marginBottom: 12 }}>
+                  <Shield size={18} color="#541D26" />
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: '#541D26', fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold' }}>
+                    2. Privacy Policy
+                  </Text>
+                </View>
+                <Text style={styles.termsBodyText}>{PRIVACY_TEXT}</Text>
+              </View>
             </ScrollView>
-            <TouchableOpacity style={styles.modalDoneBtn} onPress={() => setShowPrivacyModal(false)}>
+
+            <TouchableOpacity
+              style={[styles.modalDoneBtn, { width: '100%', marginTop: 12, backgroundColor: '#541D26' }]}
+              onPress={() => {
+                setAgreedToTerms(true);
+                setShowPolicyModal(false);
+                setShowTermsModal(false);
+                setShowPrivacyModal(false);
+              }}
+              activeOpacity={0.85}
+            >
               <Text style={styles.modalDoneBtnText}>I Understand & Agree</Text>
             </TouchableOpacity>
           </View>
@@ -1743,7 +2602,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </View>
 
             <View style={styles.successBox}>
-              <Mail color="#10B981" size={16} style={{ marginRight: 8 }} />
+              <Mail color="#16A34A" size={16} style={{ marginRight: 8 }} />
               <Text style={styles.successText}>Registration OTP sent successfully!</Text>
             </View>
 
@@ -1776,7 +2635,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <Text style={{ color: '#6B7280', fontSize: 13 }}>Resend in {regOtpTimer}s</Text>
               ) : (
                 <TouchableOpacity onPress={handleTriggerRegOtp}>
-                  <Text style={{ color: '#055726', fontSize: 13, fontWeight: '700' }}>Resend OTP</Text>
+                  <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '700' }}>Resend OTP</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -1805,33 +2664,46 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </View>
             ) : null}
 
-            {/* Step 1: Enter Phone & Send OTP */}
+            {/* Step 1: Enter Mobile / Email & Send OTP */}
             {forgotStep === 1 ? (
               <View>
                 <Text style={styles.forgotDesc}>
-                  Enter your registered vendor phone number. We'll send an OTP to verify your identity.
+                  Enter your registered mobile number or email ID. We'll send a secure OTP code to verify your identity and reset your password.
                 </Text>
 
-                <Text style={styles.inputLabel}>Registered Phone Number *</Text>
-                <View style={[styles.inputWrapper, (forgotEmail.length > 0 && (!/^[6-9]/.test(forgotEmail) || forgotEmail.length < 10)) ? styles.inputWrapperError : undefined]}>
-                  <View style={styles.countryCodeBadge}>
-                    <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
-                  </View>
-                  <View style={styles.countryCodeDivider} />
+                <Text style={styles.inputLabel}>Mobile Number / Email ID *</Text>
+                <View style={[styles.inputWrapper, (forgotError && !forgotEmail) ? styles.inputWrapperError : undefined]}>
+                  <User color="#541D26" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
                   <TextInput
                     style={styles.input}
-                    placeholder="Enter 10-digit phone number"
+                    placeholder="Enter mobile number or email id"
                     placeholderTextColor="#9CA3AF"
-                    keyboardType="phone-pad"
-                    maxLength={10}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType={/^\d+$/.test(forgotEmail) ? 'number-pad' : 'email-address'}
                     value={forgotEmail}
-                    onChangeText={(text) => setForgotEmail(text.replace(/[^0-9]/g, '').slice(0, 10))}
+                    onChangeText={(text) => {
+                      const val = text.trim();
+                      if (/^\d*$/.test(val)) {
+                        if (val.length <= 10) {
+                          setForgotEmail(val);
+                          setForgotError('');
+                        }
+                      } else {
+                        setForgotEmail(val);
+                        setForgotError('');
+                      }
+                    }}
                   />
                 </View>
-                {forgotEmail.length > 0 && !/^[6-9]/.test(forgotEmail) ? (
-                  <Text style={styles.inputErrorText}>Phone number must start with 6, 7, 8, or 9.</Text>
-                ) : forgotEmail.length > 0 && forgotEmail.length < 10 ? (
-                  <Text style={styles.inputErrorText}>Phone number must be 10 digits (currently {forgotEmail.length}/10).</Text>
+                {/^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && !/^[6-9]/.test(forgotEmail) ? (
+                  <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
+                ) : /^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && forgotEmail.length < 10 ? (
+                  <Text style={[styles.inputErrorText, { color: '#78716C' }]}>
+                    Mobile number ({forgotEmail.length}/10 digits)
+                  </Text>
+                ) : (!/^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && (!forgotEmail.includes('@') || !forgotEmail.includes('.'))) ? (
+                  <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
                 ) : null}
 
                 <TouchableOpacity
@@ -1842,7 +2714,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   {forgotLoading ? (
                     <ActivityIndicator color="#FFFFFF" size="small" />
                   ) : (
-                    <Text style={styles.modalDoneBtnText}>Send OTP</Text>
+                    <Text style={styles.modalDoneBtnText}>Send Reset OTP</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -1851,12 +2723,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               /* Step 2: Enter OTP */
               <View>
                 <View style={styles.successBox}>
-                  <Phone color="#10B981" size={16} style={{ marginRight: 8 }} />
-                  <Text style={styles.successText}>OTP sent to {forgotEmail}</Text>
+                  {forgotEmail.includes('@') ? (
+                    <Mail color="#16A34A" size={16} style={{ marginRight: 8 }} />
+                  ) : (
+                    <Phone color="#16A34A" size={16} style={{ marginRight: 8 }} />
+                  )}
+                  <Text style={styles.successText}>
+                    OTP sent to {forgotEmail.includes('@') ? forgotEmail : `+91 ${forgotEmail}`}
+                  </Text>
                 </View>
 
                 <Text style={styles.forgotDesc}>
-                  Enter the 6-digit OTP sent to your registered phone number.
+                  Enter the 6-digit OTP code sent to your {forgotEmail.includes('@') ? 'email address' : 'mobile number'} to verify your identity.
                 </Text>
 
                 <Text style={styles.inputLabel}>Enter OTP *</Text>
@@ -1872,8 +2750,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   />
                 </View>
 
+                {/* Resend Link / Timer */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 14 }}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setForgotStep(1);
+                      setForgotOtp('');
+                      setForgotError('');
+                    }}
+                  >
+                    <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '600' }}>← Change Email/Mobile</Text>
+                  </TouchableOpacity>
+
+                  {forgotOtpResendTimer > 0 ? (
+                    <Text style={{ color: '#6B7280', fontSize: 13 }}>Resend in {forgotOtpResendTimer}s</Text>
+                  ) : (
+                    <TouchableOpacity onPress={handleSendOtp}>
+                      <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '700' }}>Resend OTP</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
                 <TouchableOpacity
-                  style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }, { marginTop: 12 }]}
+                  style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
                   onPress={handleVerifyOtp}
                   disabled={forgotLoading}
                 >
@@ -1883,21 +2782,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <Text style={styles.modalDoneBtnText}>Verify OTP</Text>
                   )}
                 </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={{ alignItems: 'center', marginTop: 14 }}
-                  onPress={() => { setForgotStep(1); setForgotOtp(''); setForgotError(''); }}
-                  activeOpacity={0.7}
-                >
-                  <Text style={{ color: '#055726', fontSize: 13, fontWeight: '600' }}>← Change Email / Resend OTP</Text>
-                </TouchableOpacity>
               </View>
 
             ) : forgotStep === 3 ? (
               /* Step 3: New Password */
               <View>
                 <View style={styles.successBox}>
-                  <UserCheck color="#10B981" size={16} style={{ marginRight: 8 }} />
+                  <UserCheck color="#16A34A" size={16} style={{ marginRight: 8 }} />
                   <Text style={styles.successText}>OTP verified! Enter your new password below.</Text>
                 </View>
 
@@ -1914,7 +2805,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     onChangeText={setForgotNewPass}
                   />
                   <TouchableOpacity onPress={() => setForgotShowPass(!forgotShowPass)} style={styles.eyeIcon}>
-                    {forgotShowPass ? <EyeOff color="#9CA3AF" size={18} /> : <Eye color="#9CA3AF" size={18} />}
+                    {forgotShowPass ? <Eye color="#9CA3AF" size={18} /> : <EyeOff color="#9CA3AF" size={18} />}
                   </TouchableOpacity>
                 </View>
 
@@ -1949,7 +2840,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               /* Step 4: Success */
               <View style={{ alignItems: 'center', paddingVertical: 12 }}>
                 <View style={styles.forgotSuccessBadge}>
-                  <UserCheck size={28} color="#074E36" />
+                  <UserCheck size={28} color="#541D26" />
                 </View>
                 <Text style={styles.forgotSuccessTitle}>Password Updated!</Text>
                 <Text style={styles.forgotSuccessDesc}>{forgotSuccess}</Text>
@@ -1969,198 +2860,213 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </View>
         </View>
       </Modal>
-      {/* ─── Register Society Modal ─── */}
-      {/* ─── Register Society Modal ─── */}
-      <Modal
-        transparent
-        animationType="fade"
-        visible={showRegisterSocietyModal}
-        onRequestClose={() => setShowRegisterSocietyModal(false)}
-      >
-        <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0, 0, 0, 0.4)', justifyContent: 'center', paddingHorizontal: 20 }]}>
-          <View style={[styles.modalSheet, { borderRadius: 20, width: '100%', maxHeight: '90%', paddingBottom: 24 }]}>
-            {/* Header */}
-            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 12, position: 'relative', width: '100%' }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: '#1F2937', textAlign: 'center', fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold' }}>
-                Add New Society
-              </Text>
-              <TouchableOpacity
-                onPress={() => setShowRegisterSocietyModal(false)}
-                style={{ position: 'absolute', right: 0, padding: 4 }}
-              >
+
+      {/* ─── Login with OTP Modal ─── */}
+      <Modal transparent animationType="slide" visible={showLoginOtpModal} onRequestClose={() => setShowLoginOtpModal(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandleBar} />
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Login with OTP</Text>
+              <TouchableOpacity onPress={() => setShowLoginOtpModal(false)}>
                 <X color="#6B7280" size={20} />
               </TouchableOpacity>
             </View>
 
-            {/* Error */}
-            {registerSocietyError ? (
-              <View style={[styles.errorBox, { marginTop: 16 }]}>
+            {loginOtpModalError ? (
+              <View style={styles.errorBox}>
                 <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
-                <Text style={styles.errorText}>{registerSocietyError}</Text>
+                <Text style={styles.errorText}>{loginOtpModalError}</Text>
               </View>
             ) : null}
 
-            {/* Success Screen */}
-            {registerSocietySuccess ? (
-              <View style={{ alignItems: 'center', paddingVertical: 24, width: '100%' }}>
-                {/* Confetti & Check Badge */}
-                <View style={styles.successBadgeOuter}>
-                  <View style={styles.confettiDot1} />
-                  <View style={styles.confettiDot2} />
-                  <View style={styles.confettiDot3} />
-                  <View style={styles.confettiDot4} />
-                  <View style={styles.successBadgeCircle}>
-                    <Check size={36} color="#FFFFFF" strokeWidth={3.5} />
-                  </View>
-                </View>
-
-                <Text style={{
-                  fontSize: 20,
-                  fontWeight: '800',
-                  color: '#1F2937',
-                  marginTop: 16,
-                  textAlign: 'center',
-                  fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
-                }}>
-                  Registration Successful!
+            {loginOtpModalStep === 1 ? (
+              /* Step 1: Enter Mobile Number or Email ID */
+              <View>
+                <Text style={styles.forgotDesc}>
+                  Enter your registered mobile number or email ID to receive a secure login OTP code.
                 </Text>
 
-                <Text style={{
-                  fontSize: 14,
-                  color: '#6B7280',
-                  marginTop: 8,
-                  textAlign: 'center',
-                  lineHeight: 20,
-                  fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular'
-                }}>
-                  Waiting for admin approval.
-                </Text>
-
-                <TouchableOpacity
-                  style={[styles.modalDoneBtn, { width: '100%', marginTop: 28 }]}
-                  onPress={() => {
-                    setShowRegisterSocietyModal(false);
-                    setNewSocietyName('');
-                    setNewSocietyLocation('');
-                    setNewSocietyOwnerName('');
-                    setNewSocietyOwnerPhone('');
-                    setRegisterSocietyError('');
-                    setRegisterSocietySuccess('');
-                    setShowSocietyDropdown(false);
-                  }}
-                  activeOpacity={0.9}
-                >
-                  <Text style={styles.modalDoneBtnText}>Continue</Text>
-                </TouchableOpacity>
-              </View>
-            ) : null}
-
-            {!registerSocietySuccess ? (
-              <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ marginTop: 12 }}>
-                {/* Society Name */}
-                <Text style={[styles.inputLabel, { marginTop: 0 }]}>Society Name *</Text>
-                <View style={styles.inputWrapper}>
-                  <Building color="#9CA3AF" size={18} style={styles.inputIcon} />
+                <Text style={styles.inputLabel}>Mobile Number / Email ID *</Text>
+                <View style={[styles.inputWrapper, (loginOtpModalError && !loginOtpModalPhone) ? styles.inputWrapperError : undefined]}>
+                  <User color="#541D26" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
                   <TextInput
                     style={styles.input}
-                    placeholder="e.g. Greenwood Residency"
+                    placeholder="Enter mobile number or email id"
                     placeholderTextColor="#9CA3AF"
-                    value={newSocietyName}
-                    onChangeText={setNewSocietyName}
-                    autoCapitalize="words"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType={/^\d+$/.test(loginOtpModalPhone) ? 'number-pad' : 'email-address'}
+                    value={loginOtpModalPhone}
+                    onChangeText={(text) => {
+                      const val = text.trim();
+                      if (/^\d*$/.test(val)) {
+                        if (val.length <= 10) {
+                          setLoginOtpModalPhone(val);
+                          setLoginOtpModalError('');
+                        }
+                      } else {
+                        setLoginOtpModalPhone(val);
+                        setLoginOtpModalError('');
+                      }
+                    }}
                   />
                 </View>
-
-                {/* Society Address */}
-                <Text style={[styles.inputLabel, { marginTop: 12 }]}>Society Address / Location *</Text>
-                <View style={styles.inputWrapper}>
-                  <Store color="#9CA3AF" size={18} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. Plot 12, Sector 4, Greater Noida"
-                    placeholderTextColor="#9CA3AF"
-                    value={newSocietyLocation}
-                    onChangeText={setNewSocietyLocation}
-                    autoCapitalize="words"
-                  />
-                </View>
-
-                {/* Secretary Name */}
-                <Text style={[styles.inputLabel, { marginTop: 12 }]}>Secretary Name *</Text>
-                <View style={styles.inputWrapper}>
-                  <User color="#9CA3AF" size={18} style={styles.inputIcon} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="e.g. Mr. R.K. Sharma"
-                    placeholderTextColor="#9CA3AF"
-                    value={newSocietyOwnerName}
-                    onChangeText={(text) => setNewSocietyOwnerName(text.replace(/[^a-zA-Z\s]/g, ''))}
-                    autoCapitalize="words"
-                  />
-                </View>
-
-                {/* Secretary Contact */}
-                <Text style={[styles.inputLabel, { marginTop: 12 }]}>Secretary Contact *</Text>
-                <View style={[styles.inputWrapper, (newSocietyOwnerPhone.length > 0 && (!/^[6-9]/.test(newSocietyOwnerPhone) || newSocietyOwnerPhone.length < 10)) ? styles.inputWrapperError : undefined]}>
-                  <View style={styles.countryCodeBadge}>
-                    <Text style={styles.countryCodeText}>🇮🇳 +91</Text>
-                  </View>
-                  <View style={styles.countryCodeDivider} />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="9876543210"
-                    placeholderTextColor="#9CA3AF"
-                    value={newSocietyOwnerPhone}
-                    onChangeText={(text) => setNewSocietyOwnerPhone(text.replace(/[^0-9]/g, '').slice(0, 10))}
-                    keyboardType="number-pad"
-                    maxLength={10}
-                  />
-                </View>
-                {newSocietyOwnerPhone.length > 0 && !/^[6-9]/.test(newSocietyOwnerPhone) ? (
+                {/^\d+$/.test(loginOtpModalPhone) && loginOtpModalPhone.length > 0 && !/^[6-9]/.test(loginOtpModalPhone) ? (
                   <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
-                ) : newSocietyOwnerPhone.length > 0 && newSocietyOwnerPhone.length < 10 ? (
-                  <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {newSocietyOwnerPhone.length}/10).</Text>
+                ) : /^\d+$/.test(loginOtpModalPhone) && loginOtpModalPhone.length > 0 && loginOtpModalPhone.length < 10 ? (
+                  <Text style={[styles.inputErrorText, { color: '#78716C' }]}>
+                    Mobile number ({loginOtpModalPhone.length}/10 digits)
+                  </Text>
+                ) : (!/^\d+$/.test(loginOtpModalPhone) && loginOtpModalPhone.length > 0 && (!loginOtpModalPhone.includes('@') || !loginOtpModalPhone.includes('.'))) ? (
+                  <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
                 ) : null}
 
-                {/* Cancel & Submit Button Row */}
-                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 24, gap: 12 }}>
+                <TouchableOpacity
+                  style={[styles.modalDoneBtn, loginOtpModalLoading && { opacity: 0.7 }]}
+                  onPress={handleLoginOtpModalSend}
+                  disabled={loginOtpModalLoading}
+                >
+                  {loginOtpModalLoading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.modalDoneBtnText}>Send Login OTP</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            ) : (
+              /* Step 2: Enter OTP & Verify */
+              <View>
+                <View style={styles.successBox}>
+                  {loginOtpModalPhone.includes('@') ? (
+                    <Mail color="#16A34A" size={16} style={{ marginRight: 8 }} />
+                  ) : (
+                    <Phone color="#16A34A" size={16} style={{ marginRight: 8 }} />
+                  )}
+                  <Text style={styles.successText}>
+                    OTP sent to {loginOtpModalPhone.includes('@') ? loginOtpModalPhone : `+91 ${loginOtpModalPhone}`}
+                  </Text>
+                </View>
+
+                <Text style={styles.forgotDesc}>
+                  Enter the 6-digit OTP code sent to your {loginOtpModalPhone.includes('@') ? 'email address' : 'mobile number'} to sign in.
+                </Text>
+
+                <Text style={styles.inputLabel}>Enter OTP *</Text>
+                <View style={[styles.inputWrapper, { justifyContent: 'center' }]}>
+                  <TextInput
+                    style={[styles.input, { letterSpacing: 8, fontSize: 20, textAlign: 'center', fontWeight: '700' }]}
+                    placeholder="------"
+                    placeholderTextColor="#D1D5DB"
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    value={loginOtpModalCode}
+                    onChangeText={setLoginOtpModalCode}
+                  />
+                </View>
+
+                {/* Resend Link / Timer */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 14 }}>
                   <TouchableOpacity
-                    style={{
-                      backgroundColor: '#EFEFEA',
-                      paddingHorizontal: 20,
-                      height: 46,
-                      borderRadius: 23,
-                      justifyContent: 'center',
-                      alignItems: 'center'
+                    onPress={() => {
+                      setLoginOtpModalStep(1);
+                      setLoginOtpModalCode('');
+                      setLoginOtpModalError('');
                     }}
-                    onPress={() => setShowRegisterSocietyModal(false)}
-                    disabled={registerSocietyLoading}
                   >
-                    <Text style={{ color: '#1F2937', fontWeight: '700', fontSize: 14 }}>Cancel</Text>
+                    <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '600' }}>← Change Email/Mobile</Text>
                   </TouchableOpacity>
 
-                  <TouchableOpacity
-                    style={{
-                      backgroundColor: '#0B1610',
-                      paddingHorizontal: 20,
-                      height: 46,
-                      borderRadius: 23,
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      flexDirection: 'row'
-                    }}
-                    onPress={handleRegisterSociety}
-                    disabled={registerSocietyLoading}
-                    activeOpacity={0.9}
-                  >
-                    {registerSocietyLoading ? (
-                      <ActivityIndicator color="#FFFFFF" size="small" style={{ marginRight: 6 }} />
-                    ) : null}
-                    <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>Add Society</Text>
-                  </TouchableOpacity>
+                  {loginOtpModalTimer > 0 ? (
+                    <Text style={{ color: '#6B7280', fontSize: 13 }}>Resend in {loginOtpModalTimer}s</Text>
+                  ) : (
+                    <TouchableOpacity onPress={handleLoginOtpModalSend}>
+                      <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '700' }}>Resend OTP</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
-              </ScrollView>
+
+                <TouchableOpacity
+                  style={[styles.modalDoneBtn, loginOtpModalLoading && { opacity: 0.7 }]}
+                  onPress={handleLoginOtpModalVerify}
+                  disabled={loginOtpModalLoading}
+                >
+                  {loginOtpModalLoading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <Text style={styles.modalDoneBtnText}>Verify & Login</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+      {/* ─── Blocked Account Alert Modal ─── */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={Boolean(blockedModalData?.visible)}
+        onRequestClose={() => {
+          setBlockedModalData(null);
+          if (onClearBlockedInfo) onClearBlockedInfo();
+        }}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalSheet, { alignItems: 'center', paddingVertical: 28, paddingHorizontal: 22 }]}>
+            {/* Red Shield Alert Badge */}
+            <View style={styles.blockedBadgeCircle}>
+              <AlertTriangle size={34} color="#DC2626" strokeWidth={2.5} />
+            </View>
+
+            <Text style={styles.blockedTitle}>
+              {blockedModalData?.title || 'Account Blocked by Admin'}
+            </Text>
+
+            <Text style={styles.blockedDesc}>
+              {blockedModalData?.message || 'Your vendor merchant account has been suspended or blocked by the platform administrator.'}
+            </Text>
+
+            {blockedModalData?.reason ? (
+              <View style={styles.blockedReasonCard}>
+                <Text style={styles.blockedReasonHeading}>Reason for Block:</Text>
+                <Text style={styles.blockedReasonText}>{blockedModalData.reason}</Text>
+              </View>
             ) : null}
+
+            {/* Support Help Card */}
+            <View style={styles.blockedSupportCard}>
+              <Text style={styles.blockedSupportTitle}>Need assistance? Contact Support</Text>
+              
+              <TouchableOpacity
+                style={styles.blockedSupportRow}
+                onPress={() => Linking.openURL('mailto:products@zordial.com')}
+                activeOpacity={0.7}
+              >
+                <Mail size={15} color="#541D26" style={{ marginRight: 8 }} />
+                <Text style={styles.blockedSupportLink}>products@zordial.com</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.blockedSupportRow}
+                onPress={() => Linking.openURL('tel:+919461353008')}
+                activeOpacity={0.7}
+              >
+                <Phone size={15} color="#541D26" style={{ marginRight: 8 }} />
+                <Text style={styles.blockedSupportLink}>+91 94613 53008</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.modalDoneBtn, { width: '100%', marginTop: 20, backgroundColor: '#DC2626' }]}
+              onPress={() => {
+                setBlockedModalData(null);
+                if (onClearBlockedInfo) onClearBlockedInfo();
+              }}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.modalDoneBtnText}>Dismiss & Back to Login</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -2172,7 +3078,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     paddingHorizontal: 24,
     alignItems: 'center',
-    backgroundColor: '#FAF7F0',
+    backgroundColor: '#F8F6F0',
     flexGrow: 1,
   },
   backButton: {
@@ -2191,7 +3097,7 @@ const styles = StyleSheet.create({
   mainTitleCentered: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#055726',
+    color: '#541D26',
     letterSpacing: -0.6,
     marginBottom: 25,
     textAlign: 'center',
@@ -2219,12 +3125,12 @@ const styles = StyleSheet.create({
   dividerLine: {
     flex: 1,
     height: 1,
-    backgroundColor: '#D1E2D6',
+    backgroundColor: '#E7DFD5',
   },
   dividerText: {
     marginHorizontal: 12,
     fontSize: 13,
-    color: '#055726',
+    color: '#541D26',
     fontWeight: '600',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
   },
@@ -2242,7 +3148,7 @@ const styles = StyleSheet.create({
   registerLinkText: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#055726',
+    color: '#541D26',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
   },
   headerRowAligned: {
@@ -2260,7 +3166,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 23,
     fontWeight: '800',
-    color: '#055726',
+    color: '#541D26',
     letterSpacing: -0.4,
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
@@ -2268,7 +3174,7 @@ const styles = StyleSheet.create({
   mainTitle: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#055726',
+    color: '#541D26',
     letterSpacing: -0.6,
     marginBottom: 12,
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
@@ -2303,10 +3209,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   stepCircleActive: {
-    backgroundColor: '#055726',
+    backgroundColor: '#541D26',
   },
   stepCircleInactive: {
-    backgroundColor: '#FAF7F0',
+    backgroundColor: '#F8F6F0',
     borderWidth: 1.5,
     borderColor: '#D1D5DB',
   },
@@ -2327,7 +3233,7 @@ const styles = StyleSheet.create({
   },
   stepLabelActive: {
     fontWeight: '700',
-    color: '#055726',
+    color: '#541D26',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
   },
   stepLine: {
@@ -2337,10 +3243,10 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   stepLineActive: {
-    backgroundColor: '#055726',
+    backgroundColor: '#541D26',
   },
   stepLineInactive: {
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#E7DFD5',
   },
 
   card: {
@@ -2351,15 +3257,15 @@ const styles = StyleSheet.create({
   errorBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#FCA5A5',
+    borderColor: '#FECACA',
     padding: 12,
     borderRadius: 12,
     marginBottom: 16,
   },
   errorText: {
-    color: '#B91C1C',
+    color: '#DC2626',
     fontSize: 13,
     fontWeight: '600',
     flex: 1,
@@ -2367,15 +3273,15 @@ const styles = StyleSheet.create({
   successBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F2EA',
+    backgroundColor: '#F0FDF4',
     borderWidth: 1,
-    borderColor: '#D2E4D5',
+    borderColor: '#BBF7D0',
     padding: 12,
     borderRadius: 12,
     marginBottom: 16,
   },
   successText: {
-    color: '#1E3A29',
+    color: '#16A34A',
     fontSize: 13,
     fontWeight: '600',
     flex: 1,
@@ -2383,7 +3289,7 @@ const styles = StyleSheet.create({
   inputLabel: {
     fontSize: 13.5,
     fontWeight: '600',
-    color: '#1F2937',
+    color: '#211A19',
     marginBottom: 8,
     marginTop: 0,
     alignSelf: 'flex-start',
@@ -2395,7 +3301,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
     borderRadius: 14,
     paddingHorizontal: 16,
     height: 50,
@@ -2403,11 +3309,11 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   inputWrapperError: {
-    borderColor: '#EF4444',
+    borderColor: '#DC2626',
     backgroundColor: '#FEF2F2',
   },
   inputErrorText: {
-    color: '#EF4444',
+    color: '#DC2626',
     fontSize: 11.5,
     marginTop: 3,
     marginBottom: 6,
@@ -2415,7 +3321,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
   },
   inputWrapperActive: {
-    borderColor: '#055726',
+    borderColor: '#541D26',
     backgroundColor: '#FFFFFF',
   },
   inputIcon: {
@@ -2429,51 +3335,51 @@ const styles = StyleSheet.create({
   countryCodeText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#055726',
+    color: '#541D26',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
   },
   countryCodeDivider: {
     width: 1,
     height: 22,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#E7DFD5',
     marginRight: 10,
     marginLeft: 2,
   },
   input: {
     flex: 1,
     fontSize: 14,
-    color: '#1F2937',
+    color: '#211A19',
     height: '100%',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
   },
   categoryText: {
     flex: 1,
     fontSize: 14,
-    color: '#1F2937',
+    color: '#211A19',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
   },
   categoryPlaceholderText: {
     flex: 1,
     fontSize: 14,
-    color: '#9CA3AF',
+    color: '#78716C',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
   },
   checkBadge: {
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: '#055726',
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
   },
   dropdownBox: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
     borderRadius: 12,
     marginTop: 4,
     overflow: 'hidden',
-    shadowColor: '#18281F',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
     shadowRadius: 8,
@@ -2486,17 +3392,17 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   dropdownItemActive: {
-    backgroundColor: '#E8F2EA',
+    backgroundColor: '#F7EEF0',
   },
   dropdownTitle: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#18281F',
+    color: '#211A19',
     flex: 1,
   },
   dropdownSub: {
     fontSize: 11,
-    color: '#6B7C70',
+    color: '#78716C',
     marginTop: 1,
   },
   gridRow: {
@@ -2512,9 +3418,9 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 84,
     borderRadius: 16,
-    backgroundColor: '#FAF7F0',
+    backgroundColor: '#F8F6F0',
     borderWidth: 1.5,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
     borderStyle: 'dashed',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2527,7 +3433,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#E7DFD5',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -2535,11 +3441,11 @@ const styles = StyleSheet.create({
   uploadTitle: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#1F2937',
+    color: '#211A19',
   },
   uploadSub: {
     fontSize: 11,
-    color: '#6B7280',
+    color: '#78716C',
     marginTop: 2,
   },
   photosGrid: {
@@ -2556,7 +3462,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 10,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#FAF8F5',
   },
   photoRemoveBtn: {
     position: 'absolute',
@@ -2583,10 +3489,10 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 36,
-    backgroundColor: '#055726',
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#055726',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -2633,7 +3539,7 @@ const styles = StyleSheet.create({
   regSuccessTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#055726',
+    color: '#541D26',
     marginBottom: 12,
     textAlign: 'center',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
@@ -2658,15 +3564,15 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: '#055726',
-    backgroundColor: '#FAF7F0',
+    borderColor: '#541D26',
+    backgroundColor: '#F8F6F0',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 10,
   },
   checkboxSquareChecked: {
-    backgroundColor: '#055726',
-    borderColor: '#055726',
+    backgroundColor: '#541D26',
+    borderColor: '#541D26',
   },
   termsCheckText: {
     flex: 1,
@@ -2676,7 +3582,7 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
   },
   termsCheckLink: {
-    color: '#055726',
+    color: '#541D26',
     fontWeight: '700',
     textDecorationLine: 'underline',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
@@ -2690,7 +3596,7 @@ const styles = StyleSheet.create({
   summaryCard: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
     borderRadius: 14,
     padding: 16,
     marginTop: 16,
@@ -2698,7 +3604,7 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#055726',
+    color: '#541D26',
     marginBottom: 12,
   },
   summaryRow: {
@@ -2706,15 +3612,15 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   summaryLabel: {
-    width: 95,
+    width: 110,
     fontSize: 13,
-    color: '#6B7280',
+    color: '#78716C',
     fontWeight: '600',
   },
   summaryVal: {
     flex: 1,
     fontSize: 13,
-    color: '#1F2937',
+    color: '#211A19',
     fontWeight: '600',
   },
 
@@ -2729,16 +3635,16 @@ const styles = StyleSheet.create({
   forgotPasswordText: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#055726',
+    color: '#541D26',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
   },
   submitButton: {
     height: 52,
     borderRadius: 14,
-    backgroundColor: '#055726',
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#055726',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 6,
@@ -2760,20 +3666,20 @@ const styles = StyleSheet.create({
   },
   footerGrayText: {
     fontSize: 13.5,
-    color: '#6B7280',
+    color: '#78716C',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
   },
   footerGreenLink: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#055726',
+    color: '#541D26',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
   },
 
   /* Forgot Modal Styles */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(40, 13, 18, 0.75)',
     justifyContent: 'flex-end',
   },
   modalSheet: {
@@ -2788,7 +3694,7 @@ const styles = StyleSheet.create({
   modalHandleBar: {
     width: 40,
     height: 4,
-    backgroundColor: '#E5E7EB',
+    backgroundColor: '#E7DFD5',
     borderRadius: 2,
     alignSelf: 'center',
     marginBottom: 16,
@@ -2798,7 +3704,7 @@ const styles = StyleSheet.create({
     width: '100%',
     backgroundColor: '#FAF8F5',
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
     borderRadius: 16,
     padding: 16,
     marginTop: 16,
@@ -2817,7 +3723,7 @@ const styles = StyleSheet.create({
   societyHeaderTitle: {
     fontSize: 12.5,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#211A19',
     letterSpacing: 0.5,
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
   },
@@ -2840,7 +3746,7 @@ const styles = StyleSheet.create({
     height: 48,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
     backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2848,7 +3754,7 @@ const styles = StyleSheet.create({
   },
   unlistedButtonText: {
     fontSize: 13,
-    color: '#18281F',
+    color: '#211A19',
     fontWeight: '700',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_600SemiBold',
   },
@@ -2873,7 +3779,7 @@ const styles = StyleSheet.create({
   },
   modalDoneBtn: {
     height: 48,
-    backgroundColor: '#055726',
+    backgroundColor: '#541D26',
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
@@ -2888,7 +3794,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 30,
-    backgroundColor: '#E8F2EA',
+    backgroundColor: '#F7EEF0',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
@@ -2896,7 +3802,7 @@ const styles = StyleSheet.create({
   forgotSuccessTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: '#074E36',
+    color: '#541D26',
     marginBottom: 6,
   },
   forgotSuccessDesc: {
@@ -2905,5 +3811,125 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
     paddingHorizontal: 20,
+  },
+  bizClassificationRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 4,
+  },
+  bizClassCard: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 14,
+    backgroundColor: '#FAF8F5',
+    borderWidth: 1.5,
+    borderColor: '#E7DFD5',
+    alignItems: 'center',
+  },
+  bizClassCardActive: {
+    backgroundColor: '#F7EEF0',
+    borderColor: '#541D26',
+  },
+  bizClassIconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#EEE5DA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  bizClassIconBoxActive: {
+    backgroundColor: '#541D26',
+  },
+  bizClassTitle: {
+    fontSize: 12.5,
+    fontWeight: '700',
+    color: '#211A19',
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  bizClassTitleActive: {
+    color: '#541D26',
+  },
+  bizClassSub: {
+    fontSize: 10,
+    color: '#6B7280',
+    textAlign: 'center',
+    lineHeight: 13,
+  },
+  blockedBadgeCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#FEE2E2',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    borderWidth: 2,
+    borderColor: '#FCA5A5',
+  },
+  blockedTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#991B1B',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  blockedDesc: {
+    fontSize: 13.5,
+    color: '#4B5563',
+    textAlign: 'center',
+    lineHeight: 19,
+    marginBottom: 14,
+  },
+  blockedReasonCard: {
+    width: '100%',
+    backgroundColor: '#FFF1F2',
+    borderWidth: 1,
+    borderColor: '#FECDD3',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 14,
+  },
+  blockedReasonHeading: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#9F1239',
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  blockedReasonText: {
+    fontSize: 12.5,
+    color: '#881337',
+    fontWeight: '500',
+  },
+  blockedSupportCard: {
+    width: '100%',
+    backgroundColor: '#F9FAFB',
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+    borderRadius: 12,
+    padding: 12,
+  },
+  blockedSupportTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#374151',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  blockedSupportRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 5,
+  },
+  blockedSupportLink: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#541D26',
+    textDecorationLine: 'underline',
   },
 });

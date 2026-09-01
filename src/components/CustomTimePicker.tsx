@@ -236,7 +236,7 @@ export const CustomTimePicker: React.FC<CustomTimePickerProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(11, 22, 16, 0.6)',
+    backgroundColor: 'rgba(40, 13, 18, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
@@ -244,13 +244,13 @@ const styles = StyleSheet.create({
   container: {
     width: '90%',
     maxWidth: 340,
-    backgroundColor: '#F7F4EE', // Cream Canvas
+    backgroundColor: '#FAF8F5',
     borderRadius: 24,
     padding: 24,
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: '#E4DCC9', // Sand Border
-    shadowColor: '#0B1610',
+    borderColor: '#E7DFD5',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.15,
     shadowRadius: 12,
@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#6B7C70', // Muted Sage Text
+    color: '#78716C',
     textTransform: 'uppercase',
     letterSpacing: 0.8,
     marginBottom: 16,
@@ -269,25 +269,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 24,
-    backgroundColor: '#18281F', // Dark Forest Green Header Background
+    backgroundColor: '#541D26',
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#34533C',
+    borderColor: '#C8A878',
   },
   timeText: {
     fontSize: 36,
     fontWeight: '800',
-    color: '#6B7C70', // Muted Sage Text
+    color: 'rgba(255, 255, 255, 0.5)',
   },
   timeTextActive: {
-    color: '#FFFFFF', // White text for high contrast on dark header
+    color: '#FFFFFF',
   },
   colon: {
     fontSize: 32,
     fontWeight: '700',
-    color: '#F7F4EE',
+    color: '#C8A878',
     marginHorizontal: 8,
   },
   ampmContainer: {
@@ -298,34 +298,34 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     paddingHorizontal: 8,
     borderRadius: 6,
-    backgroundColor: 'rgba(247, 244, 238, 0.1)',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     borderWidth: 1,
-    borderColor: '#34533C',
+    borderColor: 'rgba(200, 168, 120, 0.4)',
   },
   ampmBtnActive: {
-    backgroundColor: '#34533C', // Forest Green Container
-    borderColor: '#34533C',
+    backgroundColor: '#C8A878',
+    borderColor: '#C8A878',
   },
   ampmText: {
     fontSize: 11,
     fontWeight: '800',
-    color: '#F7F4EE',
-    opacity: 0.6,
+    color: '#FAF8F5',
+    opacity: 0.7,
   },
   ampmTextActive: {
-    color: '#FFFFFF', // White text
+    color: '#211A19',
     opacity: 1,
   },
   clockContainer: {
     width: DIAL_SIZE,
     height: DIAL_SIZE,
-    backgroundColor: '#EDEDE4', // Warm Off-White
+    backgroundColor: '#F8F6F0',
     borderRadius: DIAL_SIZE / 2,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 24,
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
   },
   dial: {
     width: DIAL_SIZE,
@@ -339,21 +339,21 @@ const styles = StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: '#18281F', // Dark Forest Green Hand pivot
+    backgroundColor: '#541D26',
   },
   handLine: {
     position: 'absolute',
     width: RADIUS,
     height: 2,
-    backgroundColor: '#18281F', // Dark Forest Green Hand line
+    backgroundColor: '#541D26',
   },
   selectionCircle: {
     position: 'absolute',
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#18281F', // Dark Forest Green selection indicator
-    opacity: 1, // Solid circle
+    backgroundColor: '#541D26',
+    opacity: 1,
   },
   clockNumber: {
     position: 'absolute',
@@ -363,10 +363,10 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     fontSize: 14,
     fontWeight: '700',
-    color: '#6B7C70', // Muted Sage Text
+    color: '#78716C',
   },
   clockNumberSelected: {
-    color: '#FFFFFF', // White text contrast on selected item
+    color: '#FFFFFF',
     fontWeight: '800',
   },
   actions: {
@@ -381,22 +381,22 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#EDEDE4',
+    backgroundColor: '#EEE5DA',
     borderWidth: 1,
-    borderColor: '#E4DCC9',
+    borderColor: '#E7DFD5',
   },
   saveBtn: {
-    backgroundColor: '#18281F', // Dark Forest Green Confirm Button
-    borderColor: '#18281F',
+    backgroundColor: '#541D26',
+    borderColor: '#541D26',
   },
   cancelBtnText: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#6B7C70',
+    color: '#211A19',
   },
   saveBtnText: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#FFFFFF', // White text
+    color: '#FFFFFF',
   },
 });

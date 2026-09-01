@@ -3,7 +3,8 @@ import Constants from 'expo-constants';
 import {
   saveApiBaseUrlStorage,
   getAccessToken,
-  getRefreshToken
+  getRefreshToken,
+  saveTokens
 } from '../authStorage';
 
 // Read API Base URL from environment variable (.env -> EXPO_PUBLIC_API_URL for zordial-dev/digi-local_vendor)
@@ -79,6 +80,10 @@ export const safeFetch = async (
 
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
+      'X-Platform-Client': 'vendor_app',
       ...((options.headers as Record<string, string>) || {})
     };
 
@@ -105,14 +110,34 @@ export const safeFetch = async (
       if (refreshToken) {
         isRefreshingToken = true;
         try {
-          const refreshRes = await fetch(`${getApiBaseUrl()}/vendors/refresh`, {
+          let refreshRes = await fetch(`${getApiBaseUrl()}/vendors/refresh-token`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+              'X-Platform-Client': 'vendor_app',
+            },
             body: JSON.stringify({ refreshToken })
           });
+
+          if (!refreshRes.ok) {
+            // Fallback alias /vendors/refresh
+            refreshRes = await fetch(`${getApiBaseUrl()}/vendors/refresh`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Platform-Client': 'vendor_app',
+              },
+              body: JSON.stringify({ refreshToken })
+            });
+          }
+
           const refreshData = await refreshRes.json();
           isRefreshingToken = false;
-          if (refreshRes.ok && refreshData.accessToken) {
+          if (refreshRes.ok && (refreshData.accessToken || refreshData.token)) {
+            const newToken = refreshData.accessToken || refreshData.token;
+            await saveTokens(newToken, refreshData.refreshToken || refreshToken);
             return safeFetch(url, options, 1);
           }
         } catch (_) {

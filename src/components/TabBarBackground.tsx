@@ -30,7 +30,7 @@ export const TabBarBackground: React.FC<TabBarBackgroundProps> = ({ width, heigh
   return (
     <Svg width={width} height={height} style={styles.svg}>
       {/* Background shape with sand border color */}
-      <Path d={d} fill="#F7F4EE" stroke="#E4DCC9" strokeWidth={1.5} />
+      <Path d={d} fill="#FAF8F5" stroke="#E7DFD5" strokeWidth={1.5} />
     </Svg>
   );
 };
@@ -40,7 +40,7 @@ const styles = {
     position: 'absolute',
     bottom: 0,
     left: 0,
-    shadowColor: '#18281F',
+    shadowColor: '#211A19',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.08,
     shadowRadius: 10,

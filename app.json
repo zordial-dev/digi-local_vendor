@@ -3,20 +3,20 @@
     "name": "DigiLocal Vendor",
     "slug": "digi-local_vendor",
     "scheme": "digilocalvendor",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#EDEDE4"
+      "backgroundColor": "#F8F6F0"
     },
     "android": {
       "package": "com.digilocal.vendor",
       "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "backgroundColor": "#EDEDE4",
+        "backgroundColor": "#F8F6F0",
         "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false,
@@ -29,7 +29,9 @@
         "android.permission.USE_FULL_SCREEN_INTENT",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.RECORD_AUDIO"
+        "android.permission.RECORD_AUDIO",
+        "android.permission.CAMERA",
+        "android.permission.READ_MEDIA_IMAGES"
       ]
     },
     "web": {
@@ -46,10 +48,17 @@
         "expo-notifications",
         {
           "icon": "./assets/images/icon.png",
-          "color": "#C5A880",
+          "color": "#541D26",
           "sounds": [
             "./assets/order_alert_chime.wav"
           ]
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow DigiLocal Vendor to access your photos to upload store logo, shop images, and product photos.",
+          "cameraPermission": "Allow DigiLocal Vendor to access your camera to take store and product photos."
         }
       ],
       "@react-native-community/datetimepicker",
@@ -57,9 +66,9 @@
         "expo-build-properties",
         {
           "android": {
-            "colorPrimary": "#18281F",
-            "colorAccent": "#18281F",
-            "colorPrimaryDark": "#18281F"
+            "colorPrimary": "#541D26",
+            "colorAccent": "#C8A878",
+            "colorPrimaryDark": "#3D1219"
           }
         }
       ],
@@ -85,7 +94,9 @@
       "bundleIdentifier": "com.digilocal.vendor",
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to convert your voice to text.",
-        "NSMicrophoneUsageDescription": "This app needs access to the microphone to capture your speech."
+        "NSMicrophoneUsageDescription": "This app needs access to the microphone to capture your speech.",
+        "NSCameraUsageDescription": "This app needs access to your camera to take photos of your store and products.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select and upload store logo and product images."
       }
     }
   }

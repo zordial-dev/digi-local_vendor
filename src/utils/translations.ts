@@ -211,3 +211,42 @@ export const matchesBilingualQuery = (itemName: string, category: string | undef
 
   return false;
 };
+
+/**
+ * Helper to identify if a category or business type represents a Service Provider
+ */
+export const isServiceCategory = (categoryName?: string, businessType?: string): boolean => {
+  if (businessType && (businessType.toUpperCase() === 'SERVICE' || businessType.toLowerCase() === 'service_provider')) {
+    return true;
+  }
+  if (!categoryName) return false;
+  const lower = categoryName.trim().toLowerCase();
+  return (
+    lower.includes('repair') ||
+    lower.includes('service') ||
+    lower.includes('cleaning') ||
+    lower.includes('electrician') ||
+    lower.includes('plumber') ||
+    lower.includes('carpenter') ||
+    lower.includes('carpentry') ||
+    lower.includes('paint') ||
+    lower.includes('pest') ||
+    lower.includes('beauty') ||
+    lower.includes('salon') ||
+    lower.includes('wellness') ||
+    lower.includes('tuition') ||
+    lower.includes('coaching') ||
+    lower.includes('doctor') ||
+    lower.includes('consult') ||
+    lower.includes('medical') ||
+    lower.includes('driver') ||
+    lower.includes('tax') ||
+    lower.includes('legal') ||
+    lower.includes('appliance') ||
+    lower.includes('mechanic') ||
+    lower.includes('ac ') ||
+    lower.endsWith(' ac') ||
+    lower === 'ac'
+  );
+};
+

@@ -10,6 +10,7 @@ import {
   FlatList,
   RefreshControl,
   Linking,
+  Platform,
 } from 'react-native';
 import {
   Clock,
@@ -36,6 +37,10 @@ interface OrdersScreenProps {
   isLoading: boolean;
   onRefresh: () => Promise<void> | void;
   isDarkMode?: boolean;
+  businessType?: 'PRODUCT' | 'SERVICE';
+  isPendingApproval?: boolean;
+  onNavigateToMenu?: () => void;
+  onNavigateToSettings?: () => void;
 }
 
 type StatusFilter = 'ALL' | 'PLACED' | 'ACCEPTED' | 'DELIVERED' | 'CANCELLED';
@@ -431,11 +436,25 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
   storeItems = [],
   isLoading,
   onRefresh,
+  isDarkMode = false,
+  businessType = 'PRODUCT',
+  isPendingApproval = false,
+  onNavigateToMenu,
+  onNavigateToSettings,
 }) => {
+  const isService = businessType === 'SERVICE';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
   const [searchQuery, setSearchQuery] = useState('');
   const [updatingId, setUpdatingId] = useState<string | number | null>(null);
   const [localOverrides, setLocalOverrides] = useState<Record<string | number, string>>({});
+
+  const tabLabelMap: Record<StatusFilter, string> = {
+    ALL: isService ? 'All Leads' : 'All Orders',
+    PLACED: isService ? 'New' : 'New',
+    ACCEPTED: isService ? 'Contacted' : 'In Prep',
+    DELIVERED: isService ? 'Completed' : 'Delivered',
+    CANCELLED: isService ? 'Declined' : 'Cancelled',
+  };
 
   // Merge orders with instant local optimistic overrides
   const effectiveOrders = React.useMemo(() => {
@@ -529,18 +548,18 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
     const s = (status || '').toUpperCase().trim();
     if (s === 'DELIVERED' || s === 'COMPLETED' || s === 'DONE') {
       return {
-        bg: '#E6F7F0',
+        bg: '#F0FDF4',
         text: '#15803D',
-        dot: '#15803D',
+        dot: '#16A34A',
         label: 'DELIVERED',
         isDelivered: true,
       };
     }
     if (s === 'ACCEPTED' || s === 'CONFIRMED' || s === 'OUT_FOR_DELIVERY' || s === 'PREPARING' || s === 'PROCESSING') {
       return {
-        bg: '#E6F7F0',
-        text: '#15803D',
-        dot: '#15803D',
+        bg: '#F9EFF1',
+        text: '#541D26',
+        dot: '#541D26',
         label: 'ACCEPTED',
         isDelivered: false,
       };
@@ -548,17 +567,17 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
     if (s === 'PLACED' || s === 'PENDING' || s === 'NEW') {
       return {
         bg: '#FEF3C7',
-        text: '#D97706',
-        dot: '#D97706',
+        text: '#B45309',
+        dot: '#F59E0B',
         label: 'NEW ORDER',
         isDelivered: false,
       };
     }
     if (s === 'CANCELLED' || s === 'REJECTED' || s === 'DECLINED') {
       return {
-        bg: '#FEE2E2',
+        bg: '#FEF2F2',
         text: '#DC2626',
-        dot: '#DC2626',
+        dot: '#EF4444',
         label: 'CANCELLED',
         isDelivered: false,
       };
@@ -578,7 +597,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
       <View style={styles.metricsBanner}>
         {/* New Orders */}
         <View style={styles.statCard}>
-          <View style={[styles.statIconBox, { backgroundColor: '#FEF9C3' }]}>
+          <View style={[styles.statIconBox, { backgroundColor: '#FFFBEB', borderWidth: 1, borderColor: '#FDE68A' }]}>
             <Sparkles size={14} color="#D97706" />
           </View>
           <View style={styles.statTextCol}>
@@ -589,8 +608,8 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
 
         {/* In Prep */}
         <View style={styles.statCard}>
-          <View style={[styles.statIconBox, { backgroundColor: '#F3F4F6' }]}>
-            <ChefHat size={14} color="#4B5563" />
+          <View style={[styles.statIconBox, { backgroundColor: '#F9EFF1', borderWidth: 1, borderColor: '#F0D6DB' }]}>
+            <ChefHat size={14} color="#541D26" />
           </View>
           <View style={styles.statTextCol}>
             <Text style={styles.statValue}>{acceptedOrdersCount}</Text>
@@ -600,8 +619,8 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
 
         {/* Delivered */}
         <View style={styles.statCard}>
-          <View style={[styles.statIconBox, { backgroundColor: '#DCFCE7' }]}>
-            <CheckCircle2 size={14} color="#16A34A" />
+          <View style={[styles.statIconBox, { backgroundColor: '#F0FDF4', borderWidth: 1, borderColor: '#BBF7D0' }]}>
+            <CheckCircle2 size={14} color="#15803D" />
           </View>
           <View style={styles.statTextCol}>
             <Text style={styles.statValue}>{completedOrdersCount}</Text>
@@ -614,17 +633,17 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
       <View style={styles.topSection}>
         {/* Search Box */}
         <View style={styles.searchBox}>
-          <Search size={16} color="#9CA3AF" style={{ marginRight: 8 }} />
+          <Search size={16} color="#78716C" style={{ marginRight: 8 }} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search order #, customer or phone..."
-            placeholderTextColor="#9CA3AF"
+            placeholder={isService ? "Search leads & enquiries (e.g. name, flat, phone)..." : "Search in English / हिंदी (e.g. Aloo, दूध, Flat 402)..."}
+            placeholderTextColor="#78716C"
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
           {searchQuery ? (
             <TouchableOpacity onPress={() => setSearchQuery('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <X size={16} color="#9CA3AF" />
+              <X size={16} color="#78716C" />
             </TouchableOpacity>
           ) : null}
         </View>
@@ -652,21 +671,21 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
                 <Text
                   style={[
                     styles.filterPillText,
-                    { color: isSelected ? '#FFFFFF' : '#18281F' },
+                    { color: isSelected ? '#FFFFFF' : '#211A19' },
                   ]}
                 >
-                  {TAB_LABEL_MAP[tab]}
+                  {tabLabelMap[tab]}
                 </Text>
                 <View
                   style={[
                     styles.countBadge,
-                    { backgroundColor: isSelected ? '#C4A066' : '#F3F4F6' },
+                    { backgroundColor: isSelected ? '#C8A878' : '#F3F4F6' },
                   ]}
                 >
                   <Text
                     style={[
                       styles.countText,
-                      { color: isSelected ? '#18281F' : '#6B7C70' },
+                      { color: isSelected ? '#211A19' : '#78716C' },
                     ]}
                   >
                     {count}
@@ -687,24 +706,108 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
           <RefreshControl
             refreshing={isLoading}
             onRefresh={onRefresh}
-            colors={['#34533C']}
-            tintColor="#34533C"
+            colors={['#541D26']}
+            tintColor="#541D26"
           />
         }
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <View style={styles.emptyIconCircle}>
-              <ShoppingBag size={28} color="#6B7C70" />
+          isPendingApproval ? (
+            <View style={{
+              marginHorizontal: 16,
+              marginTop: 20,
+              backgroundColor: '#FFFFFF',
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: '#FDE68A',
+              padding: 24,
+              alignItems: 'center',
+              shadowColor: '#D97706',
+              shadowOffset: { width: 0, height: 3 },
+              shadowOpacity: 0.06,
+              shadowRadius: 10,
+              elevation: 2,
+            }}>
+              <View style={{
+                width: 60,
+                height: 60,
+                borderRadius: 30,
+                backgroundColor: '#FEF3C7',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: 14,
+                borderWidth: 4,
+                borderColor: '#FFFBEB'
+              }}>
+                <ShoppingBag size={26} color="#D97706" strokeWidth={2.2} />
+              </View>
+
+              <View style={{
+                backgroundColor: '#FEF3C7',
+                paddingHorizontal: 10,
+                paddingVertical: 3,
+                borderRadius: 12,
+                marginBottom: 10
+              }}>
+                <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#D97706', letterSpacing: 0.3 }}>
+                  MARKETPLACE ACCESS PENDING APPROVAL
+                </Text>
+              </View>
+
+              <Text style={{
+                fontSize: 16,
+                fontWeight: '800',
+                color: '#211A19',
+                textAlign: 'center',
+                marginBottom: 8,
+                fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
+              }}>
+                {isService ? 'Customer Enquiries & Leads' : 'Incoming Customer Orders'}
+              </Text>
+
+              <Text style={{
+                fontSize: 13,
+                color: '#78716C',
+                textAlign: 'center',
+                lineHeight: 20,
+                marginBottom: 18,
+                paddingHorizontal: 4,
+                fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular'
+              }}>
+                Your store and marketplace catalog are currently under admin review. Customer orders will appear here automatically once your merchant account is approved and live.
+              </Text>
+
+              <View style={{
+                width: '100%',
+                backgroundColor: '#FFFDF5',
+                borderRadius: 12,
+                padding: 14,
+                borderWidth: 1,
+                borderColor: '#FDE68A'
+              }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 6 }}>
+                  💡 What you can do right now:
+                </Text>
+                <Text style={{ fontSize: 12, color: '#78350F', lineHeight: 18 }}>
+                  • <Text style={{ fontWeight: '700' }}>Menu / Services tab</Text>: Add products, photos & pricing.{'\n'}
+                  • <Text style={{ fontWeight: '700' }}>Settings tab</Text>: Set shop timings, coverage & bank payout info.
+                </Text>
+              </View>
             </View>
-            <Text style={styles.emptyTitle}>No Orders Found</Text>
-            <Text style={styles.emptySubtitle}>
-              {searchQuery
-                ? `No orders matching "${searchQuery}"`
-                : statusFilter === 'ALL'
-                ? 'No customer orders placed yet.'
-                : `No orders in ${TAB_LABEL_MAP[statusFilter]} state.`}
-            </Text>
-          </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconCircle}>
+                <ShoppingBag size={28} color="#78716C" />
+              </View>
+              <Text style={styles.emptyTitle}>No Orders Found</Text>
+              <Text style={styles.emptySubtitle}>
+                {searchQuery
+                  ? `No orders matching "${searchQuery}"`
+                  : statusFilter === 'ALL'
+                  ? 'No customer orders placed yet.'
+                  : `No orders in ${TAB_LABEL_MAP[statusFilter]} state.`}
+              </Text>
+            </View>
+          )
         }
         renderItem={({ item: order }) => {
           const badge = getStatusBadge(order.status);
@@ -753,8 +856,54 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
             : normalizedItems.reduce((acc, it) => acc + parseFloat(it.itemPrice || '0'), 0).toFixed(2);
 
           const phoneNum = String(order.phone_number || (order as any).phone || '').trim();
-          const customerName = order.customer_name || 'Resident Customer';
-          const fullAddress = order.address || (order as any).delivery_address || 'Tower A-402, Omaxe Greenwood Residency';
+          const customerName = order.customer_name || (order as any).customer?.name || (order as any).user?.name || 'Resident Customer';
+
+          const rawFlat = String(
+            (order as any).flat ||
+            (order as any).flat_no ||
+            (order as any).flat_number ||
+            (order as any).customer_flat ||
+            (order as any).customer_flat_no ||
+            (order as any).customer_flat_number ||
+            (order as any).user_flat ||
+            (order as any).user_flat_no ||
+            (order as any).resident_flat ||
+            (order as any).resident_flat_no ||
+            (order as any).customer?.flat_no ||
+            (order as any).customer?.flat ||
+            (order as any).user?.flat_no ||
+            (order as any).user?.flat ||
+            (order as any).resident?.flat_no ||
+            (order as any).resident?.flat ||
+            (order as any).unit_no ||
+            (order as any).unit_number ||
+            (order as any).unit ||
+            ''
+          ).trim();
+
+          const rawAddress = String(
+            order.delivery_address ||
+            order.address ||
+            (order as any).customer_address ||
+            (order as any).shipping_address ||
+            (order as any).location_address ||
+            ''
+          ).trim();
+
+          let displayAddress = rawAddress;
+          if (rawFlat) {
+            if (/Flat\s*#?\s*[\w-]+/i.test(displayAddress)) {
+              displayAddress = displayAddress.replace(/Flat\s*#?\s*[\w-]+/gi, `Flat ${rawFlat}`);
+            } else if (/Unit\s*#?\s*[\w-]+/i.test(displayAddress)) {
+              displayAddress = displayAddress.replace(/Unit\s*#?\s*[\w-]+/gi, `Flat ${rawFlat}`);
+            } else if (!displayAddress.toLowerCase().includes(rawFlat.toLowerCase())) {
+              displayAddress = displayAddress ? `Flat ${rawFlat}, ${displayAddress}` : `Flat ${rawFlat}`;
+            }
+          }
+
+          if (!displayAddress) {
+            displayAddress = 'Society Resident';
+          }
 
           return (
             <View style={styles.orderCard}>
@@ -777,7 +926,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
                   </View>
 
                   <View style={styles.datePill}>
-                    <Clock size={11} color="#6B7C70" style={{ marginRight: 4 }} />
+                    <Clock size={11} color="#78716C" style={{ marginRight: 4 }} />
                     <Text style={styles.datePillText}>{dateString}</Text>
                   </View>
                 </View>
@@ -787,7 +936,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
               <View style={styles.customerBox}>
                 <View style={styles.customerTopRow}>
                   <View style={styles.customerNameGroup}>
-                    <User size={15} color="#18281F" style={{ marginRight: 6 }} />
+                    <User size={15} color="#211A19" style={{ marginRight: 6 }} />
                     <Text style={styles.customerName}>{customerName}</Text>
                   </View>
 
@@ -797,7 +946,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
                       onPress={() => handleCallCustomer(phoneNum)}
                       activeOpacity={0.75}
                     >
-                      <Phone size={12} color="#187346" style={{ marginRight: 4 }} />
+                      <Phone size={12} color="#541D26" style={{ marginRight: 4 }} />
                       <Text style={styles.phonePillBtnText}>Call</Text>
                     </TouchableOpacity>
                   ) : null}
@@ -805,12 +954,9 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
 
                 {/* Address Row */}
                 <View style={styles.addressRow}>
-                  <MapPin size={13} color="#C4A066" style={{ marginRight: 6 }} />
+                  <MapPin size={13} color="#C8A878" style={{ marginRight: 6 }} />
                   <Text style={styles.addressText} numberOfLines={2}>
-                    {(order as any).flat || (order as any).flat_no || (order as any).flat_number
-                      ? `Flat ${(order as any).flat || (order as any).flat_no || (order as any).flat_number}, `
-                      : ''}
-                    {fullAddress}
+                    {displayAddress}
                   </Text>
                 </View>
               </View>
@@ -863,7 +1009,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
                 <View style={styles.actionButtonsCol}>
                   {isUpdating ? (
                     <View style={styles.updatingLoader}>
-                      <ActivityIndicator size="small" color="#34533C" />
+                      <ActivityIndicator size="small" color="#541D26" />
                       <Text style={styles.updatingText}>Updating...</Text>
                     </View>
                   ) : (
@@ -871,7 +1017,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
                       {/* State 1: DELIVERED ➔ Completed Banner */}
                       {matchOrderStatus(order.status, 'DELIVERED') && (
                         <View style={styles.deliveredBanner}>
-                          <CheckCircle2 size={16} color="#059669" style={{ marginRight: 6 }} />
+                          <CheckCircle2 size={16} color="#16A34A" style={{ marginRight: 6 }} />
                           <Text style={styles.deliveredBannerText}>
                             Order Completed & Delivered
                           </Text>
@@ -950,7 +1096,7 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#EDEDE4', // Warm Off-White Canvas
+    backgroundColor: '#F8F6F0', // Warm Off-White Canvas
   },
 
   // ── 1. Metrics Banner ──
@@ -967,15 +1113,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
     borderRadius: 14,
     paddingVertical: 10,
     paddingHorizontal: 10,
     gap: 8,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 3,
+    shadowColor: '#541D26',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
     elevation: 1,
   },
   statIconBox: {
@@ -991,13 +1137,13 @@ const styles = StyleSheet.create({
   statValue: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#541D26',
     lineHeight: 18,
   },
   statLabel: {
     fontSize: 10,
     fontWeight: '600',
-    color: '#6B7C70',
+    color: '#78716C',
     marginTop: 1,
   },
 
@@ -1011,7 +1157,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
     borderRadius: 12,
     paddingHorizontal: 12,
     height: 44,
@@ -1022,7 +1168,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: '500',
-    color: '#18281F',
+    color: '#211A19',
     padding: 0,
   },
   filterBar: {
@@ -1039,17 +1185,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   filterPillSelected: {
-    backgroundColor: '#34533C',
-    shadowColor: '#18281F',
+    backgroundColor: '#541D26',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
+    shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 2,
   },
   filterPillUnselected: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
   },
   filterPillText: {
     fontSize: 12,
@@ -1084,7 +1230,7 @@ const styles = StyleSheet.create({
     borderRadius: 32,
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 14,
@@ -1092,33 +1238,33 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#541D26',
   },
   emptySubtitle: {
     fontSize: 12.5,
-    color: '#6B7C70',
+    color: '#78716C',
     marginTop: 4,
     textAlign: 'center',
     maxWidth: 280,
     lineHeight: 18,
   },
 
-  // ── 4. Main Order Card (Screenshot Exact Format) ──
+  // ── 4. Main Order Card ──
   orderCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E7DFD5',
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000000',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
+    shadowOpacity: 0.05,
     shadowRadius: 6,
     elevation: 2,
   },
 
-  // A. Top Header Row (Single Line Layout)
+  // A. Top Header Row
   cardHeaderRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1134,11 +1280,11 @@ const styles = StyleSheet.create({
   orderTitleText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#18281F',
+    color: '#541D26',
   },
   orderIdBold: {
     fontWeight: '800',
-    color: '#18281F',
+    color: '#541D26',
   },
   headerRightBadges: {
     flexDirection: 'row',
@@ -1150,8 +1296,8 @@ const styles = StyleSheet.create({
   statusPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 7,
-    paddingVertical: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 3.5,
     borderRadius: 10,
   },
   statusDot: {
@@ -1163,30 +1309,30 @@ const styles = StyleSheet.create({
   statusPillText: {
     fontSize: 9.5,
     fontWeight: '800',
-    letterSpacing: 0.1,
+    letterSpacing: 0.2,
   },
   datePill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F7F6F1',
-    paddingHorizontal: 6.5,
-    paddingVertical: 3,
+    backgroundColor: '#FAF8F5',
+    paddingHorizontal: 7,
+    paddingVertical: 3.5,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#ECEAE2',
+    borderColor: '#E7DFD5',
   },
   datePillText: {
     fontSize: 9.5,
     fontWeight: '600',
-    color: '#6B7C70',
+    color: '#78716C',
   },
 
-  // B. Customer Box (Screenshot Exact Sand Tint)
+  // B. Customer Box (Sand Surface with Subtle Border)
   customerBox: {
-    backgroundColor: '#FAF8F3', // Cream / Sand Box
+    backgroundColor: '#FAF8F5',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#ECE8DD',
+    borderColor: '#E7DFD5',
     padding: 12,
     marginBottom: 14,
   },
@@ -1205,7 +1351,7 @@ const styles = StyleSheet.create({
   customerName: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#18281F',
+    color: '#211A19',
   },
   customerActionButtons: {
     flexDirection: 'row',
@@ -1215,9 +1361,9 @@ const styles = StyleSheet.create({
   phonePillBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#E8F8F0',
+    backgroundColor: '#F7EEF0',
     borderWidth: 1,
-    borderColor: '#BEE8D2',
+    borderColor: '#E7DFD5',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 14,
@@ -1225,7 +1371,7 @@ const styles = StyleSheet.create({
   phonePillBtnText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: '#187346',
+    color: '#541D26',
   },
   addressRow: {
     flexDirection: 'row',
@@ -1233,7 +1379,7 @@ const styles = StyleSheet.create({
   },
   addressText: {
     fontSize: 12,
-    color: '#4B5563',
+    color: '#78716C',
     fontWeight: '500',
     flex: 1,
     lineHeight: 16,
@@ -1253,19 +1399,19 @@ const styles = StyleSheet.create({
   itemsTableHeadingLeft: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#4B5563',
+    color: '#78716C',
     letterSpacing: 0.4,
   },
   itemsTableHeadingRight: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#4B5563',
+    color: '#78716C',
     letterSpacing: 0.4,
   },
   itemsListContainer: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
-    borderColor: '#ECEAE2',
+    borderColor: '#E7DFD5',
     borderRadius: 12,
     paddingHorizontal: 12,
   },
@@ -1277,7 +1423,7 @@ const styles = StyleSheet.create({
   },
   itemRowBorder: {
     borderTopWidth: 1,
-    borderTopColor: '#F3F2EB',
+    borderTopColor: '#FAF8F5',
   },
   itemLeftGroup: {
     flexDirection: 'row',
@@ -1287,7 +1433,9 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
   },
   qtyBadge: {
-    backgroundColor: '#EFEFEA',
+    backgroundColor: '#EEE5DA',
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
     paddingHorizontal: 6,
     paddingVertical: 2.5,
     borderRadius: 6,
@@ -1295,15 +1443,17 @@ const styles = StyleSheet.create({
   qtyBadgeText: {
     fontSize: 11.5,
     fontWeight: '800',
-    color: '#374151',
+    color: '#541D26',
   },
   itemTitle: {
     fontSize: 13.5,
     fontWeight: '700',
-    color: '#18281F',
+    color: '#211A19',
   },
   unitPill: {
-    backgroundColor: '#E8F8F0',
+    backgroundColor: '#F7EEF0',
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
     paddingHorizontal: 8,
     paddingVertical: 2.5,
     borderRadius: 10,
@@ -1311,7 +1461,7 @@ const styles = StyleSheet.create({
   unitPillText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#0E6B3D',
+    color: '#541D26',
   },
   itemRightGroup: {
     paddingLeft: 8,
@@ -1319,7 +1469,7 @@ const styles = StyleSheet.create({
   itemSubTotalText: {
     fontSize: 14,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#541D26',
   },
 
   // D. Bottom Section: Action Buttons
@@ -1342,10 +1492,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
   },
   btnPrimaryGreen: {
-    backgroundColor: '#0E6B3D', // Dark Forest Green
-    shadowColor: '#0E6B3D',
+    backgroundColor: '#541D26',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 2,
   },
@@ -1356,9 +1506,9 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   btnSecondaryRose: {
-    backgroundColor: '#FFF0F0',
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#FED7D7',
+    borderColor: '#FECACA',
   },
   btnSecondaryRoseText: {
     fontSize: 12,
@@ -1371,9 +1521,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#E8F8F0',
+    backgroundColor: '#F0FDF4',
     borderWidth: 1.5,
-    borderColor: '#059669',
+    borderColor: '#BBF7D0',
     borderRadius: 12,
     height: 44,
     width: '100%',
@@ -1381,7 +1531,7 @@ const styles = StyleSheet.create({
   deliveredBannerText: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#059669',
+    color: '#16A34A',
   },
   cancelledBanner: {
     flexDirection: 'row',
@@ -1410,6 +1560,6 @@ const styles = StyleSheet.create({
   updatingText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#34533C',
+    color: '#541D26',
   },
 });

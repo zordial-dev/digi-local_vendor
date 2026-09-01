@@ -5,12 +5,10 @@ let socketInstance: Socket | null = null;
 
 export function connectSocket(vendorId: number, onNewOrder: (order: any) => void) {
   if (socketInstance) {
-    console.log('[SocketService] Socket already connected or connecting. Reconnecting...');
     disconnectSocket();
   }
 
   const host = getApiHost();
-  console.log(`[SocketService] Connecting to Socket.io host: ${host}`);
 
   try {
     socketInstance = io(host, {
@@ -19,51 +17,77 @@ export function connectSocket(vendorId: number, onNewOrder: (order: any) => void
     });
 
     socketInstance.on('connect', () => {
-      console.log(`[SocketService] Connected with ID: ${socketInstance?.id}`);
-      
-      // Join the vendor room
+      // Join vendor rooms per backend notice (vendor_${vendorId} and join_vendor_room)
       socketInstance?.emit('join_vendor_room', vendorId);
-      console.log(`[SocketService] Joined vendor room: vendor_${vendorId}`);
+      socketInstance?.emit('join', `vendor_${vendorId}`);
+      socketInstance?.emit('join_room', `vendor_${vendorId}`);
     });
 
     const handleIncomingOrder = (data: any) => {
-      console.log('🚨 [SocketService] New order event received via Socket.io:', data);
-      
-      // Map properties to match VendorOrder if backend format differs slightly
+      if (!data) return;
+      const rawFlat = data.flat || data.flat_no || data.flat_number || data.unit_no || '';
+      let addressValue = data.delivery_address || data.address || data.full_address || '';
+
+      if (rawFlat && typeof addressValue === 'string' && addressValue.trim()) {
+        if (/Flat\s*#?\s*[\w-]+/i.test(addressValue)) {
+          addressValue = addressValue.replace(/Flat\s*#?\s*[\w-]+/gi, `Flat ${rawFlat}`);
+        } else if (/Unit\s*#?\s*[\w-]+/i.test(addressValue)) {
+          addressValue = addressValue.replace(/Unit\s*#?\s*[\w-]+/gi, `Flat ${rawFlat}`);
+        } else if (!addressValue.toLowerCase().includes(String(rawFlat).toLowerCase())) {
+          addressValue = `Flat ${rawFlat}, ${addressValue}`;
+        }
+      }
+
       const normalizedOrder = {
-        order_id: data.order_id,
+        order_id: data.order_id || data.id,
         vendor_id: data.vendor_id || vendorId,
-        customer_name: data.customer_name || 'Customer',
-        phone_number: data.phone_number || data.phone || '',
-        address: data.delivery_address || data.address || '',
-        total_amount: String(data.total_amount || '0.00'),
-        order_timestamp: data.created_at || new Date().toISOString(),
-        status: 'PENDING',
-        items: data.items || []
+        customer_name: data.customer_name || data.customer?.name || data.name || 'Resident Customer',
+        phone_number: data.phone_number || data.phone || data.customer?.phone || '',
+        delivery_address: addressValue,
+        address: addressValue,
+        flat: rawFlat,
+        flat_no: rawFlat,
+        area: data.area || '',
+        city: data.city || '',
+        state: data.state || '',
+        pincode: data.pincode || '',
+        total_amount: String(data.total_amount || data.amount || '0.00'),
+        order_timestamp: data.created_at || data.created_at_readable || data.timestamp || new Date().toISOString(),
+        created_at: data.created_at,
+        created_at_readable: data.created_at_readable,
+        timestamp: data.timestamp,
+        status: data.status || 'PENDING',
+        items: Array.isArray(data.items) ? data.items : []
       };
 
       onNewOrder(normalizedOrder);
     };
 
+    // Listen to all real-time order events specified in backend documentation
+    socketInstance.on('newOrder', handleIncomingOrder);
+    socketInstance.on('NEW_ORDER', handleIncomingOrder);
+    socketInstance.on('new_order', handleIncomingOrder);
     socketInstance.on('new_order_alert', handleIncomingOrder);
     socketInstance.on('NEW_ORDER_ALERT', handleIncomingOrder);
-    socketInstance.on('new_order', handleIncomingOrder);
+    socketInstance.on('orderUpdate', handleIncomingOrder);
+    socketInstance.on('ORDER_UPDATE', handleIncomingOrder);
+    socketInstance.on('order_updated', handleIncomingOrder);
+    socketInstance.on('orderStatusUpdate', handleIncomingOrder);
 
-    socketInstance.on('disconnect', (reason) => {
-      console.log(`[SocketService] Disconnected. Reason: ${reason}`);
+    socketInstance.on('disconnect', (_reason) => {
+      // Socket disconnected
     });
 
     socketInstance.on('connect_error', (error) => {
-      console.error('[SocketService] Connection error:', error);
+      console.warn('[SocketService] Connection warning:', error?.message || error);
     });
   } catch (err) {
-    console.error('[SocketService] Failed to initialize socket connection:', err);
+    console.warn('[SocketService] Failed to initialize socket connection:', err);
   }
 }
 
 export function disconnectSocket() {
   if (socketInstance) {
-    console.log('[SocketService] Disconnecting socket...');
     socketInstance.disconnect();
     socketInstance = null;
   }

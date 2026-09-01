@@ -21,7 +21,7 @@ import {
   ArrowRight,
   Users
 } from 'lucide-react-native';
-import { BrandTheme } from '../constants/theme';
+import { DigiLocalColors, BrandTheme } from '../constants/theme';
 
 interface WelcomeLandingScreenProps {
   onGetStarted: () => void;
@@ -100,7 +100,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
         paddingBottom: Math.max(insets.bottom, 12),
       }
     ]}>
-      <StatusBar barStyle="dark-content" backgroundColor={BrandTheme.warmOffWhite} />
+      <StatusBar barStyle="dark-content" backgroundColor={DigiLocalColors.canvasBase} />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -117,7 +117,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
             />
             <View style={styles.titleColumn}>
               <Text style={styles.brandTitleText}>
-                Digi <Text style={styles.brandTitleGreen}>Local</Text>
+                Digi <Text style={styles.brandTitleMaroon}>Local</Text>
               </Text>
               <Text style={styles.taglineText}>
                 Your Society. Your Vendor. Your Doorstep.
@@ -134,7 +134,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
             adjustsFontSizeToFit
             minimumFontScale={0.5}
           >
-            Sell Smart. <Text style={styles.heroTitleGreen}>Deliver Local.</Text> Earn More.
+            Sell Smart. <Text style={styles.heroTitleMaroon}>Deliver Local.</Text> Earn More.
           </Text>
         </View>
 
@@ -155,7 +155,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
               return (
                 <View key={item.id} style={styles.featureItem}>
                   <View style={styles.iconCircle}>
-                    <IconComp size={22} color={BrandTheme.forestGreen} strokeWidth={2.2} />
+                    <IconComp size={22} color={DigiLocalColors.primary} strokeWidth={2.2} />
                   </View>
                   <Text style={styles.featureTitleText}>{item.title}</Text>
                 </View>
@@ -177,21 +177,21 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
         {/* Footer Trust Badges */}
         <View style={styles.trustBadgesRow}>
           <View style={styles.badgeItem}>
-            <ShieldCheck size={14} color={BrandTheme.forestGreen} strokeWidth={2.2} />
+            <ShieldCheck size={14} color={DigiLocalColors.primary} strokeWidth={2.2} />
             <Text style={styles.badgeText}> Secure</Text>
           </View>
 
           <Text style={styles.badgeDot}>•</Text>
 
           <View style={styles.badgeItem}>
-            <ShieldCheck size={14} color={BrandTheme.forestGreen} strokeWidth={2.2} />
+            <ShieldCheck size={14} color={DigiLocalColors.primary} strokeWidth={2.2} />
             <Text style={styles.badgeText}> Trusted</Text>
           </View>
 
           <Text style={styles.badgeDot}>•</Text>
 
           <View style={styles.badgeItem}>
-            <Users size={14} color={BrandTheme.forestGreen} strokeWidth={2.2} />
+            <Users size={14} color={DigiLocalColors.primary} strokeWidth={2.2} />
             <Text style={styles.badgeText}> Community First</Text>
           </View>
         </View>
@@ -203,7 +203,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: BrandTheme.warmOffWhite,
+    backgroundColor: DigiLocalColors.canvasBase,
   },
   scrollContent: {
     flexGrow: 1,
@@ -237,18 +237,18 @@ const styles = StyleSheet.create({
   brandTitleText: {
     fontSize: 26,
     fontWeight: '800',
-    color: BrandTheme.darkForestGreen,
+    color: DigiLocalColors.textDark,
     letterSpacing: -0.5,
     fontFamily: getFontFamily('extrabold'),
     lineHeight: 30,
   },
-  brandTitleGreen: {
-    color: BrandTheme.forestGreen,
+  brandTitleMaroon: {
+    color: DigiLocalColors.primary,
   },
   taglineText: {
     fontSize: 12,
     fontWeight: '500',
-    color: BrandTheme.mutedSageText,
+    color: DigiLocalColors.textMuted,
     marginTop: 2,
     letterSpacing: -0.1,
     fontFamily: getFontFamily('medium'),
@@ -263,14 +263,14 @@ const styles = StyleSheet.create({
   heroTitleText: {
     fontSize: isSmallScreen ? 16 : 19.5,
     fontWeight: '800',
-    color: BrandTheme.darkForestGreen,
+    color: DigiLocalColors.textDark,
     letterSpacing: -0.5,
     fontFamily: getFontFamily('extrabold'),
     textAlign: 'center',
     lineHeight: isSmallScreen ? 22 : 26,
   },
-  heroTitleGreen: {
-    color: BrandTheme.forestGreen,
+  heroTitleMaroon: {
+    color: DigiLocalColors.primary,
   },
 
   // Hero Illustration
@@ -288,15 +288,15 @@ const styles = StyleSheet.create({
   // Features Card
   featuresCard: {
     width: '100%',
-    backgroundColor: BrandTheme.creamCanvas,
+    backgroundColor: DigiLocalColors.surfaceIvory,
     borderRadius: 24,
     paddingVertical: 20,
     paddingHorizontal: 16,
     marginTop: 8,
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: BrandTheme.sandBorder,
-    shadowColor: BrandTheme.darkForestGreen,
+    borderColor: DigiLocalColors.border,
+    shadowColor: DigiLocalColors.textDark,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.06,
     shadowRadius: 16,
@@ -317,17 +317,17 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: BrandTheme.warmOffWhite,
+    backgroundColor: DigiLocalColors.canvasBase,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 8,
     borderWidth: 1,
-    borderColor: BrandTheme.sandBorder,
+    borderColor: DigiLocalColors.border,
   },
   featureTitleText: {
     fontSize: 11.5,
     fontWeight: '700',
-    color: BrandTheme.darkForestGreen,
+    color: DigiLocalColors.textDark,
     textAlign: 'center',
     lineHeight: 14,
     fontFamily: getFontFamily('semibold'),
@@ -338,11 +338,11 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 52,
     borderRadius: 16,
-    backgroundColor: BrandTheme.forestGreen,
+    backgroundColor: DigiLocalColors.primary,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: BrandTheme.forestGreen,
+    shadowColor: DigiLocalColors.primary,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
     shadowRadius: 8,
@@ -370,13 +370,12 @@ const styles = StyleSheet.create({
   badgeText: {
     fontSize: 12.5,
     fontWeight: '600',
-    color: BrandTheme.mutedSageText,
+    color: DigiLocalColors.textMuted,
     fontFamily: getFontFamily('semibold'),
   },
   badgeDot: {
     fontSize: 14,
-    color: BrandTheme.sandBorder,
+    color: DigiLocalColors.border,
     marginHorizontal: 10,
   },
 });
-

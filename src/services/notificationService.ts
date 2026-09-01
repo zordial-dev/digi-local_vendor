@@ -1,29 +1,45 @@
 import { Platform, Vibration } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import { Audio } from 'expo-av';
 import { VendorOrder } from './apiService';
 import Constants from 'expo-constants';
 
+// Detect if running inside Expo Go client (SDK 53+ removed remote push in Expo Go)
+const isExpoGo =
+  Constants.appOwnership === 'expo' ||
+  (Constants as any).executionEnvironment === 'storeClient';
+
+// Safely obtain expo-notifications without causing top-level crashes in Expo Go or Web
+let Notifications: typeof import('expo-notifications') | null = null;
+if (Platform.OS !== 'web' && !isExpoGo) {
+  try {
+    Notifications = require('expo-notifications');
+  } catch (err) {
+    // Graceful fallback if expo-notifications is unavailable
+  }
+}
+
 // ── PILLAR 1: High-Priority Notification Handler & Android Channel ──
 
-try {
-  Notifications.setNotificationHandler({
-    handleNotification: async () => ({
-      shouldShowAlert: true,
-      shouldPlaySound: true,
-      shouldSetBadge: true,
-      shouldShowBanner: true,
-      shouldShowList: true,
-      priority: Notifications.AndroidNotificationPriority.MAX,
-    }),
-  });
-} catch (_) {}
+if (Platform.OS !== 'web' && Notifications && !isExpoGo) {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+        priority: (Notifications as any)?.AndroidNotificationPriority?.MAX,
+      }),
+    });
+  } catch (_) {}
+}
 
 /**
  * Register Action Category for System Notifications
  */
 export async function setupNotificationCategories() {
-  if (Platform.OS === 'web') return;
+  if (Platform.OS === 'web' || !Notifications || isExpoGo) return;
   try {
     await Notifications.setNotificationCategoryAsync('NEW_ORDER_ACTIONS', [
       {
@@ -43,7 +59,7 @@ export async function setupNotificationCategories() {
       }
     ]);
   } catch (error) {
-    console.error('Error setting up notification categories:', error);
+    console.warn('Note setting up notification categories:', error);
   }
 }
 
@@ -54,25 +70,26 @@ export async function setupNotificationCategories() {
  * - Plays custom chime & vibrate loop
  */
 export async function setupOrderAlertChannel(requestPermission: boolean = true): Promise<boolean> {
-  if (Platform.OS === 'web') return true;
+  if (Platform.OS === 'web' || !Notifications) return true;
 
   try {
-    // Register action categories on launch/setup
-    await setupNotificationCategories();
+    if (!isExpoGo) {
+      await setupNotificationCategories();
 
-    if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('order_alerts_channel', {
-        name: 'New Order Alerts',
-        importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 500, 500, 500],
-        lightColor: '#055726',
-        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-        sound: 'order_alert_chime.wav',
-        bypassDnd: true,
-        showBadge: true,
-        enableVibrate: true,
-        enableLights: true,
-      });
+      if (Platform.OS === 'android') {
+        await Notifications.setNotificationChannelAsync('order_alerts_channel', {
+          name: 'New Order Alerts',
+          importance: Notifications.AndroidImportance.MAX,
+          vibrationPattern: [0, 500, 500, 500],
+          lightColor: '#541D26',
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          sound: 'order_alert_chime.wav',
+          bypassDnd: true,
+          showBadge: true,
+          enableVibrate: true,
+          enableLights: true,
+        });
+      }
     }
 
     let existingStatus = 'undetermined';
@@ -169,7 +186,7 @@ export async function startContinuousOrderRingtone(
       Vibration.vibrate([1000, 1000, 1000], true);
     }
   } catch (error) {
-    console.error('Failed to start continuous order ringtone:', error);
+    console.warn('Continuous order ringtone note:', error);
   } finally {
     isStartingRingtone = false;
   }
@@ -181,7 +198,7 @@ export async function stopContinuousOrderRingtone() {
   try {
     await stopAllActiveSounds();
   } catch (error) {
-    console.error('Error stopping order ringtone:', error);
+    console.warn('Error stopping order ringtone:', error);
   }
 }
 
@@ -194,14 +211,10 @@ export const stopAlarmSound = stopContinuousOrderRingtone;
 const HARDCODED_EAS_PROJECT_ID = 'afdb0388-9c9f-4dc1-b3ca-d03a22d3bf9b';
 
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
-  if (Platform.OS === 'web') return null;
+  if (Platform.OS === 'web' || !Notifications) return null;
 
   // In Expo Go (SDK 53+), remote push notifications were removed by Expo and require a development build.
-  // We check if running in Expo Go to gracefully skip remote token registration and rely on Socket.io + local alerts.
-  const isExpoGo =
-    Constants.appOwnership === 'expo' ||
-    (Constants as any).executionEnvironment === 'storeClient';
-
+  // In Expo Go, we gracefully rely on Socket.io + in-app overlay alarms.
   if (isExpoGo) {
     await setupOrderAlertChannel(false);
     return null;
@@ -217,9 +230,9 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
       HARDCODED_EAS_PROJECT_ID;
 
     const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-    return tokenData.data;
+    return tokenData?.data || null;
   } catch (e: any) {
-    console.warn('Expo Push Token registration note:', e.message || e);
+    console.warn('Push Token registration note (dev build recommended):', e.message || e);
     return null;
   }
 }
@@ -227,6 +240,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 // ── PILLAR 4: Local Notification Trigger & Tap Event Listeners ──
 
 export async function triggerOrderNotification(order: VendorOrder) {
+  if (!Notifications || isExpoGo || Platform.OS === 'web') return;
   try {
     await setupOrderAlertChannel(false);
     await Notifications.scheduleNotificationAsync({
@@ -236,21 +250,22 @@ export async function triggerOrderNotification(order: VendorOrder) {
         data: { orderId: order.order_id, order },
         sound: 'order_alert_chime.wav',
         categoryIdentifier: 'NEW_ORDER_ACTIONS',
-        priority: Notifications.AndroidNotificationPriority.MAX,
+        priority: (Notifications as any).AndroidNotificationPriority?.MAX,
         ...(Platform.OS === 'android' ? { channelId: 'order_alerts_channel' } : {}),
       } as any,
       trigger: null,
     });
   } catch (error) {
-    console.error('Error scheduling local order notification:', error);
+    console.warn('Note scheduling local notification:', error);
   }
 }
 
 export async function dismissOrderNotifications() {
+  if (!Notifications || Platform.OS === 'web') return;
   try {
     await Notifications.dismissAllNotificationsAsync();
   } catch (error) {
-    console.error('Error dismissing notifications:', error);
+    console.warn('Error dismissing notifications:', error);
   }
 }
 
@@ -263,47 +278,55 @@ export function setupNotificationListeners(
   onRejectOrder?: (orderId: number | string, vendorId?: number | string) => void,
   onMuteOrder?: () => void
 ) {
-  // Listener when notification arrives in foreground or background
-  const receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
-    startContinuousOrderRingtone();
-  });
+  if (!Notifications || isExpoGo || Platform.OS === 'web') {
+    return () => {};
+  }
 
-  // Listener when notification banner or action button is tapped
-  const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
-    const actionId = response.actionIdentifier;
-    const data = response.notification.request.content.data as any;
-    const rawId = data?.orderId ?? data?.order_id ?? data?.order?.order_id;
-    const vendorId = data?.vendorId ?? data?.vendor_id ?? data?.order?.vendor_id;
-
-    // Dismiss the notification from status bar tray
-    Notifications.dismissNotificationAsync(response.notification.request.identifier).catch(() => {});
-
-    if (actionId === 'ACCEPT') {
-      stopContinuousOrderRingtone();
-      if (rawId && onAcceptOrder) {
-        onAcceptOrder(rawId, vendorId);
-      }
-    } else if (actionId === 'REJECT') {
-      stopContinuousOrderRingtone();
-      if (rawId && onRejectOrder) {
-        onRejectOrder(rawId, vendorId);
-      }
-    } else if (actionId === 'MUTE') {
-      stopContinuousOrderRingtone();
-      if (onMuteOrder) {
-        onMuteOrder();
-      }
-    } else {
-      // Default notification click (banner tap)
+  try {
+    // Listener when notification arrives in foreground or background
+    const receivedSubscription = Notifications.addNotificationReceivedListener(notification => {
       startContinuousOrderRingtone();
-      if (typeof rawId === 'string' || typeof rawId === 'number') {
-        onOrderTapped(rawId);
-      }
-    }
-  });
+    });
 
-  return () => {
-    receivedSubscription.remove();
-    responseSubscription.remove();
-  };
+    // Listener when notification banner or action button is tapped
+    const responseSubscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const actionId = response.actionIdentifier;
+      const data = response.notification.request.content.data as any;
+      const rawId = data?.orderId ?? data?.order_id ?? data?.order?.order_id;
+      const vendorId = data?.vendorId ?? data?.vendor_id ?? data?.order?.vendor_id;
+
+      // Dismiss the notification from status bar tray
+      Notifications?.dismissNotificationAsync(response.notification.request.identifier).catch(() => {});
+
+      if (actionId === 'ACCEPT') {
+        stopContinuousOrderRingtone();
+        if (rawId && onAcceptOrder) {
+          onAcceptOrder(rawId, vendorId);
+        }
+      } else if (actionId === 'REJECT') {
+        stopContinuousOrderRingtone();
+        if (rawId && onRejectOrder) {
+          onRejectOrder(rawId, vendorId);
+        }
+      } else if (actionId === 'MUTE') {
+        stopContinuousOrderRingtone();
+        if (onMuteOrder) {
+          onMuteOrder();
+        }
+      } else {
+        // Default notification click (banner tap)
+        startContinuousOrderRingtone();
+        if (typeof rawId === 'string' || typeof rawId === 'number') {
+          onOrderTapped(rawId);
+        }
+      }
+    });
+
+    return () => {
+      receivedSubscription.remove();
+      responseSubscription.remove();
+    };
+  } catch (err) {
+    return () => {};
+  }
 }

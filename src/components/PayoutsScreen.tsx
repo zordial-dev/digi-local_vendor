@@ -34,10 +34,12 @@ import {
   Sparkles,
 } from 'lucide-react-native';
 import { BrandTheme } from '../constants/theme';
-import { VendorPayment, VendorUser } from '../services/api/types';
+import { VendorPayment, VendorUser, VendorOrder } from '../services/api/types';
+import { updateVendorPaymentDetailsApi } from '../services/apiService';
 
 interface PayoutsScreenProps {
   payments?: VendorPayment[];
+  orders?: VendorOrder[];
   vendor?: VendorUser;
   isLoading?: boolean;
   onRefresh?: () => void;
@@ -72,6 +74,7 @@ interface PayoutTransaction {
 
 export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo(({
   payments = [],
+  orders = [],
   vendor,
   isLoading = false,
   onRefresh,
@@ -91,25 +94,25 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [submittingPayout, setSubmittingPayout] = useState(false);
 
-  // Bank Account State (Vendor's verified account)
+  // Bank Account State (Vendor's live verified account)
   const [bankInfo, setBankInfo] = useState<BankAccountInfo>({
-    holderName: vendor?.vendor_name || 'Vendor Partner',
-    bankName: 'HDFC Bank',
-    accountNumber: '•••• •••• •••• 4582',
-    ifscCode: 'HDFC0001234',
-    branchName: 'Main Branch',
-    accountType: 'Savings',
-    upiId: vendor?.phone_number ? `${vendor.phone_number}@upi` : 'vendor@upi',
-    panNumber: 'ABCDE1234F',
-    gstin: vendor?.gst_number || '07ABCDE1234F1Z5',
-    isVerified: true,
+    holderName: vendor?.account_holder_name || vendor?.vendor_name || '',
+    bankName: vendor?.bank_name || '',
+    accountNumber: vendor?.account_number || '',
+    ifscCode: vendor?.ifsc_code || '',
+    branchName: '',
+    accountType: 'Current',
+    upiId: vendor?.upi_id || '',
+    panNumber: vendor?.pan_number || '',
+    gstin: vendor?.gstin || vendor?.gst_number || '',
+    isVerified: Boolean(vendor?.account_number && vendor?.ifsc_code),
   });
 
   // Edit bank form temporary state
   const [editHolderName, setEditHolderName] = useState(bankInfo.holderName);
   const [editBankName, setEditBankName] = useState(bankInfo.bankName);
-  const [editAccountNum, setEditAccountNum] = useState('9876543210124582');
-  const [editConfirmAccountNum, setEditConfirmAccountNum] = useState('9876543210124582');
+  const [editAccountNum, setEditAccountNum] = useState(bankInfo.accountNumber);
+  const [editConfirmAccountNum, setEditConfirmAccountNum] = useState(bankInfo.accountNumber);
   const [editIfsc, setEditIfsc] = useState(bankInfo.ifscCode);
   const [editBranch, setEditBranch] = useState(bankInfo.branchName);
   const [editAccountType, setEditAccountType] = useState(bankInfo.accountType);
@@ -119,48 +122,145 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
   const [bankFormError, setBankFormError] = useState('');
   const [bankSaveSuccess, setBankSaveSuccess] = useState(false);
 
-  // Filter out subscription fee if present
-  const actualPayments = payments.filter(p => parseFloat(String(p.amount)) !== 2999);
+  React.useEffect(() => {
+    if (vendor) {
+      const updated: BankAccountInfo = {
+        holderName: vendor.account_holder_name || vendor.vendor_name || '',
+        bankName: vendor.bank_name || '',
+        accountNumber: vendor.account_number || '',
+        ifscCode: vendor.ifsc_code || '',
+        branchName: '',
+        accountType: 'Current',
+        upiId: vendor.upi_id || '',
+        panNumber: vendor.pan_number || '',
+        gstin: vendor.gstin || vendor.gst_number || '',
+        isVerified: Boolean(vendor.account_number && vendor.ifsc_code),
+      };
+      setBankInfo(updated);
+      setEditHolderName(updated.holderName);
+      setEditBankName(updated.bankName);
+      setEditAccountNum(updated.accountNumber);
+      setEditConfirmAccountNum(updated.accountNumber);
+      setEditIfsc(updated.ifscCode);
+      setEditUpiId(updated.upiId);
+      setEditPan(updated.panNumber);
+      setEditGstin(updated.gstin);
+    }
+  }, [vendor]);
 
-  // Dynamic calculations for new / active vendors
+  // Actual order computations
+  const validOrders = (orders || []).filter(o => {
+    const s = String(o.status || '').toUpperCase();
+    return s !== 'CANCELLED' && s !== 'REJECTED';
+  });
+
+  const deliveredOrders = validOrders.filter(o => {
+    const s = String(o.status || '').toUpperCase();
+    return s === 'DELIVERED' || s === 'COMPLETED' || s === 'DONE';
+  });
+
+  const inProgressOrders = validOrders.filter(o => {
+    const s = String(o.status || '').toUpperCase();
+    return s === 'PLACED' || s === 'PENDING' || s === 'NEW' || s === 'ACCEPTED' || s === 'CONFIRMED' || s === 'PREPARING' || s === 'OUT_FOR_DELIVERY';
+  });
+
+  const grossSales = validOrders.reduce((sum, o) => sum + (parseFloat(String(o.total_amount || 0)) || 0), 0);
+  const deliveredSales = deliveredOrders.reduce((sum, o) => sum + (parseFloat(String(o.total_amount || 0)) || 0), 0);
+  const pendingOrdersAmount = inProgressOrders.reduce((sum, o) => sum + (parseFloat(String(o.total_amount || 0)) || 0), 0);
+
+  // Filter out subscription fee if present
+  const actualPayments = (payments || []).filter(p => parseFloat(String(p.amount)) !== 2999);
+
+  // Dynamic calculations for paid out vs pending settlements
   const totalPaidOut = actualPayments
     .filter(p => p.status?.toLowerCase() === 'success' || p.status?.toLowerCase() === 'completed')
     .reduce((sum, p) => sum + (parseFloat(String(p.amount)) || 0), 0);
 
-  const pendingPayout = actualPayments
+  const pendingPayoutPayments = actualPayments
     .filter(p => p.status?.toLowerCase() === 'pending' || p.status?.toLowerCase() === 'processing')
     .reduce((sum, p) => sum + (parseFloat(String(p.amount)) || 0), 0);
 
-  const availableBalance = 0.00; // New vendor: 0.00 until orders are placed
-  const totalEarnings = totalPaidOut + pendingPayout + availableBalance;
-  const nextPayoutDate = pendingPayout > 0 ? 'Tomorrow' : 'T+1 on Orders';
-  const daysLeft = pendingPayout > 0 ? 'In Next Batch' : 'Settles Daily';
-
-  // Earnings Breakdown
-  const grossSales = 0.00;
+  // Available balance is delivered sales not yet settled in payout records
+  const availableBalance = Math.max(0, deliveredSales - totalPaidOut);
+  const pendingPayout = pendingPayoutPayments + pendingOrdersAmount;
+  const totalEarnings = grossSales > 0 ? grossSales : (totalPaidOut + pendingPayout + availableBalance);
+  const netEarnings = Math.max(0, grossSales);
   const platformCommission = 0.00;
   const taxes = 0.00;
   const refunds = 0.00;
-  const netEarnings = 0.00;
 
-  // Real or mock mapped transactions (empty for new vendor unless payments exist)
-  const [transactions, setTransactions] = useState<PayoutTransaction[]>(
-    actualPayments.map(p => ({
-      id: `PAY${p.payment_id}`,
-      amount: parseFloat(String(p.amount)) || 0,
-      date: p.paid_at ? new Date(p.paid_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today',
-      time: p.paid_at ? new Date(p.paid_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '12:00 PM',
-      accountMask: 'Bank Account •••• 4582',
-      status: (p.status?.toUpperCase() === 'SUCCESS' || p.status?.toUpperCase() === 'COMPLETED') ? 'PAID' : 'PROCESSING',
-      txnId: `TXN${p.payment_id}88`,
-      grossSales: (parseFloat(String(p.amount)) || 0) * 1.1,
-      commission: (parseFloat(String(p.amount)) || 0) * 0.08,
-      tax: (parseFloat(String(p.amount)) || 0) * 0.02,
-    }))
-  );
+  const nextPayoutDate = (availableBalance > 0 || pendingPayout > 0) ? 'Tomorrow (T+1)' : 'T+1 on Orders';
+  const daysLeft = (availableBalance > 0 || pendingPayout > 0) ? 'Daily Settlement' : 'Settles Daily';
+
+  // 📝 Console logs for payouts debugging
+  React.useEffect(() => {
+    console.log('💰 [PAYOUTS DASHBOARD DATA]:', {
+      vendorId: vendor?.vendor_id,
+      storeName: vendor?.store_name,
+      totalOrdersCount: orders?.length || 0,
+      validOrdersCount: validOrders.length,
+      deliveredOrdersCount: deliveredOrders.length,
+      grossSales: `₹${grossSales.toFixed(2)}`,
+      deliveredSales: `₹${deliveredSales.toFixed(2)}`,
+      pendingOrdersAmount: `₹${pendingOrdersAmount.toFixed(2)}`,
+      availableBalance: `₹${availableBalance.toFixed(2)}`,
+      totalPaidOut: `₹${totalPaidOut.toFixed(2)}`,
+      totalEarnings: `₹${totalEarnings.toFixed(2)}`,
+      ordersList: orders?.map(o => ({
+        id: o.order_id,
+        status: o.status,
+        amount: o.total_amount,
+        items: o.items?.length || 0
+      })) || [],
+      paymentsList: payments?.map(p => ({
+        id: p.payment_id,
+        status: p.status,
+        amount: p.amount
+      })) || []
+    });
+  }, [orders, payments, vendor?.vendor_id, grossSales, availableBalance]);
+
+  // Real mapped transactions
+  const [extraTransactions, setExtraTransactions] = useState<PayoutTransaction[]>([]);
+
+  const transactions: PayoutTransaction[] = actualPayments.length > 0
+    ? actualPayments.map(p => ({
+        id: `PAY${p.payment_id}`,
+        amount: parseFloat(String(p.amount)) || 0,
+        date: p.paid_at ? new Date(p.paid_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today',
+        time: p.paid_at ? new Date(p.paid_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '12:00 PM',
+        accountMask: 'Bank Account •••• 4582',
+        status: (p.status?.toUpperCase() === 'SUCCESS' || p.status?.toUpperCase() === 'COMPLETED') ? 'PAID' : 'PROCESSING',
+        txnId: `TXN${p.payment_id}88`,
+        grossSales: parseFloat(String(p.amount)) || 0,
+        commission: 0,
+        tax: 0,
+      }))
+    : validOrders.map(o => {
+        const s = String(o.status || '').toUpperCase();
+        const isDelivered = s === 'DELIVERED' || s === 'COMPLETED';
+        const timestamp = o.order_timestamp || (o as any).created_at;
+        return {
+          id: `ORD${o.order_id}`,
+          amount: parseFloat(String(o.total_amount)) || 0,
+          date: timestamp ? new Date(timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today',
+          time: timestamp ? new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '12:00 PM',
+          accountMask: 'Direct Settlement (T+1)',
+          status: isDelivered ? 'PAID' : 'PROCESSING',
+          txnId: `ORD-${o.order_id}`,
+          grossSales: parseFloat(String(o.total_amount)) || 0,
+          commission: 0,
+          tax: 0,
+        };
+      });
+
+  const allTransactions: PayoutTransaction[] = [
+    ...extraTransactions,
+    ...transactions
+  ];
 
   // Filtered transactions for History Tab
-  const filteredTransactions = transactions.filter(t => {
+  const filteredTransactions = allTransactions.filter(t => {
     if (historyFilter === 'ALL') return true;
     return t.status === historyFilter;
   });
@@ -186,11 +286,13 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
         commission: amt * 0.08,
         tax: amt * 0.02,
       };
-      setTransactions(prev => [newTxn, ...prev]);
+      setExtraTransactions(prev => [newTxn, ...prev]);
     }, 900);
   };
 
-  const handleSaveBankInfo = () => {
+  const [isSavingBank, setIsSavingBank] = useState(false);
+
+  const handleSaveBankInfo = async () => {
     setBankFormError('');
     if (!editHolderName.trim()) {
       setBankFormError('Please enter Account Holder Name');
@@ -213,45 +315,64 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
       return;
     }
 
-    const last4 = editAccountNum.trim().slice(-4);
-    setBankInfo({
-      holderName: editHolderName.trim(),
-      bankName: editBankName.trim(),
-      accountNumber: `•••• •••• •••• ${last4}`,
-      ifscCode: editIfsc.toUpperCase().trim(),
-      branchName: editBranch.trim() || 'Main Branch',
-      accountType: editAccountType,
-      upiId: editUpiId.trim(),
-      panNumber: editPan.toUpperCase().trim(),
-      gstin: editGstin.toUpperCase().trim(),
-      isVerified: true,
-    });
+    setIsSavingBank(true);
+    try {
+      if (vendor?.vendor_id) {
+        await updateVendorPaymentDetailsApi({
+          vendor_id: vendor.vendor_id,
+          account_number: editAccountNum.trim(),
+          ifsc_code: editIfsc.toUpperCase().trim(),
+          bank_name: editBankName.trim(),
+          account_holder_name: editHolderName.trim(),
+          upi_id: editUpiId.trim() || undefined,
+          account_type: editAccountType,
+        }, vendor.vendor_id);
+      }
 
-    setBankSaveSuccess(true);
-    setTimeout(() => {
-      setBankSaveSuccess(false);
-      setShowEditBankModal(false);
-    }, 1000);
+      const last4 = editAccountNum.trim().slice(-4);
+      setBankInfo({
+        holderName: editHolderName.trim(),
+        bankName: editBankName.trim(),
+        accountNumber: `•••• •••• •••• ${last4}`,
+        ifscCode: editIfsc.toUpperCase().trim(),
+        branchName: editBranch.trim() || 'Main Branch',
+        accountType: editAccountType,
+        upiId: editUpiId.trim(),
+        panNumber: editPan.toUpperCase().trim(),
+        gstin: editGstin.toUpperCase().trim(),
+        isVerified: true,
+      });
+
+      setBankSaveSuccess(true);
+      setTimeout(() => {
+        setBankSaveSuccess(false);
+        setShowEditBankModal(false);
+      }, 1000);
+    } catch (err: any) {
+      setBankFormError(err.message || 'Failed to save bank details to server.');
+    } finally {
+      setIsSavingBank(false);
+    }
   };
 
   const getStatusBadge = (status: PayoutTransaction['status']) => {
     switch (status) {
       case 'PAID':
         return (
-          <View style={[styles.statusPill, { backgroundColor: '#EAF7EE' }]}>
+          <View style={[styles.statusPill, { backgroundColor: '#F0FDF4' }]}>
             <Text style={[styles.statusPillText, { color: BrandTheme.emeraldGreen }]}>Paid</Text>
           </View>
         );
       case 'PROCESSING':
         return (
           <View style={[styles.statusPill, { backgroundColor: '#FEF3C7' }]}>
-            <Text style={[styles.statusPillText, { color: '#B45309' }]}>Processing</Text>
+            <Text style={[styles.statusPillText, { color: '#D97706' }]}>Processing</Text>
           </View>
         );
       case 'FAILED':
         return (
           <View style={[styles.statusPill, { backgroundColor: '#FEE2E2' }]}>
-            <Text style={[styles.statusPillText, { color: '#B91C1C' }]}>Failed</Text>
+            <Text style={[styles.statusPillText, { color: '#DC2626' }]}>Failed</Text>
           </View>
         );
       case 'CANCELLED':
@@ -267,20 +388,20 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
     switch (status) {
       case 'PAID':
         return (
-          <View style={[styles.txnIconWrap, { backgroundColor: '#EAF7EE' }]}>
+          <View style={[styles.txnIconWrap, { backgroundColor: '#F0FDF4' }]}>
             <CheckCircle2 size={18} color={BrandTheme.emeraldGreen} />
           </View>
         );
       case 'PROCESSING':
         return (
           <View style={[styles.txnIconWrap, { backgroundColor: '#FEF3C7' }]}>
-            <Clock size={18} color="#B45309" />
+            <Clock size={18} color="#D97706" />
           </View>
         );
       case 'FAILED':
         return (
           <View style={[styles.txnIconWrap, { backgroundColor: '#FEE2E2' }]}>
-            <XCircle size={18} color="#B91C1C" />
+            <XCircle size={18} color="#DC2626" />
           </View>
         );
       case 'CANCELLED':
@@ -418,7 +539,7 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
           <View style={styles.bentoGrid}>
             {/* Bento 1: Total Earnings */}
             <View style={styles.bentoCard}>
-              <View style={[styles.bentoIconBox, { backgroundColor: '#EAF7EE' }]}>
+              <View style={[styles.bentoIconBox, { backgroundColor: '#F0FDF4' }]}>
                 <Wallet size={18} color={BrandTheme.emeraldGreen} />
               </View>
               <Text style={styles.bentoLabel}>Total Earnings</Text>
@@ -431,7 +552,7 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
             {/* Bento 2: Pending Payout */}
             <View style={styles.bentoCard}>
               <View style={[styles.bentoIconBox, { backgroundColor: '#FEF3C7' }]}>
-                <Clock size={18} color="#B45309" />
+                <Clock size={18} color="#D97706" />
               </View>
               <Text style={styles.bentoLabel}>Pending Payout</Text>
               <Text style={styles.bentoValue}>
@@ -446,7 +567,7 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
 
             {/* Bento 3: Total Paid Out */}
             <View style={styles.bentoCard}>
-              <View style={[styles.bentoIconBox, { backgroundColor: '#EAF7EE' }]}>
+              <View style={[styles.bentoIconBox, { backgroundColor: '#F0FDF4' }]}>
                 <ArrowUpRight size={18} color={BrandTheme.forestGreen} />
               </View>
               <Text style={styles.bentoLabel}>Total Paid Out</Text>
@@ -888,7 +1009,7 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
             <ScrollView showsVerticalScrollIndicator={false}>
               {bankFormError ? (
                 <View style={styles.formErrorBox}>
-                  <AlertCircle size={16} color="#B91C1C" style={{ marginRight: 6 }} />
+                  <AlertCircle size={16} color="#DC2626" style={{ marginRight: 6 }} />
                   <Text style={styles.formErrorText}>{bankFormError}</Text>
                 </View>
               ) : null}
@@ -981,8 +1102,13 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
               <TouchableOpacity
                 style={[styles.modalActionBtn, { marginTop: 16, marginBottom: 24 }]}
                 onPress={handleSaveBankInfo}
+                disabled={isSavingBank}
               >
-                <Text style={styles.modalActionBtnText}>Save Account Details</Text>
+                {isSavingBank ? (
+                  <ActivityIndicator size="small" color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.modalActionBtnText}>Save Account Details</Text>
+                )}
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -1032,8 +1158,8 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
 
                   {selectedTxn.failureReason ? (
                     <View style={styles.receiptRow}>
-                      <Text style={[styles.receiptLabel, { color: '#B91C1C' }]}>Failure Reason</Text>
-                      <Text style={[styles.receiptValue, { color: '#B91C1C' }]}>{selectedTxn.failureReason}</Text>
+                      <Text style={[styles.receiptLabel, { color: '#DC2626' }]}>Failure Reason</Text>
+                      <Text style={[styles.receiptValue, { color: '#DC2626' }]}>{selectedTxn.failureReason}</Text>
                     </View>
                   ) : null}
                 </View>
@@ -1434,7 +1560,7 @@ const styles = StyleSheet.create({
   verifiedTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EAF7EE',
+    backgroundColor: '#F0FDF4',
     alignSelf: 'flex-start',
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -1580,7 +1706,7 @@ const styles = StyleSheet.create({
   verifiedBanner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EAF7EE',
+    backgroundColor: '#F0FDF4',
     borderRadius: 14,
     padding: 14,
     marginBottom: 16,
@@ -1590,11 +1716,11 @@ const styles = StyleSheet.create({
   verifiedBannerTitle: {
     fontSize: 13,
     fontWeight: '800',
-    color: '#065F46',
+    color: '#16A34A',
   },
   verifiedBannerSubtitle: {
     fontSize: 11,
-    color: '#047857',
+    color: '#16A34A',
     marginTop: 1,
   },
   editLinkText: {
@@ -1726,7 +1852,7 @@ const styles = StyleSheet.create({
     borderTopColor: '#FEE2E2',
   },
   failureReasonText: {
-    color: '#B91C1C',
+    color: '#DC2626',
     fontSize: 11,
     fontWeight: '600',
   },
@@ -1777,7 +1903,7 @@ const styles = StyleSheet.create({
   // ── Modals General ──
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(11, 22, 16, 0.72)',
+    backgroundColor: 'rgba(40, 13, 18, 0.75)',
     justifyContent: 'flex-end',
   },
   modalCard: {
@@ -1880,7 +2006,7 @@ const styles = StyleSheet.create({
     color: BrandTheme.mutedSageText,
   },
   verifiedTagMini: {
-    backgroundColor: '#EAF7EE',
+    backgroundColor: '#F0FDF4',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
@@ -1968,7 +2094,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   formErrorText: {
-    color: '#B91C1C',
+    color: '#DC2626',
     fontSize: 12,
     fontWeight: '600',
     flex: 1,
@@ -1976,7 +2102,7 @@ const styles = StyleSheet.create({
   formSuccessBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EAF7EE',
+    backgroundColor: '#F0FDF4',
     padding: 10,
     borderRadius: 8,
     marginBottom: 10,

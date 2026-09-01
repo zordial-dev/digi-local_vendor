@@ -40,25 +40,25 @@ import {
   CupSoda,
   Leaf,
   SlidersHorizontal,
-  Mic,
-  Volume2,
-  Languages
+  Home,
+  Building2,
+  Calendar,
+  Globe,
+  Bold,
+  Italic,
+  List,
+  Type,
+  Code,
+  Link,
+  RotateCcw,
+  RotateCw,
+  Clock,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
+import { pickImageFromDevice, captureImageFromDevice } from '../utils/imagePickerHelper';
 import { Colors, BrandTheme } from '../constants/theme';
 import { getHindiSubtitle, matchesBilingualQuery, getCategoryBilingualLabel } from '../utils/translations';
 
-// Safe Native Speech Recognition loader (guarded against Expo Go missing native module)
-let NativeSpeechModule: any = null;
-try {
-  const speechMod = require('expo-speech-recognition');
-  if (speechMod && speechMod.ExpoSpeechRecognitionModule) {
-    NativeSpeechModule = speechMod.ExpoSpeechRecognitionModule;
-  }
-} catch (_) {
-  NativeSpeechModule = null;
-}
 import {
   VendorItem,
   addMenuItemApi,
@@ -69,6 +69,7 @@ import {
 } from '../services/apiService';
 
 import { CustomAlertModal, CustomAlertState, AlertType } from './CustomAlertModal';
+import { showToast } from './ToastNotification';
 
 interface MenuScreenProps {
   vendorId: number;
@@ -77,6 +78,8 @@ interface MenuScreenProps {
   onRefresh: () => Promise<void> | void;
   isDarkMode?: boolean;
   openAddProductTrigger?: number;
+  businessType?: 'PRODUCT' | 'SERVICE';
+  isPendingApproval?: boolean;
 }
 
 const PRESET_CATEGORIES = [
@@ -94,6 +97,38 @@ const PRESET_CATEGORIES = [
   '+ Custom Category'
 ];
 
+const PRESET_SERVICE_CATEGORIES = [
+  'Appliance Repair',
+  'AC Service & Repair',
+  'Home Cleaning',
+  'Electrician',
+  'Plumber',
+  'Carpentry',
+  'Painting',
+  'Pest Control',
+  'Beauty & Salon',
+  'Tuition & Coaching',
+  'Doctor & Care',
+  'Consultations',
+  'Repairs & Tech',
+  'Legal & Tax',
+  'Driver & Events',
+  '+ Custom Category'
+];
+
+const PRESET_DURATIONS = [
+  '30 mins',
+  '45 mins',
+  '1 hour',
+  '1.5 hours',
+  '2 hours',
+  '3 hours',
+  '4 hours',
+  'Half Day',
+  'Full Day',
+  'Custom'
+];
+
 const PRESET_UNITS = [
   'Piece',
   'Set',
@@ -107,6 +142,16 @@ const PRESET_UNITS = [
   'Dozen',
   'Bunch',
   'g',
+  '+ Custom Unit'
+];
+
+const PRESET_SERVICE_UNITS = [
+  'Per Session (45m)',
+  'Per Hour',
+  'Per Visit',
+  'Per Month',
+  '1 Service',
+  'Inspection Fee',
   '+ Custom Unit'
 ];
 
@@ -274,7 +319,14 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
   isLoading,
   onRefresh,
   openAddProductTrigger,
+  businessType = 'PRODUCT',
+  isPendingApproval = false,
 }) => {
+  const isService = businessType === 'SERVICE';
+  const categoryPresets = isService ? PRESET_SERVICE_CATEGORIES : PRESET_CATEGORIES;
+  const unitPresets = isService ? PRESET_SERVICE_UNITS : [
+    'Piece', 'Set', 'Packet', 'Box', '1 kg', '500g', '250g', '1L', '500ml', 'Dozen', 'Bunch', 'g', '+ Custom Unit'
+  ];
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   useEffect(() => {
@@ -292,8 +344,11 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
   const [togglingId, setTogglingId] = useState<number | null>(null);
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [optimisticAvailability, setOptimisticAvailability] = useState<Record<number, boolean>>({});
+  const [deletedItemIds, setDeletedItemIds] = useState<Set<number>>(new Set());
+  const [optimisticAddedItems, setOptimisticAddedItems] = useState<VendorItem[]>([]);
+  const [optimisticUpdatedItems, setOptimisticUpdatedItems] = useState<Record<number, VendorItem>>({});
 
-  // Synchronize optimistic availability with incoming props
+  // Synchronize optimistic states with incoming server props
   useEffect(() => {
     setOptimisticAvailability(prev => {
       const next = { ...prev };
@@ -305,6 +360,31 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
         }
       });
       return changed ? next : prev;
+    });
+
+    setDeletedItemIds(prev => {
+      if (prev.size === 0) return prev;
+      const currentItemIds = new Set(items.map(i => i.item_id));
+      const next = new Set<number>();
+      prev.forEach(id => {
+        if (currentItemIds.has(id)) {
+          next.add(id);
+        }
+      });
+      return next.size === prev.size ? prev : next;
+    });
+
+    setOptimisticAddedItems(prev => {
+      if (prev.length === 0) return prev;
+      const currentItemIds = new Set(items.map(i => i.item_id));
+      const currentItemNames = new Set(items.map(i => `${i.item_name.toLowerCase()}_${i.category}`));
+      const next = prev.filter(i => !currentItemIds.has(i.item_id) && !currentItemNames.has(`${i.item_name.toLowerCase()}_${i.category}`));
+      return next.length === prev.length ? prev : next;
+    });
+
+    setOptimisticUpdatedItems(prev => {
+      if (Object.keys(prev).length === 0) return prev;
+      return {};
     });
   }, [items]);
 
@@ -324,13 +404,19 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
   const [itemName, setItemName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
-  const [category, setCategory] = useState('Grocery');
+  const [category, setCategory] = useState(isService ? 'Appliance Repair' : 'Grocery');
   const [customCategoryInput, setCustomCategoryInput] = useState('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [unit, setUnit] = useState('Piece');
+  const [unit, setUnit] = useState(isService ? '1 hour' : 'Piece');
   const [imageUrl, setImageUrl] = useState('');
   const [isAvailable, setIsAvailable] = useState(true);
   const [stock, setStock] = useState('50');
+
+  // Service Provider Specific States
+  const [pricingModel, setPricingModel] = useState<'FIXED' | 'STARTING_FROM'>('FIXED');
+  const [estimatedDuration, setEstimatedDuration] = useState('1 hour');
+  const [serviceLocation, setServiceLocation] = useState<'DOORSTEP' | 'SHOP' | 'ONLINE'>('DOORSTEP');
+  const [showDurationDropdown, setShowDurationDropdown] = useState(false);
 
   // Unit Dropdown States
   const [showUnitDropdown, setShowUnitDropdown] = useState(false);
@@ -340,8 +426,15 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
     setItemName('');
     setDescription('');
     setPrice('');
-    setUnit('Piece');
+    setCategory(isService ? 'Appliance Repair' : 'Grocery');
+    setUnit(isService ? '1 hour' : 'Piece');
+    setPricingModel('FIXED');
+    setEstimatedDuration('1 hour');
+    setServiceLocation('DOORSTEP');
+    setShowDurationDropdown(false);
+    setCustomCategoryInput('');
     setCustomUnitInput('');
+    setShowCategoryDropdown(false);
     setShowUnitDropdown(false);
     setImageUrl('');
     setIsAvailable(true);
@@ -349,261 +442,47 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
     setEditingItem(null);
   };
 
-  // ── Voice Search State & Multi-Engine Speech Recognition ──
-  const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [voiceTranscript, setVoiceTranscript] = useState('');
-  const [voiceLang, setVoiceLang] = useState<'en-IN' | 'hi-IN'>('en-IN');
-  const [voiceStatus, setVoiceStatus] = useState('Listening... Speak now!');
-  const pulseAnim = React.useRef(new Animated.Value(1)).current;
-  const recognitionRef = React.useRef<any>(null);
-  const recordingRef = React.useRef<Audio.Recording | null>(null);
 
-  // Safe Native Speech Event Subscriptions (when native module is present)
-  useEffect(() => {
-    if (!NativeSpeechModule) return;
 
-    let subStart: any, subEnd: any, subResult: any, subError: any, subVolume: any;
-    try {
-      if (NativeSpeechModule.addListener) {
-        subStart = NativeSpeechModule.addListener('start', () => {
-          setIsListening(true);
-          setVoiceStatus(voiceLang === 'hi-IN' ? 'सुन रहे हैं... बोलिए!' : 'Listening... Speak now!');
-        });
-        subEnd = NativeSpeechModule.addListener('end', () => {
-          setIsListening(false);
-        });
-        subResult = NativeSpeechModule.addListener('result', (event: any) => {
-          const transcript = event.results?.[0]?.transcript || '';
-          if (transcript) {
-            setVoiceTranscript(transcript);
-            setSearchQuery(transcript);
-            setVoiceStatus(`Recognized: "${transcript}"`);
-            if (event.isFinal) {
-              setTimeout(() => setIsVoiceModalOpen(false), 700);
-            }
-          }
-        });
-        subError = NativeSpeechModule.addListener('error', (event: any) => {
-          if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-            setVoiceStatus('Microphone or Speech permission denied.');
-          } else if (event.error === 'no-speech' || event.error === 'speech-timeout') {
-            setVoiceStatus(voiceLang === 'hi-IN' ? 'आवाज़ नहीं आई। फिर से बोलें' : 'No speech heard. Tap mic to retry.');
-          } else {
-            setVoiceStatus(event.message || 'Speech recognition error');
-          }
-          setIsListening(false);
-        });
-        subVolume = NativeSpeechModule.addListener('volumechange', (event: any) => {
-          if (typeof event.value === 'number') {
-            const scale = Math.min(1.45, Math.max(1, 1 + event.value / 12));
-            pulseAnim.setValue(scale);
-          }
-        });
-      }
-    } catch (_) {}
-
-    return () => {
-      try {
-        subStart?.remove?.();
-        subEnd?.remove?.();
-        subResult?.remove?.();
-        subError?.remove?.();
-        subVolume?.remove?.();
-      } catch (_) {}
-    };
-  }, [voiceLang]);
-
-  useEffect(() => {
-    if (isListening) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.28,
-            duration: 550,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 550,
-            useNativeDriver: true,
-          }),
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
-    }
-  }, [isListening]);
-
-  const startVoiceSearch = async (langOverride?: 'en-IN' | 'hi-IN') => {
-    const selectedLang = langOverride || voiceLang;
-    if (langOverride) {
-      setVoiceLang(langOverride);
-    }
-    setVoiceTranscript('');
-    setVoiceStatus(selectedLang === 'hi-IN' ? 'सुन रहे हैं... प्रोडक्ट का नाम बोलें' : 'Listening... Speak product name');
-    setIsVoiceModalOpen(true);
-    setIsListening(true);
-
-    // 1. Try Native Speech Recognition Module (Dev Client / Standalone Build)
-    if (NativeSpeechModule) {
-      try {
-        const result = await NativeSpeechModule.requestPermissionsAsync();
-        if (result && result.granted) {
-          NativeSpeechModule.start({
-            lang: selectedLang,
-            interimResults: true,
-            continuous: false,
-            volumeChangeEventOptions: {
-              enabled: true,
-              intervalMillis: 80,
-            },
-          });
-          return;
+  // Active items merging prop items + optimistic additions/updates minus deletions
+  const activeItems = React.useMemo(() => {
+    // 1. Base items with optimistic updates & availability applied, minus deleted items
+    const baseList = items
+      .filter(i => !deletedItemIds.has(i.item_id))
+      .map(i => {
+        let item = optimisticUpdatedItems[i.item_id] || i;
+        if (optimisticAvailability[item.item_id] !== undefined) {
+          item = { ...item, is_available: optimisticAvailability[item.item_id] };
         }
-      } catch (err) {
-        console.log('Native speech start error, falling back:', err);
-      }
-    }
-
-    // 2. Web Speech Recognition (Browser / Chrome / Safari)
-    if (typeof window !== 'undefined') {
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        try {
-          if (recognitionRef.current) {
-            try { recognitionRef.current.stop(); } catch (_) {}
-          }
-          const recognition = new SpeechRecognition();
-          recognition.continuous = false;
-          recognition.interimResults = true;
-          recognition.lang = selectedLang;
-
-          recognition.onstart = () => {
-            setIsListening(true);
-            setVoiceStatus(selectedLang === 'hi-IN' ? 'सुन रहे हैं... बोलिए!' : 'Listening... Speak now!');
-          };
-
-          recognition.onresult = (event: any) => {
-            let transcript = '';
-            for (let i = 0; i < event.results.length; i++) {
-              transcript += event.results[i][0].transcript;
-            }
-            transcript = transcript.trim();
-            if (transcript) {
-              setVoiceTranscript(transcript);
-              setSearchQuery(transcript);
-              setVoiceStatus(`Recognized: "${transcript}"`);
-            }
-          };
-
-          recognition.onerror = () => {
-            setVoiceStatus(selectedLang === 'hi-IN' ? 'आवाज़ नहीं आई। फिर से बोलें' : 'No speech detected. Tap mic to retry.');
-            setIsListening(false);
-          };
-
-          recognition.onend = () => {
-            setIsListening(false);
-          };
-
-          recognition.start();
-          recognitionRef.current = recognition;
-          return;
-        } catch (_) {}
-      }
-    }
-
-    // 3. Fallback Native Audio Stream with Voice Volume Metering (Expo Go)
-    try {
-      const { status } = await Audio.requestPermissionsAsync();
-      if (status !== 'granted') {
-        showAlert(
-          'Microphone Permission',
-          'Please enable microphone permissions in settings for voice search.',
-          'warning'
-        );
-        setVoiceStatus('Microphone permission denied.');
-        setIsListening(false);
-        return;
-      }
-
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+        return item;
       });
 
-      const recording = new Audio.Recording();
-      await recording.prepareToRecordAsync({
-        ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        isMeteringEnabled: true,
-      });
+    // 2. Newly added optimistic items not yet present in base items
+    const existingIds = new Set(baseList.map(i => i.item_id));
+    const addedList = optimisticAddedItems.filter(
+      i => !existingIds.has(i.item_id) && !deletedItemIds.has(i.item_id)
+    );
 
-      recording.setOnRecordingStatusUpdate((status) => {
-        if (status.metering !== undefined) {
-          const norm = Math.min(1.45, Math.max(1, 1 + (status.metering + 100) / 100));
-          pulseAnim.setValue(norm);
-        }
-      });
-
-      await recording.startAsync();
-      recordingRef.current = recording;
-      setVoiceStatus(selectedLang === 'hi-IN' ? 'सुन रहे हैं... बोलें और स्टॉप दबाएं' : 'Listening... Speak now and tap Stop');
-    } catch (err) {
-      console.log('Audio metering start error:', err);
-    }
-  };
-
-  const stopVoiceSearch = async () => {
-    if (NativeSpeechModule) {
-      try { NativeSpeechModule.stop(); } catch (_) {}
-    }
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch (_) {}
-      recognitionRef.current = null;
-    }
-    if (recordingRef.current) {
-      try {
-        await recordingRef.current.stopAndUnloadAsync();
-      } catch (_) {}
-      recordingRef.current = null;
-    }
-    setIsListening(false);
-    setTimeout(() => {
-      setIsVoiceModalOpen(false);
-    }, 300);
-  };
-
-  const handleSelectQuickVoiceItem = (text: string) => {
-    setVoiceTranscript(text);
-    setSearchQuery(text);
-    setVoiceStatus(`Recognized: "${text}"`);
-    stopVoiceSearch();
-  };
-
-  // Top 8 item names from store for quick voice suggestions with Hindi translation
-  const quickVoiceSuggestions = React.useMemo(() => {
-    const fromItems = items.map(i => i.item_name).filter(Boolean).slice(0, 8);
-    if (fromItems.length >= 4) return fromItems;
-    return ['Bhindi', 'Aaloo', 'Apple', 'Milk', 'Bread', 'Tomato', 'Eggs', 'Paneer'];
-  }, [items]);
+    return [...addedList, ...baseList];
+  }, [items, deletedItemIds, optimisticAddedItems, optimisticUpdatedItems, optimisticAvailability]);
 
   // Unique normalized categories list with counts (memoized for instant tab switching)
   const filterCategories = React.useMemo(() => {
-    const itemNormCategories = items.map(i => normalizeCategory(i.category));
+    const itemNormCategories = activeItems.map(i => normalizeCategory(i.category));
     return [
       'ALL',
       ...Array.from(new Set([...PRESET_CATEGORIES.filter(c => c !== '+ Custom Category'), ...itemNormCategories]))
     ];
-  }, [items]);
+  }, [activeItems]);
 
   const categoryCounts = React.useMemo(() => {
-    const counts: Record<string, number> = { ALL: items.length };
-    items.forEach(i => {
+    const counts: Record<string, number> = { ALL: activeItems.length };
+    activeItems.forEach(i => {
       const cat = normalizeCategory(i.category);
       counts[cat] = (counts[cat] || 0) + 1;
     });
     return counts;
-  }, [items]);
+  }, [activeItems]);
 
   const getCategoryCount = (catName: string) => {
     return categoryCounts[catName] || 0;
@@ -621,8 +500,10 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
     setPrice(String(item.price));
     setStock(item.stock !== undefined ? String(item.stock) : '50');
 
-    const itemCat = normalizeCategory(item.category);
-    if (PRESET_CATEGORIES.includes(itemCat)) {
+    const presets = isService ? PRESET_SERVICE_CATEGORIES : PRESET_CATEGORIES;
+    const defaultCat = isService ? 'Appliance Repair' : 'Grocery';
+    const itemCat = item.category || defaultCat;
+    if (presets.includes(itemCat)) {
       setCategory(itemCat);
       setCustomCategoryInput('');
     } else {
@@ -630,57 +511,55 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
       setCustomCategoryInput(item.category || 'General');
     }
 
-    const itemUnit = item.unit || 'Piece';
-    const foundPreset = PRESET_UNITS.find(u => u.toLowerCase() === itemUnit.toLowerCase() && u !== '+ Custom Unit');
-    if (foundPreset) {
-      setUnit(foundPreset);
-      setCustomUnitInput('');
+    if (isService) {
+      setEstimatedDuration(item.unit || '1 hour');
+      setPricingModel(item.unit && item.unit.toLowerCase().includes('start') ? 'STARTING_FROM' : 'FIXED');
     } else {
-      setUnit('+ Custom Unit');
-      setCustomUnitInput(itemUnit);
+      const itemUnit = item.unit || 'Piece';
+      const foundPreset = PRESET_UNITS.find(u => u.toLowerCase() === itemUnit.toLowerCase() && u !== '+ Custom Unit');
+      if (foundPreset) {
+        setUnit(foundPreset);
+        setCustomUnitInput('');
+      } else {
+        setUnit('+ Custom Unit');
+        setCustomUnitInput(itemUnit);
+      }
     }
+    setShowCategoryDropdown(false);
     setShowUnitDropdown(false);
+    setShowDurationDropdown(false);
 
     setImageUrl(item.image_url || '');
     setIsAvailable(Boolean(item.is_available));
     setIsModalOpen(true);
   };
 
-  // Upload image from device gallery
+  // Upload image from device / Mac gallery
   const handlePickMedia = async () => {
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!permission.granted) {
-        showAlert('Permission Required', 'Please grant photo gallery access to upload product photo.', 'warning');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
+      const picked = await pickImageFromDevice({
         allowsEditing: false,
-        quality: 0.7,
-        base64: true,
+        quality: 0.8,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        if (asset.base64) {
+      if (picked && picked.uri) {
+        if (picked.base64) {
           setUploadingMedia(true);
           try {
             const uploaded = await uploadMediaApi(
-              asset.base64,
-              asset.fileName || `media_${Date.now()}.jpg`,
-              asset.mimeType || 'image/jpeg'
+              picked.base64,
+              picked.fileName || `media_${Date.now()}.jpg`,
+              picked.mimeType || 'image/jpeg'
             );
-            setImageUrl(uploaded.url);
-            showAlert('Media Uploaded', 'Product photo saved permanently to server!', 'success');
+            setImageUrl(uploaded.url || picked.uri);
+            showAlert('Media Uploaded', 'Product photo saved successfully!', 'success');
           } catch (uploadErr: any) {
-            setImageUrl(asset.uri);
+            setImageUrl(picked.uri);
           } finally {
             setUploadingMedia(false);
           }
         } else {
-          setImageUrl(asset.uri);
+          setImageUrl(picked.uri);
         }
       }
     } catch (err: any) {
@@ -688,41 +567,32 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
     }
   };
 
-  // Capture photo directly using phone camera
+  // Capture photo directly using camera or file picker on Mac
   const handleTakeMedia = async () => {
     try {
-      const permission = await ImagePicker.requestCameraPermissionsAsync();
-      if (!permission.granted) {
-        showAlert('Permission Required', 'Please grant camera access to capture product photo.', 'warning');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
+      const captured = await captureImageFromDevice({
         allowsEditing: false,
-        quality: 0.7,
-        base64: true,
+        quality: 0.8,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        const asset = result.assets[0];
-        if (asset.base64) {
+      if (captured && captured.uri) {
+        if (captured.base64) {
           setUploadingMedia(true);
           try {
             const uploaded = await uploadMediaApi(
-              asset.base64,
-              asset.fileName || `media_${Date.now()}.jpg`,
-              asset.mimeType || 'image/jpeg'
+              captured.base64,
+              captured.fileName || `media_${Date.now()}.jpg`,
+              captured.mimeType || 'image/jpeg'
             );
-            setImageUrl(uploaded.url);
-            showAlert('Captured & Uploaded', 'Product photo saved permanently to server!', 'success');
+            setImageUrl(uploaded.url || captured.uri);
+            showAlert('Captured & Uploaded', 'Product photo saved successfully!', 'success');
           } catch (uploadErr: any) {
-            setImageUrl(asset.uri);
+            setImageUrl(captured.uri);
           } finally {
             setUploadingMedia(false);
           }
         } else {
-          setImageUrl(asset.uri);
+          setImageUrl(captured.uri);
         }
       }
     } catch (err: any) {
@@ -756,7 +626,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
 
   const handleSaveItem = async () => {
     if (!itemName.trim() || !price.trim()) {
-      showAlert('Required Fields Missing', 'Please enter both item name and price.', 'warning');
+      showAlert('Required Fields Missing', `Please enter both ${isService ? 'service name' : 'item name'} and price.`, 'warning');
       return;
     }
 
@@ -764,37 +634,89 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
       ? (customCategoryInput.trim() || 'General')
       : category;
 
-    const finalUnit = unit === '+ Custom Unit'
-      ? (customUnitInput.trim() || 'piece')
-      : unit;
+    const finalUnit = isService
+      ? (pricingModel === 'STARTING_FROM' ? `Starting from / ${estimatedDuration}` : estimatedDuration)
+      : (unit === '+ Custom Unit' ? (customUnitInput.trim() || 'piece') : unit);
 
-    setSubmitting(true);
-    try {
-      const payload = {
+    const isEditing = Boolean(editingItem);
+    const payload = {
+      item_name: itemName.trim(),
+      description: description.trim(),
+      price: parseFloat(price) || 0,
+      stock: isService ? 999 : (parseInt(stock, 10) || 50),
+      category: finalCategory,
+      unit: finalUnit.trim(),
+      is_available: isAvailable,
+      image_url: imageUrl.trim()
+    };
+
+    if (isEditing && editingItem) {
+      const updatedItem: VendorItem = {
+        ...editingItem,
+        ...payload,
+      };
+
+      // 1. Optimistically update UI immediately (0ms)
+      setOptimisticUpdatedItems(prev => ({
+        ...prev,
+        [editingItem.item_id]: updatedItem
+      }));
+
+      setIsModalOpen(false);
+      resetForm();
+      showToast('Item updated successfully', 'success');
+
+      // 2. Perform background sync
+      (async () => {
+        try {
+          await updateMenuItemApi(vendorId, editingItem.item_id, payload);
+          await onRefresh();
+        } catch (err: any) {
+          setOptimisticUpdatedItems(prev => {
+            const next = { ...prev };
+            delete next[editingItem.item_id];
+            return next;
+          });
+          showToast(err.message || 'Failed to update item', 'error');
+        }
+      })();
+    } else {
+      const tempId = -Date.now();
+      const newItem: VendorItem = {
+        item_id: tempId,
+        vendor_id: vendorId,
         item_name: itemName.trim(),
         description: description.trim(),
-        price: parseFloat(price),
-        stock: parseInt(stock, 10) || 0,
+        price: parseFloat(price) || 0,
+        stock: parseInt(stock, 10) || 50,
         category: finalCategory,
         unit: finalUnit.trim(),
         is_available: isAvailable,
         image_url: imageUrl.trim()
       };
 
-      if (editingItem) {
-        await updateMenuItemApi(vendorId, editingItem.item_id, payload);
-        showAlert('Item Updated', `"${itemName.trim()}" has been updated successfully!`, 'success');
-      } else {
-        await addMenuItemApi(vendorId, payload);
-        showAlert('Item Created', `"${itemName.trim()}" has been added to your store menu!`, 'success');
-      }
+      // 1. Optimistically add new item to UI immediately (0ms)
+      setOptimisticAddedItems(prev => [newItem, ...prev]);
 
       setIsModalOpen(false);
-      await onRefresh();
-    } catch (err: any) {
-      showAlert('Save Failed', err.message || 'Failed to save item', 'error');
-    } finally {
-      setSubmitting(false);
+      resetForm();
+      showToast('Item added successfully', 'add');
+
+      // 2. Perform background creation and sync
+      (async () => {
+        try {
+          const res = await addMenuItemApi(vendorId, payload);
+          if (res?.item_id) {
+            setOptimisticAddedItems(prev =>
+              prev.map(i => i.item_id === tempId ? { ...i, item_id: res.item_id! } : i)
+            );
+          }
+          await onRefresh();
+        } catch (err: any) {
+          setOptimisticAddedItems(prev => prev.filter(i => i.item_id !== tempId));
+          showToast(err.message || 'Failed to add item', 'error');
+        }
+      })();
     }
   };
 
@@ -830,37 +752,47 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
     }
   };
 
-  const handleDeleteItem = async (itemId: number) => {
+  const handleDeleteItem = (itemId: number) => {
+    const targetItem = items.find(i => i.item_id === itemId);
+    const itemLabel = targetItem ? targetItem.item_name : 'Item';
+
     setAlertState({
       visible: true,
       title: 'Delete Menu Item',
-      message: 'Are you sure you want to delete this item from your catalog?',
+      message: `Are you sure you want to delete "${itemLabel}" from your catalog?`,
       type: 'warning',
       confirmText: 'YES, DELETE',
       cancelText: 'NO, CANCEL',
       showCancel: true,
-      onConfirm: async () => {
-        try {
-          await deleteMenuItemApi(vendorId, itemId);
-          await onRefresh();
-          setAlertState({
-            visible: true,
-            title: 'Item Deleted',
-            message: 'The menu item has been removed from your store.',
-            type: 'success',
-            confirmText: 'OK',
-            showCancel: false
-          });
-        } catch (err: any) {
-          setAlertState({
-            visible: true,
-            title: 'Delete Failed',
-            message: err.message || 'Failed to delete item',
-            type: 'error',
-            confirmText: 'OK',
-            showCancel: false
-          });
-        }
+      onConfirm: () => {
+        // 1. Optimistically remove item from UI immediately (0ms instant response)
+        setDeletedItemIds(prev => {
+          const next = new Set(prev);
+          next.add(itemId);
+          return next;
+        });
+        setOptimisticAddedItems(prev => prev.filter(i => i.item_id !== itemId));
+
+        // 2. Show bottom-up toast notification
+        showToast('Item deleted successfully', 'delete');
+
+        // 3. Perform API delete and sync in background without blocking the UI
+        (async () => {
+          try {
+            await deleteMenuItemApi(vendorId, itemId);
+            try {
+              await onRefresh();
+            } catch (_) { }
+          } catch (err: any) {
+            // Revert optimistic delete on failure and notify user
+            setDeletedItemIds(prev => {
+              const next = new Set(prev);
+              next.delete(itemId);
+              return next;
+            });
+            showToast('Failed to delete item', 'error');
+          }
+        })();
       }
     });
   };
@@ -868,14 +800,14 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
   const filteredItems = React.useMemo(() => {
     const query = searchQuery.trim();
     const normSelCat = normalizeCategory(selectedCategory);
-    return items.filter(i => {
+    return activeItems.filter(i => {
       const normItemCat = normalizeCategory(i.category);
       const matchesCat = selectedCategory === 'ALL' || normItemCat === normSelCat;
       if (!matchesCat) return false;
       if (!query) return true;
       return matchesBilingualQuery(i.item_name, i.category, query);
     });
-  }, [items, selectedCategory, searchQuery]);
+  }, [activeItems, selectedCategory, searchQuery]);
 
   return (
     <View style={styles.container}>
@@ -893,20 +825,10 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
               onChangeText={setSearchQuery}
             />
             {searchQuery ? (
-              <TouchableOpacity onPress={() => setSearchQuery('')} style={{ marginRight: 6 }}>
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={{ marginRight: 4 }}>
                 <X size={16} color={BrandTheme.mutedSageText} />
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity
-              onPress={() => startVoiceSearch()}
-              style={[
-                styles.voiceSearchBtn,
-                isListening && styles.voiceSearchBtnActive
-              ]}
-              activeOpacity={0.75}
-            >
-              <Mic size={17} color={isListening ? '#0E6B3D' : BrandTheme.darkForestGreen} />
-            </TouchableOpacity>
           </View>
         </View>
 
@@ -944,13 +866,59 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
         keyExtractor={item => String(item.item_id)}
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Package size={48} color={BrandTheme.mutedSageText} style={{ marginBottom: 12 }} />
-            <Text style={styles.emptyTitle}>No Items Found</Text>
-            <Text style={styles.emptySubtitle}>
-              Tap "Add Item" in the navigation bar to list items in your store menu.
-            </Text>
-          </View>
+          isPendingApproval ? (
+            <View style={styles.emptyState}>
+              <View style={{
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                backgroundColor: '#DCFCE7',
+                justifyContent: 'center',
+                alignItems: 'center',
+                marginBottom: 14,
+                borderWidth: 4,
+                borderColor: '#F0FDF4'
+              }}>
+                <Sparkles size={28} color="#16A34A" />
+              </View>
+              <Text style={styles.emptyTitle}>
+                {isService ? 'List Your Services' : 'Build Your Store Catalog'}
+              </Text>
+              <Text style={styles.emptySubtitle}>
+                Add your {isService ? 'services, packages, and consultation fees' : 'products, photos, and prices'} now so your menu is ready the moment your merchant account is approved.
+              </Text>
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#541D26',
+                  paddingHorizontal: 20,
+                  paddingVertical: 12,
+                  borderRadius: 12,
+                  marginTop: 16,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+                onPress={() => {
+                  resetForm();
+                  setIsModalOpen(true);
+                }}
+                activeOpacity={0.85}
+              >
+                <Plus size={18} color="#FFFFFF" />
+                <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 14 }}>
+                  {isService ? 'Add First Service' : 'Add First Product'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Package size={48} color={BrandTheme.mutedSageText} style={{ marginBottom: 12 }} />
+              <Text style={styles.emptyTitle}>No Items Found</Text>
+              <Text style={styles.emptySubtitle}>
+                Tap "{isService ? 'Add Service' : 'Add Item'}" in the navigation bar to list items in your store menu.
+              </Text>
+            </View>
+          )
         }
         renderItem={({ item }) => {
           const avail = optimisticAvailability[item.item_id] !== undefined
@@ -1003,7 +971,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                     { backgroundColor: avail ? '#EAF5EE' : '#FEE2E2' }
                   ]}>
                     <View style={[styles.statusDot, { backgroundColor: avail ? BrandTheme.emeraldGreen : '#EF4444' }]} />
-                    <Text style={[styles.availText, { color: avail ? BrandTheme.forestGreen : '#B91C1C' }]}>
+                    <Text style={[styles.availText, { color: avail ? BrandTheme.forestGreen : '#DC2626' }]}>
                       {avail ? 'In Stock (Live in Store)' : 'Out of Stock (Hidden)'}
                     </Text>
                   </View>
@@ -1012,7 +980,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                 {/* Actions Column: Edit, Delete, Toggle — stacked vertically on right */}
                 <View style={styles.actionCol}>
                   <TouchableOpacity
-                    style={[styles.iconBtn, { borderColor: BrandTheme.sandBorder, backgroundColor: '#FAF8F3' }]}
+                    style={[styles.iconBtn, { borderColor: BrandTheme.sandBorder, backgroundColor: '#FAF8F5' }]}
                     onPress={() => handleOpenEditModal(item)}
                     activeOpacity={0.8}
                   >
@@ -1024,7 +992,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                     onPress={() => handleDeleteItem(item.item_id)}
                     activeOpacity={0.8}
                   >
-                    <Trash2 size={13} color="#B91C1C" />
+                    <Trash2 size={13} color="#DC2626" />
                   </TouchableOpacity>
 
                   <PremiumToggle
@@ -1039,412 +1007,611 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
         }}
       />
 
-      {/* Add / Edit Product Item Modal */}
+      {/* Add / Edit Product or Service Modal */}
       <Modal visible={isModalOpen} transparent animationType="slide">
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
-          <View style={styles.modalCard}>
+          <View style={[styles.modalCard, isService && styles.serviceModalCard]}>
 
+            {/* Modal Header */}
             <View style={styles.modalHeader}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <Sparkles size={16} color="#C4A066" />
+                <Sparkles size={18} color="#C8A878" />
                 <Text style={styles.modalTitle}>
-                  {editingItem ? 'Edit Item' : 'Add New Product'}
+                  {isService
+                    ? (editingItem ? 'Edit Service' : 'Add New Service')
+                    : (editingItem ? 'Edit Item' : 'Add New Product')}
                 </Text>
               </View>
               <TouchableOpacity
                 onPress={() => setIsModalOpen(false)}
-                style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#EFE8D8', justifyContent: 'center', alignItems: 'center' }}
+                style={styles.modalCloseCircle}
               >
-                <X size={16} color="#6B7C70" />
+                <X size={16} color="#78716C" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.modalForm} showsVerticalScrollIndicator={false}>
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* ─── OPTION A: DEDICATED SERVICE PROVIDER MODAL FORM ─── */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            {isService ? (
+              <ScrollView contentContainerStyle={styles.serviceModalForm} showsVerticalScrollIndicator={false}>
 
-              {/* ── PRODUCT PHOTO UPLOAD ── */}
-              <Text style={styles.label}>Product Photo Upload</Text>
-              <View style={styles.mediaPreviewBox}>
-                {uploadingMedia ? (
-                  <View style={{ alignItems: 'center' }}>
-                    <ActivityIndicator size="large" color="#C4A066" />
-                    <Text style={{ fontSize: 11, color: '#6B7C70', fontWeight: '700', marginTop: 8 }}>
-                      Uploading...
+                {/* 1. SERVICE PHOTO */}
+                <Text style={styles.serviceSectionLabel}>SERVICE PHOTO</Text>
+                <View style={styles.serviceDashedBox}>
+                  {uploadingMedia ? (
+                    <View style={{ alignItems: 'center', padding: 18 }}>
+                      <ActivityIndicator size="small" color="#C8A878" />
+                      <Text style={{ fontSize: 11, color: '#78716C', fontWeight: '700', marginTop: 6 }}>
+                        Uploading...
+                      </Text>
+                    </View>
+                  ) : imageUrl ? (
+                    <View style={{ width: '100%', height: 130, position: 'relative' }}>
+                      <Image source={{ uri: imageUrl }} style={{ width: '100%', height: '100%', borderRadius: 12 }} resizeMode="cover" />
+                      <TouchableOpacity
+                        onPress={() => setImageUrl('')}
+                        style={{ position: 'absolute', top: 6, right: 6, width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }}
+                      >
+                        <X size={14} color="#FFFFFF" />
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View style={{ alignItems: 'center', paddingVertical: 22 }}>
+                      <ImageIcon size={32} color="#C8A878" strokeWidth={1.5} style={{ marginBottom: 6 }} />
+                      <Text style={{ fontSize: 12, color: '#78716C', fontWeight: '600' }}>No photo attached</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Upload & Camera Buttons */}
+                <View style={styles.serviceMediaBtnRow}>
+                  <TouchableOpacity
+                    style={styles.serviceMediaBtn}
+                    onPress={handlePickMedia}
+                    activeOpacity={0.85}
+                  >
+                    <Upload size={14} color="#211A19" strokeWidth={2} style={{ marginRight: 6 }} />
+                    <Text style={styles.serviceMediaBtnText}>Upload Media</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={styles.serviceMediaBtn}
+                    onPress={handleTakeMedia}
+                    activeOpacity={0.85}
+                  >
+                    <Camera size={14} color="#211A19" strokeWidth={2} style={{ marginRight: 6 }} />
+                    <Text style={styles.serviceMediaBtnText}>Camera</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 2. SERVICE NAME */}
+                <Text style={styles.serviceSectionLabel}>SERVICE NAME</Text>
+                <TextInput
+                  style={styles.serviceInput}
+                  placeholder="e.g. Split AC Deep Cleaning & Servicing"
+                  placeholderTextColor="#A0AFA5"
+                  value={itemName}
+                  onChangeText={setItemName}
+                />
+
+                {/* 3. CATEGORY */}
+                <View style={{ marginTop: 14, zIndex: 30, position: 'relative' }}>
+                  <Text style={styles.serviceSectionLabel}>CATEGORY</Text>
+                  <TouchableOpacity
+                    style={styles.serviceDropdownTrigger}
+                    onPress={() => {
+                      setShowCategoryDropdown(s => !s);
+                      setShowDurationDropdown(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.serviceDropdownTriggerText} numberOfLines={1}>
+                      {category}
+                    </Text>
+                    {showCategoryDropdown ? (
+                      <ChevronUp size={18} color="#78716C" />
+                    ) : (
+                      <ChevronDown size={18} color="#78716C" />
+                    )}
+                  </TouchableOpacity>
+
+                  {showCategoryDropdown && (
+                    <View style={styles.serviceDropdownMenu}>
+                      <ScrollView nestedScrollEnabled style={{ maxHeight: 220 }} keyboardShouldPersistTaps="handled">
+                        {PRESET_SERVICE_CATEGORIES.map(catItem => (
+                          <TouchableOpacity
+                            key={catItem}
+                            style={[
+                              styles.serviceDropdownItem,
+                              category === catItem && styles.serviceDropdownItemActive
+                            ]}
+                            onPress={() => {
+                              setCategory(catItem);
+                              setShowCategoryDropdown(false);
+                            }}
+                          >
+                            <Text style={[
+                              styles.serviceDropdownItemText,
+                              category === catItem && { color: '#211A19', fontWeight: '800' }
+                            ]}>
+                              {catItem}
+                            </Text>
+                            {category === catItem ? <Check size={14} color="#211A19" /> : null}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+
+                {category === '+ Custom Category' && (
+                  <View style={{ marginTop: 8 }}>
+                    <Text style={{ fontSize: 11, color: '#78716C', marginBottom: 4 }}>Type custom service category *</Text>
+                    <TextInput
+                      style={styles.serviceInput}
+                      placeholder="e.g. Solar Panel Installation"
+                      placeholderTextColor="#A0AFA5"
+                      value={customCategoryInput}
+                      onChangeText={setCustomCategoryInput}
+                    />
+                  </View>
+                )}
+
+                {/* 4. PRICING MODEL */}
+                <View style={{ marginTop: 16 }}>
+                  <Text style={styles.serviceSectionLabel}>PRICING MODEL</Text>
+                  <View style={{ flexDirection: 'row', gap: 24, marginTop: 4 }}>
+                    <TouchableOpacity
+                      style={styles.serviceRadioOption}
+                      onPress={() => setPricingModel('FIXED')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.serviceRadioCircle}>
+                        {pricingModel === 'FIXED' ? <View style={styles.serviceRadioDot} /> : null}
+                      </View>
+                      <Text style={styles.serviceRadioText}>Fixed Price</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.serviceRadioOption}
+                      onPress={() => setPricingModel('STARTING_FROM')}
+                      activeOpacity={0.8}
+                    >
+                      <View style={styles.serviceRadioCircle}>
+                        {pricingModel === 'STARTING_FROM' ? <View style={styles.serviceRadioDot} /> : null}
+                      </View>
+                      <Text style={styles.serviceRadioText}>Starting From</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* 5. PRICE (₹) & ESTIMATED DURATION (Side-by-side row) */}
+                <View style={{ flexDirection: 'row', gap: 12, marginTop: 16, zIndex: 20 }}>
+                  {/* Price */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.serviceSectionLabel}>PRICE (₹)</Text>
+                    <View style={styles.serviceSpinnerWrapper}>
+                      <TextInput
+                        style={styles.serviceSpinnerTextInput}
+                        placeholder="499.00"
+                        placeholderTextColor="#A0AFA5"
+                        keyboardType="numeric"
+                        value={price}
+                        onChangeText={setPrice}
+                      />
+                      <View style={styles.serviceSpinnerArrows}>
+                        <TouchableOpacity onPress={incrementPrice} style={styles.serviceSpinnerBtn}>
+                          <ChevronUp size={12} color="#211A19" />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={decrementPrice} style={styles.serviceSpinnerBtn}>
+                          <ChevronDown size={12} color="#211A19" />
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+
+                  {/* Estimated Duration */}
+                  <View style={{ flex: 1.1, position: 'relative' }}>
+                    <Text style={styles.serviceSectionLabel}>ESTIMATED DURATION</Text>
+                    <TouchableOpacity
+                      style={styles.serviceDropdownTrigger}
+                      onPress={() => {
+                        setShowDurationDropdown(s => !s);
+                        setShowCategoryDropdown(false);
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={styles.serviceDropdownTriggerText} numberOfLines={1}>
+                        {estimatedDuration}
+                      </Text>
+                      {showDurationDropdown ? (
+                        <ChevronUp size={16} color="#78716C" />
+                      ) : (
+                        <ChevronDown size={16} color="#78716C" />
+                      )}
+                    </TouchableOpacity>
+
+                    {showDurationDropdown && (
+                      <View style={styles.serviceDropdownMenu}>
+                        <ScrollView nestedScrollEnabled style={{ maxHeight: 180 }} keyboardShouldPersistTaps="handled">
+                          {PRESET_DURATIONS.map(dur => (
+                            <TouchableOpacity
+                              key={dur}
+                              style={[
+                                styles.serviceDropdownItem,
+                                estimatedDuration === dur && styles.serviceDropdownItemActive
+                              ]}
+                              onPress={() => {
+                                setEstimatedDuration(dur);
+                                setShowDurationDropdown(false);
+                              }}
+                            >
+                              <Text style={[
+                                styles.serviceDropdownItemText,
+                                estimatedDuration === dur && { color: '#211A19', fontWeight: '800' }
+                              ]}>
+                                {dur}
+                              </Text>
+                              {estimatedDuration === dur ? <Check size={14} color="#211A19" /> : null}
+                            </TouchableOpacity>
+                          ))}
+                        </ScrollView>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                {/* 6. SERVICE LOCATION */}
+                <View style={{ marginTop: 16 }}>
+                  <Text style={styles.serviceSectionLabel}>SERVICE LOCATION</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, marginTop: 4, flexWrap: 'wrap' }}>
+                    <TouchableOpacity
+                      style={[
+                        styles.serviceLocationPill,
+                        serviceLocation === 'DOORSTEP' && styles.serviceLocationPillActive
+                      ]}
+                      onPress={() => setServiceLocation('DOORSTEP')}
+                      activeOpacity={0.85}
+                    >
+                      <Home size={15} color={serviceLocation === 'DOORSTEP' ? '#211A19' : '#78716C'} />
+                      <Text style={[
+                        styles.serviceLocationText,
+                        serviceLocation === 'DOORSTEP' && styles.serviceLocationTextActive
+                      ]}>
+                        At Customer's Doorstep
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.serviceLocationPill,
+                        serviceLocation === 'SHOP' && styles.serviceLocationPillActive
+                      ]}
+                      onPress={() => setServiceLocation('SHOP')}
+                      activeOpacity={0.85}
+                    >
+                      <Building2 size={15} color={serviceLocation === 'SHOP' ? '#211A19' : '#78716C'} />
+                      <Text style={[
+                        styles.serviceLocationText,
+                        serviceLocation === 'SHOP' && styles.serviceLocationTextActive
+                      ]}>
+                        At Shop / Clinic
+                      </Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[
+                        styles.serviceLocationPill,
+                        serviceLocation === 'ONLINE' && styles.serviceLocationPillActive
+                      ]}
+                      onPress={() => setServiceLocation('ONLINE')}
+                      activeOpacity={0.85}
+                    >
+                      <Globe size={15} color={serviceLocation === 'ONLINE' ? '#211A19' : '#78716C'} />
+                      <Text style={[
+                        styles.serviceLocationText,
+                        serviceLocation === 'ONLINE' && styles.serviceLocationTextActive
+                      ]}>
+                        Online / Remote
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* 7. SERVICE DESCRIPTION */}
+                <View style={{ marginTop: 16 }}>
+                  <Text style={styles.serviceSectionLabel}>SERVICE DESCRIPTION</Text>
+                  <TextInput
+                    style={styles.serviceTextArea}
+                    placeholder="Service details, what's included..."
+                    placeholderTextColor="#9EAFA3"
+                    multiline
+                    value={description}
+                    onChangeText={setDescription}
+                  />
+                </View>
+
+                {/* 8. Submit Service Button */}
+                <TouchableOpacity
+                  style={[styles.saveBtn, { marginTop: 16 }]}
+                  onPress={handleSaveItem}
+                  disabled={submitting}
+                  activeOpacity={0.9}
+                >
+                  {submitting ? (
+                    <ActivityIndicator color="#ffffff" />
+                  ) : (
+                    <Text style={styles.saveBtnText}>
+                      {editingItem ? 'UPDATE SERVICE' : 'ADD SERVICE'}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+
+              </ScrollView>
+            ) : (
+              /* ════════════════════════════════════════════════════════════ */
+              /* ─── OPTION B: STANDARD PRODUCT MERCHANT MODAL FORM ─── */
+              /* ════════════════════════════════════════════════════════════ */
+              <ScrollView contentContainerStyle={styles.modalForm} showsVerticalScrollIndicator={false}>
+
+                {/* ── PRODUCT PHOTO UPLOAD ── */}
+                <Text style={styles.label}>Product Photo Upload</Text>
+                <View style={styles.mediaPreviewBox}>
+                  {uploadingMedia ? (
+                    <View style={{ alignItems: 'center' }}>
+                      <ActivityIndicator size="large" color="#C8A878" />
+                      <Text style={{ fontSize: 11, color: '#78716C', fontWeight: '700', marginTop: 8 }}>
+                        Uploading...
+                      </Text>
+                    </View>
+                  ) : imageUrl ? (
+                    <Image source={{ uri: imageUrl }} style={styles.previewImage} resizeMode="cover" />
+                  ) : (
+                    <View style={styles.placeholderBox}>
+                      <ImageIcon size={32} color="#C8A878" style={{ marginBottom: 6 }} />
+                      <Text style={styles.placeholderText}>No photo attached</Text>
+                    </View>
+                  )}
+                </View>
+
+                {/* Upload Buttons */}
+                <View style={styles.mediaBtnRow}>
+                  <TouchableOpacity style={styles.uploadBtn} onPress={handlePickMedia} activeOpacity={0.85}>
+                    <Upload size={14} color="#211A19" style={{ marginRight: 6 }} />
+                    <Text style={styles.uploadBtnText}>Upload Media</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: '#EEE5DA' }]} onPress={handleTakeMedia} activeOpacity={0.85}>
+                    <Camera size={14} color="#211A19" style={{ marginRight: 6 }} />
+                    <Text style={styles.uploadBtnText}>Camera</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <Text style={styles.urlLabel}>Or paste direct image URL</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="https://... (image URL)"
+                  placeholderTextColor="#A0AFA5"
+                  value={imageUrl}
+                  onChangeText={setImageUrl}
+                />
+
+                {/* ── PRODUCT NAME ── */}
+                <Text style={styles.label}>Product Name *</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="e.g. Amul Gold Fresh Milk 1L"
+                  placeholderTextColor="#A0AFA5"
+                  value={itemName}
+                  onChangeText={setItemName}
+                />
+
+                {/* ── CATEGORY SELECTION ── */}
+                <View style={{ zIndex: 20, position: 'relative' }}>
+                  <Text style={styles.label}>Category Selection *</Text>
+                  <TouchableOpacity
+                    style={styles.categoryDropdownTrigger}
+                    onPress={() => {
+                      setShowCategoryDropdown(s => !s);
+                      setShowUnitDropdown(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Tag size={14} color="#C8A878" style={{ marginRight: 8 }} />
+                    <Text style={styles.categoryDropdownTriggerText} numberOfLines={1}>
+                      {category}
+                    </Text>
+                    {showCategoryDropdown ? (
+                      <ChevronUp size={16} color="#78716C" />
+                    ) : (
+                      <ChevronDown size={16} color="#78716C" />
+                    )}
+                  </TouchableOpacity>
+                  {showCategoryDropdown && (
+                    <View style={[styles.categoryDropdownList, { position: 'absolute', top: 72, left: 0, right: 0, zIndex: 999 }]}>
+                      <ScrollView nestedScrollEnabled style={{ maxHeight: 520 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
+                        {PRESET_CATEGORIES.map(catItem => (
+                          <TouchableOpacity
+                            key={catItem}
+                            style={[
+                              styles.categoryDropdownItem,
+                              category === catItem && styles.categoryDropdownItemActive
+                            ]}
+                            onPress={() => {
+                              setCategory(catItem);
+                              setShowCategoryDropdown(false);
+                            }}
+                          >
+                            <Text style={[
+                              styles.categoryDropdownItemText,
+                              category === catItem && { color: '#211A19', fontWeight: '800' }
+                            ]}>
+                              {catItem}
+                            </Text>
+                            {category === catItem ? <Check size={14} color="#211A19" /> : null}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+
+                {category === '+ Custom Category' && (
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={styles.urlLabel}>Type custom category name *</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="e.g. Organic Spices"
+                      placeholderTextColor="#A0AFA5"
+                      value={customCategoryInput}
+                      onChangeText={setCustomCategoryInput}
+                    />
+                  </View>
+                )}
+
+                {/* ── PRICE (₹) ── */}
+                <Text style={styles.label}>Price (₹) *</Text>
+                <View style={styles.spinnerInputWrapper}>
+                  <TextInput
+                    style={styles.spinnerTextInput}
+                    placeholder="100.00"
+                    placeholderTextColor="#A0AFA5"
+                    keyboardType="numeric"
+                    value={price}
+                    onChangeText={setPrice}
+                  />
+                  <View style={styles.spinnerButtons}>
+                    <TouchableOpacity onPress={incrementPrice} style={styles.spinnerArrow}>
+                      <ChevronUp size={12} color="#211A19" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={decrementPrice} style={styles.spinnerArrow}>
+                      <ChevronDown size={12} color="#211A19" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* ── UNIT ── */}
+                <View style={{ zIndex: 10, position: 'relative' }}>
+                  <Text style={styles.label}>Unit</Text>
+                  <TouchableOpacity
+                    style={styles.categoryDropdownTrigger}
+                    onPress={() => {
+                      setShowUnitDropdown(!showUnitDropdown);
+                      setShowCategoryDropdown(false);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.categoryDropdownTriggerText} numberOfLines={1}>{unit}</Text>
+                    {showUnitDropdown ? (
+                      <ChevronUp size={16} color="#78716C" />
+                    ) : (
+                      <ChevronDown size={16} color="#78716C" />
+                    )}
+                  </TouchableOpacity>
+                  {showUnitDropdown && (
+                    <View style={[styles.categoryDropdownList, { position: 'absolute', top: 72, left: 0, right: 0, zIndex: 999 }]}>
+                      <ScrollView nestedScrollEnabled style={{ maxHeight: 480 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
+                        {PRESET_UNITS.map(unitItem => (
+                          <TouchableOpacity
+                            key={unitItem}
+                            style={[
+                              styles.categoryDropdownItem,
+                              unit === unitItem && styles.categoryDropdownItemActive
+                            ]}
+                            onPress={() => {
+                              setUnit(unitItem);
+                              setShowUnitDropdown(false);
+                            }}
+                          >
+                            <Text style={[
+                              styles.categoryDropdownItemText,
+                              unit === unitItem && { color: '#211A19', fontWeight: '800' }
+                            ]}>
+                              {unitItem}
+                            </Text>
+                            {unit === unitItem ? <Check size={14} color="#211A19" /> : null}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+                </View>
+
+                {unit === '+ Custom Unit' && (
+                  <View style={{ marginTop: 6 }}>
+                    <Text style={styles.urlLabel}>Type custom unit name *</Text>
+                    <TextInput
+                      style={styles.modalInput}
+                      placeholder="e.g. packet of 4"
+                      placeholderTextColor="#A0AFA5"
+                      value={customUnitInput}
+                      onChangeText={setCustomUnitInput}
+                    />
+                  </View>
+                )}
+
+                {/* ── AVAILABLE STOCK ── */}
+                <Text style={styles.label}>Available Stock *</Text>
+                <View style={styles.spinnerInputWrapper}>
+                  <TextInput
+                    style={styles.spinnerTextInput}
+                    placeholder="50"
+                    placeholderTextColor="#A0AFA5"
+                    keyboardType="numeric"
+                    value={stock}
+                    onChangeText={setStock}
+                  />
+                  <View style={styles.spinnerButtons}>
+                    <TouchableOpacity onPress={incrementStock} style={styles.spinnerArrow}>
+                      <ChevronUp size={12} color="#211A19" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={decrementStock} style={styles.spinnerArrow}>
+                      <ChevronDown size={12} color="#211A19" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* ── ITEM AVAILABILITY ── */}
+                <View style={styles.inputWrapperBox}>
+                  <View style={{ flex: 1, paddingRight: 12 }}>
+<Text style={[styles.label, { marginTop: 0 }]}>Item Availability</Text>
+                    <Text style={{ fontSize: 11, color: '#78716C', marginTop: 3 }}>
+                      {isAvailable ? 'Item is live and orderable' : 'Item is hidden from cart'}
                     </Text>
                   </View>
-                ) : imageUrl ? (
-                  <Image source={{ uri: imageUrl }} style={styles.previewImage} resizeMode="cover" />
-                ) : (
-                  <View style={styles.placeholderBox}>
-                    <ImageIcon size={32} color="#C4A066" style={{ marginBottom: 6 }} />
-                    <Text style={styles.placeholderText}>No photo attached</Text>
-                  </View>
-                )}
-              </View>
-
-              {/* Upload Buttons */}
-              <View style={styles.mediaBtnRow}>
-                <TouchableOpacity style={styles.uploadBtn} onPress={handlePickMedia} activeOpacity={0.85}>
-                  <Upload size={14} color="#18281F" style={{ marginRight: 6 }} />
-                  <Text style={styles.uploadBtnText}>Upload Media</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: '#EFE8D8' }]} onPress={handleTakeMedia} activeOpacity={0.85}>
-                  <Camera size={14} color="#18281F" style={{ marginRight: 6 }} />
-                  <Text style={styles.uploadBtnText}>Camera</Text>
-                </TouchableOpacity>
-              </View>
-
-              <Text style={styles.urlLabel}>Or paste direct image URL</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="https://... (image URL)"
-                placeholderTextColor="#A0AFA5"
-                value={imageUrl}
-                onChangeText={setImageUrl}
-              />
-
-              {/* ── PRODUCT NAME ── */}
-              <Text style={styles.label}>Product Name *</Text>
-              <TextInput
-                style={styles.modalInput}
-                placeholder="e.g. Amul Gold Fresh Milk 1L"
-                placeholderTextColor="#A0AFA5"
-                value={itemName}
-                onChangeText={setItemName}
-              />
-
-              {/* ── CATEGORY SELECTION ── */}
-              <View style={{ zIndex: 20, position: 'relative' }}>
-                <Text style={styles.label}>Category Selection *</Text>
-                <TouchableOpacity
-                  style={styles.categoryDropdownTrigger}
-                  onPress={() => {
-                    setShowCategoryDropdown(s => !s);
-                    setShowUnitDropdown(false);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Tag size={14} color="#C4A066" style={{ marginRight: 8 }} />
-                  <Text style={styles.categoryDropdownTriggerText} numberOfLines={1}>
-                    {category}
-                  </Text>
-                  {showCategoryDropdown ? (
-                    <ChevronUp size={16} color="#6B7C70" />
-                  ) : (
-                    <ChevronDown size={16} color="#6B7C70" />
-                  )}
-                </TouchableOpacity>
-                {showCategoryDropdown && (
-                  <View style={[styles.categoryDropdownList, { position: 'absolute', top: 72, left: 0, right: 0, zIndex: 999 }]}>
-                    <ScrollView nestedScrollEnabled style={{ maxHeight: 520 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
-                      {PRESET_CATEGORIES.map(catItem => (
-                        <TouchableOpacity
-                          key={catItem}
-                          style={[
-                            styles.categoryDropdownItem,
-                            category === catItem && styles.categoryDropdownItemActive
-                          ]}
-                          onPress={() => {
-                            setCategory(catItem);
-                            setShowCategoryDropdown(false);
-                          }}
-                        >
-                          <Text style={[
-                            styles.categoryDropdownItemText,
-                            category === catItem && { color: '#18281F', fontWeight: '800' }
-                          ]}>
-                            {catItem}
-                          </Text>
-                          {category === catItem ? <Check size={14} color="#18281F" /> : null}
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-
-              {category === '+ Custom Category' && (
-                <View style={{ marginTop: 6 }}>
-                  <Text style={styles.urlLabel}>Type custom category name *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. Organic Spices"
-                    placeholderTextColor="#A0AFA5"
-                    value={customCategoryInput}
-                    onChangeText={setCustomCategoryInput}
+                  <PremiumToggle
+                    value={isAvailable}
+                    onValueChange={setIsAvailable}
                   />
                 </View>
-              )}
 
-              {/* ── PRICE (₹) ── */}
-              <Text style={styles.label}>Price (₹) *</Text>
-              <View style={styles.spinnerInputWrapper}>
+                {/* ── DESCRIPTION ── */}
+                <Text style={styles.label}>Description</Text>
                 <TextInput
-                  style={styles.spinnerTextInput}
-                  placeholder="100.00"
+                  style={[styles.modalInput, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
+                  placeholder="Item specifications or details..."
                   placeholderTextColor="#A0AFA5"
-                  keyboardType="numeric"
-                  value={price}
-                  onChangeText={setPrice}
+                  multiline
+                  value={description}
+                  onChangeText={setDescription}
                 />
-                <View style={styles.spinnerButtons}>
-                  <TouchableOpacity onPress={incrementPrice} style={styles.spinnerArrow}>
-                    <ChevronUp size={12} color="#18281F" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={decrementPrice} style={styles.spinnerArrow}>
-                    <ChevronDown size={12} color="#18281F" />
-                  </TouchableOpacity>
-                </View>
-              </View>
 
-              {/* ── UNIT ── */}
-              <View style={{ zIndex: 10, position: 'relative' }}>
-                <Text style={styles.label}>Unit</Text>
                 <TouchableOpacity
-                  style={styles.categoryDropdownTrigger}
-                  onPress={() => {
-                    setShowUnitDropdown(!showUnitDropdown);
-                    setShowCategoryDropdown(false);
-                  }}
-                  activeOpacity={0.8}
+                  style={styles.saveBtn}
+                  onPress={handleSaveItem}
+                  disabled={submitting}
+                  activeOpacity={0.9}
                 >
-                  <Text style={styles.categoryDropdownTriggerText} numberOfLines={1}>{unit}</Text>
-                  {showUnitDropdown ? (
-                    <ChevronUp size={16} color="#6B7C70" />
-                  ) : (
-                    <ChevronDown size={16} color="#6B7C70" />
-                  )}
+                  {submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveBtnText}>SAVE ITEM</Text>}
                 </TouchableOpacity>
-                {showUnitDropdown && (
-                  <View style={[styles.categoryDropdownList, { position: 'absolute', top: 72, left: 0, right: 0, zIndex: 999 }]}>
-                    <ScrollView nestedScrollEnabled style={{ maxHeight: 480 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={true}>
-                      {PRESET_UNITS.map(unitItem => (
-                        <TouchableOpacity
-                          key={unitItem}
-                          style={[
-                            styles.categoryDropdownItem,
-                            unit === unitItem && styles.categoryDropdownItemActive
-                          ]}
-                          onPress={() => {
-                            setUnit(unitItem);
-                            setShowUnitDropdown(false);
-                          }}
-                        >
-                          <Text style={[
-                            styles.categoryDropdownItemText,
-                            unit === unitItem && { color: '#18281F', fontWeight: '800' }
-                          ]}>
-                            {unitItem}
-                          </Text>
-                          {unit === unitItem ? <Check size={14} color="#18281F" /> : null}
-                        </TouchableOpacity>
-                      ))}
-                    </ScrollView>
-                  </View>
-                )}
-              </View>
-
-              {unit === '+ Custom Unit' && (
-                <View style={{ marginTop: 6 }}>
-                  <Text style={styles.urlLabel}>Type custom unit name *</Text>
-                  <TextInput
-                    style={styles.modalInput}
-                    placeholder="e.g. packet of 4"
-                    placeholderTextColor="#A0AFA5"
-                    value={customUnitInput}
-                    onChangeText={setCustomUnitInput}
-                  />
-                </View>
-              )}
-
-              {/* ── AVAILABLE STOCK ── */}
-              <Text style={styles.label}>Available Stock *</Text>
-              <View style={styles.spinnerInputWrapper}>
-                <TextInput
-                  style={styles.spinnerTextInput}
-                  placeholder="50"
-                  placeholderTextColor="#A0AFA5"
-                  keyboardType="numeric"
-                  value={stock}
-                  onChangeText={setStock}
-                />
-                <View style={styles.spinnerButtons}>
-                  <TouchableOpacity onPress={incrementStock} style={styles.spinnerArrow}>
-                    <ChevronUp size={12} color="#18281F" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={decrementStock} style={styles.spinnerArrow}>
-                    <ChevronDown size={12} color="#18281F" />
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {/* ── ITEM AVAILABILITY ── */}
-              <View style={styles.inputWrapperBox}>
-                <View style={{ flex: 1, paddingRight: 12 }}>
-                  <Text style={[styles.label, { marginTop: 0 }]}>Item Availability</Text>
-                  <Text style={{ fontSize: 11, color: '#6B7C70', marginTop: 3 }}>
-                    {isAvailable ? 'Item is live and orderable' : 'Item is hidden from cart'}
-                  </Text>
-                </View>
-                <PremiumToggle
-                  value={isAvailable}
-                  onValueChange={setIsAvailable}
-                />
-              </View>
-
-              {/* ── DESCRIPTION ── */}
-              <Text style={styles.label}>Description</Text>
-              <TextInput
-                style={[styles.modalInput, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
-                placeholder="Item specifications or details..."
-                placeholderTextColor="#A0AFA5"
-                multiline
-                value={description}
-                onChangeText={setDescription}
-              />
-
-              <TouchableOpacity
-                style={styles.saveBtn}
-                onPress={handleSaveItem}
-                disabled={submitting}
-                activeOpacity={0.9}
-              >
-                {submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveBtnText}>SAVE ITEM</Text>}
-              </TouchableOpacity>
-            </ScrollView>
+              </ScrollView>
+            )}
 
           </View>
         </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ── Voice Search Interactive Modal ── */}
-      <Modal
-        visible={isVoiceModalOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={stopVoiceSearch}
-      >
-        <View style={styles.voiceModalBackdrop}>
-          <View style={styles.voiceModalCard}>
-            {/* Header */}
-            <View style={styles.voiceModalHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Volume2 size={16} color={BrandTheme.forestGreen} />
-                <Text style={styles.voiceModalTitle}>Voice Product Search</Text>
-              </View>
-              <TouchableOpacity onPress={stopVoiceSearch} style={styles.voiceCloseBtn}>
-                <X size={18} color="#6B7C70" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Language Switcher in Voice Modal */}
-            <View style={styles.voiceLangSwitchRow}>
-              <TouchableOpacity
-                style={[
-                  styles.voiceLangBtn,
-                  voiceLang === 'en-IN' && styles.voiceLangBtnActive
-                ]}
-                onPress={() => {
-                  setVoiceLang('en-IN');
-                  if (isListening) startVoiceSearch('en-IN');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[
-                  styles.voiceLangBtnText,
-                  voiceLang === 'en-IN' && styles.voiceLangBtnTextActive
-                ]}>
-                  🇬🇧 English
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.voiceLangBtn,
-                  voiceLang === 'hi-IN' && styles.voiceLangBtnActive
-                ]}
-                onPress={() => {
-                  setVoiceLang('hi-IN');
-                  if (isListening) startVoiceSearch('hi-IN');
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={[
-                  styles.voiceLangBtnText,
-                  voiceLang === 'hi-IN' && styles.voiceLangBtnTextActive
-                ]}>
-                  🇮🇳 हिंदी
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Pulsing Mic Ring Visualization */}
-            <View style={styles.voicePulseContainer}>
-              <Animated.View
-                style={[
-                  styles.voicePulseRing,
-                  {
-                    transform: [{ scale: pulseAnim }],
-                    opacity: isListening ? 0.35 : 0.08,
-                  }
-                ]}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.voiceMicBigCircle,
-                  isListening ? styles.voiceMicBigCircleActive : styles.voiceMicBigCircleIdle
-                ]}
-                onPress={isListening ? stopVoiceSearch : () => startVoiceSearch()}
-                activeOpacity={0.85}
-              >
-                <Mic size={32} color="#FFFFFF" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Transcript / Instructions */}
-            <Text style={styles.voiceStatusText}>
-              {voiceTranscript ? `"${voiceTranscript}"` : voiceStatus}
-            </Text>
-
-            {/* Quick Voice Suggestions with Bilingual Subtitles */}
-            <Text style={styles.voiceSuggestionsLabel}>
-              {voiceLang === 'hi-IN' ? 'या स्टोर आइटम पर टैप करें:' : 'Or tap store item to search:'}
-            </Text>
-            <View style={styles.voiceSuggestionsGrid}>
-              {quickVoiceSuggestions.map((item) => {
-                const hindi = getHindiSubtitle(item);
-                return (
-                  <TouchableOpacity
-                    key={item}
-                    style={styles.voiceSuggestionChip}
-                    onPress={() => handleSelectQuickVoiceItem(item)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.voiceSuggestionText}>
-                      {item} {hindi ? `(${hindi})` : ''}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Done / Close Button */}
-            <TouchableOpacity
-              style={[
-                styles.voiceDoneBtn,
-                isListening && { backgroundColor: '#0E6B3D' }
-              ]}
-              onPress={stopVoiceSearch}
-              activeOpacity={0.8}
-            >
-              <Text style={styles.voiceDoneBtnText}>
-                {isListening ? 'TAP TO STOP & SEARCH' : (voiceTranscript ? 'SEARCH' : 'CLOSE')}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
       </Modal>
 
       {/* Custom Alert Modal */}
@@ -1471,10 +1638,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     height: 40,
     borderRadius: 10,
-    backgroundColor: BrandTheme.warmTanGold,
-    shadowColor: BrandTheme.warmTanGold,
+    backgroundColor: '#541D26',
+    shadowColor: '#541D26',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
+    shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 3,
   },
@@ -1489,18 +1656,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1.5,
-    borderColor: BrandTheme.sandBorder,
+    borderColor: '#E7DFD5',
     borderRadius: 12,
-    paddingLeft: 10,
-    paddingRight: 6,
+    paddingHorizontal: 12,
     height: 44,
-    backgroundColor: BrandTheme.creamCanvas,
+    backgroundColor: '#FFFFFF',
   },
   filterBtn: {
     width: 32,
     height: 32,
     borderRadius: 8,
-    backgroundColor: BrandTheme.forestGreen,
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1508,167 +1674,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: '600',
-    color: BrandTheme.darkForestGreen,
-  },
-  voiceSearchBtn: {
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: '#F2EFE9',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 4,
-  },
-  voiceSearchBtnActive: {
-    backgroundColor: '#E8F8F0',
-  },
-  voiceModalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(24, 40, 31, 0.65)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  voiceModalCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#FAF8F3',
-    borderRadius: 20,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: '#ECE8DD',
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 10,
-  },
-  voiceModalHeader: {
-    width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  voiceLangSwitchRow: {
-    flexDirection: 'row',
-    backgroundColor: '#EBE7DD',
-    borderRadius: 10,
-    padding: 3,
-    marginBottom: 10,
-    gap: 4,
-  },
-  voiceLangBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  voiceLangBtnActive: {
-    backgroundColor: '#FFFFFF',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  voiceLangBtnText: {
-    fontSize: 11.5,
-    fontWeight: '700',
-    color: '#6B7C70',
-  },
-  voiceLangBtnTextActive: {
-    color: '#18281F',
-    fontWeight: '800',
-  },
-  voiceModalTitle: {
-    fontSize: 15,
-    fontWeight: '800',
-    color: '#18281F',
-  },
-  voiceCloseBtn: {
-    padding: 4,
-  },
-  voicePulseContainer: {
-    width: 100,
-    height: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 10,
-  },
-  voicePulseRing: {
-    position: 'absolute',
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: '#0E6B3D',
-  },
-  voiceMicBigCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  voiceMicBigCircleActive: {
-    backgroundColor: '#0E6B3D',
-  },
-  voiceMicBigCircleIdle: {
-    backgroundColor: '#4B5563',
-  },
-  voiceStatusText: {
-    fontSize: 13.5,
-    fontWeight: '700',
-    color: '#18281F',
-    textAlign: 'center',
-    marginHorizontal: 12,
-    minHeight: 38,
-  },
-  voiceSuggestionsLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#6B7C70',
-    marginTop: 10,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  voiceSuggestionsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-    gap: 6,
-    marginBottom: 16,
-  },
-  voiceSuggestionChip: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E2DEC8',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  voiceSuggestionText: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#18281F',
-  },
-  voiceDoneBtn: {
-    width: '100%',
-    height: 42,
-    backgroundColor: '#18281F',
-    borderRadius: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  voiceDoneBtnText: {
-    fontSize: 13,
-    fontWeight: '800',
-    color: '#FFFFFF',
-    letterSpacing: 0.5,
+    color: '#211A19',
   },
   filterBar: {
     gap: 6,
@@ -1683,12 +1689,12 @@ const styles = StyleSheet.create({
     marginRight: 4,
   },
   filterPillSelected: {
-    backgroundColor: BrandTheme.forestGreen,
+    backgroundColor: '#541D26',
   },
   filterPillUnselected: {
-    backgroundColor: BrandTheme.creamCanvas,
+    backgroundColor: '#EEE5DA',
     borderWidth: 1,
-    borderColor: BrandTheme.sandBorder,
+    borderColor: '#E7DFD5',
   },
   filterPillText: {
     fontSize: 11,
@@ -1784,7 +1790,7 @@ const styles = StyleSheet.create({
     height: 14,
     borderRadius: 3,
     borderWidth: 1.5,
-    borderColor: '#0F8A65',
+    borderColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1792,7 +1798,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#0F8A65',
+    backgroundColor: '#541D26',
   },
   nonVegEmblem: {
     width: 14,
@@ -1833,7 +1839,7 @@ const styles = StyleSheet.create({
   itemHindiText: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#0E6B3D',
+    color: '#541D26',
   },
   priceRow: {
     flexDirection: 'row',
@@ -1908,6 +1914,11 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     maxHeight: '94%',
   },
+  serviceModalCard: {
+    backgroundColor: '#FAF8F5',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1916,6 +1927,14 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     borderBottomWidth: 1,
     borderBottomColor: BrandTheme.sandBorder,
+  },
+  modalCloseCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#EEE5DA',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalTitle: {
     fontSize: 16,
@@ -2150,10 +2169,224 @@ const styles = StyleSheet.create({
     height: 19,
     borderRadius: 9.5,
     backgroundColor: '#FFFFFF',
-    shadowColor: '#0B1610',
+    shadowColor: '#6B2732',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.18,
     shadowRadius: 2,
     elevation: 2,
+  },
+
+  /* ══════════════════════════════════════════════════════════════ */
+  /* ─── DEDICATED SERVICE PROVIDER STYLES (MATCHING SCREENSHOT) ─── */
+  /* ══════════════════════════════════════════════════════════════ */
+  serviceModalForm: {
+    paddingBottom: 24,
+    paddingTop: 8,
+  },
+  serviceSectionLabel: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#4A584F',
+    letterSpacing: 0.6,
+    marginBottom: 6,
+    textTransform: 'uppercase',
+  },
+  serviceDashedBox: {
+    borderRadius: 14,
+    backgroundColor: '#FAF8F5',
+    borderWidth: 1.5,
+    borderColor: '#E7DFD5',
+    borderStyle: 'dashed',
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 115,
+    overflow: 'hidden',
+  },
+  serviceMediaBtnRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+    marginBottom: 16,
+  },
+  serviceMediaBtn: {
+    flex: 1,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: '#EEE5DA',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  serviceMediaBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#211A19',
+  },
+  serviceInput: {
+    borderWidth: 1.2,
+    borderColor: '#E7DFD5',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 46,
+    fontSize: 13.5,
+    fontWeight: '500',
+    color: '#211A19',
+    backgroundColor: '#FAF8F5',
+  },
+  serviceDropdownTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1.2,
+    borderColor: '#E7DFD5',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    height: 46,
+    backgroundColor: '#FAF8F5',
+  },
+  serviceDropdownTriggerText: {
+    flex: 1,
+    fontSize: 13.5,
+    fontWeight: '600',
+    color: '#211A19',
+  },
+  serviceDropdownMenu: {
+    backgroundColor: '#FAF8F5',
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+    borderRadius: 12,
+    marginTop: 4,
+    overflow: 'hidden',
+    shadowColor: '#211A19',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 6,
+    zIndex: 999,
+  },
+  serviceDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E7DFD5',
+  },
+  serviceDropdownItemActive: {
+    backgroundColor: '#EEE5DA',
+  },
+  serviceDropdownItemText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#211A19',
+  },
+  serviceRadioOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  serviceRadioCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 2,
+    borderColor: '#C8A878',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  serviceRadioDot: {
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
+    backgroundColor: '#C8A878',
+  },
+  serviceRadioText: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#211A19',
+  },
+  serviceSpinnerWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1.2,
+    borderColor: '#E7DFD5',
+    borderRadius: 12,
+    backgroundColor: '#FAF8F5',
+    height: 46,
+    paddingHorizontal: 12,
+  },
+  serviceSpinnerTextInput: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#211A19',
+    paddingVertical: 0,
+  },
+  serviceSpinnerArrows: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: 20,
+  },
+  serviceSpinnerBtn: {
+    paddingVertical: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  serviceLocationPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#EEE5DA',
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  serviceLocationPillActive: {
+    backgroundColor: '#EEE5DA',
+    borderColor: '#C8A878',
+    borderWidth: 1.5,
+  },
+  serviceLocationText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#78716C',
+  },
+  serviceLocationTextActive: {
+    color: '#211A19',
+    fontWeight: '800',
+  },
+  serviceTextArea: {
+    backgroundColor: '#FAF8F5',
+    borderWidth: 1.2,
+    borderColor: '#E7DFD5',
+    borderRadius: 12,
+    padding: 12,
+    height: 100,
+    fontSize: 13,
+    color: '#211A19',
+    textAlignVertical: 'top',
+  },
+  serviceNoteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F5EFE1',
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 8,
+    marginTop: 14,
+  },
+  serviceNoteText: {
+    flex: 1,
+    fontSize: 11.5,
+    color: '#78350F',
+    fontWeight: '600',
+    lineHeight: 16,
   },
 });

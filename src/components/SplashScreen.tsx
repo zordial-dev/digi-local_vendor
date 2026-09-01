@@ -38,7 +38,7 @@ export const SplashScreenComponent: React.FC<SplashScreenProps> = ({ onFinish })
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#EDEDE4" />
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F6F0" />
 
       <Animated.View
         style={[
@@ -64,7 +64,7 @@ export const SplashScreenComponent: React.FC<SplashScreenProps> = ({ onFinish })
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#EDEDE4',
+    backgroundColor: '#F8F6F0',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   brandTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#18281F',
+    color: '#211A19',
     letterSpacing: -0.4,
     textAlign: 'center',
   },
