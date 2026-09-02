@@ -53,7 +53,8 @@ export interface VendorUser {
   can_add_items?: boolean;
   vendor_name?: string;
   gst_number?: string;
-  phone_number?: string;
+  country_code?: string; // "+91"
+  phone_number?: string; // 10-digit mobile number e.g. "9784319840"
   whatsapp_number?: string;
   email: string;
   store_name: string;
@@ -73,8 +74,17 @@ export interface VendorUser {
   opening_time?: string;
   closing_time?: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'ACTIVE' | 'pending' | 'approved' | 'rejected' | 'active';
-  created_at?: string;
+  created_at?: string; // Standard ISO 8601 UTC timestamp (e.g. "2026-09-02T01:02:11.000Z")
+  created_at_ist?: string; // Converted ISO timestamp with +05:30 IST offset (e.g. "2026-09-02T06:32:11+05:30")
+  created_at_readable?: string; // Human-readable IST display string (e.g. "02 Sep 2026, 06:32 am IST")
+  updated_at?: string;
+  updated_at_ist?: string;
+  updated_at_readable?: string;
   shop_number?: string;
+  shop_no?: string;
+  public_id?: string;
+  has_resubmitted?: boolean;
+  resubmitted_at_ist?: string;
   shop_image?: string;
   category?: string;
   gstin?: string;
@@ -85,6 +95,11 @@ export interface VendorUser {
   account_holder_name?: string;
   upi_id?: string;
   qr_code_url?: string;
+  gst_percentage?: number;
+  service_charge_percentage?: number;
+  delivery_charge?: number;
+  min_order_value?: number;
+  max_quantity_limit?: number;
 }
 
 export interface VendorItem {
@@ -100,6 +115,11 @@ export interface VendorItem {
   in_stock?: boolean;
   image_url?: string;
   created_at?: string;
+  created_at_ist?: string;
+  created_at_readable?: string;
+  updated_at?: string;
+  updated_at_ist?: string;
+  updated_at_readable?: string;
 }
 
 export interface OrderItemDetail {
@@ -128,14 +148,18 @@ export interface VendorOrder {
   vendor_id?: number;
   customer_id?: number;
   customer_name: string;
+  country_code?: string; // "+91"
   phone?: string;
-  phone_number?: string;
+  phone_number?: string; // 10-digit mobile number e.g. "9784319840"
   delivery_address?: string;
   address?: string;
   flat?: string | number;
   flat_no?: string | number;
   flat_number?: string | number;
   order_timestamp?: string;
+  created_at?: string; // Standard ISO 8601 UTC timestamp
+  created_at_ist?: string; // Converted ISO timestamp with +05:30 IST offset
+  created_at_readable?: string; // Human-readable IST display string
   status: OrderStatusType;
   total_amount: number | string;
   items: OrderItemDetail[];
@@ -222,6 +246,7 @@ export interface RegisterVendorPayload {
   vendor_name: string;
   store_name: string;
   email: string;
+  country_code?: string; // "+91"
   phone_number: string;
   password: string;
   area: string;
@@ -287,6 +312,7 @@ export interface PublicVendorItem {
   owner_name?: string;
   vendor_name?: string;
   email: string;
+  country_code?: string; // "+91"
   phone?: string;
   phone_number?: string;
   category?: string;
@@ -305,6 +331,8 @@ export interface PublicVendorItem {
   pan_number?: string;
   status: 'active' | 'pending' | 'rejected' | 'ACTIVE' | 'PENDING' | 'REJECTED' | string;
   created_at?: string;
+  created_at_ist?: string;
+  created_at_readable?: string;
 }
 
 export interface VendorSearchResponse {
@@ -339,4 +367,48 @@ export interface VendorStatusResponse {
   rejection_reason?: string;
   block_reason?: string;
   vendor?: Partial<VendorUser>;
+}
+
+// ── v5.0.0 Master Support System & Payout Dispute Types ─────────
+export type SupportTicketCategory = 'billing' | 'technical' | 'vendor_vs_user' | 'onboarding' | 'general';
+export type SupportTicketPriority = 'low' | 'medium' | 'high' | 'urgent';
+export type SupportTicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed';
+
+export interface CreateTicketPayload {
+  subject: string;
+  description: string;
+  category?: SupportTicketCategory;
+  priority?: SupportTicketPriority;
+  store_name?: string;
+  reporter_email?: string;
+  reporter_name?: string;
+  reporter_role?: 'vendor' | 'customer';
+  order_id?: string;
+}
+
+export interface SupportTicketAttachment {
+  attachment_id: string;
+  ticket_id: string;
+  file_name: string;
+  file_size_bytes?: number;
+  file_url: string;
+  uploaded_at_ist?: string;
+}
+
+export interface SupportTicket {
+  ticket_id: string;
+  ticket_number: string;
+  subject: string;
+  description?: string;
+  category: SupportTicketCategory;
+  status: SupportTicketStatus;
+  priority: SupportTicketPriority;
+  unread_messages_count?: number;
+  sla_minutes_remaining?: number;
+  created_at_readable?: string;
+  created_at?: string;
+  created_at_ist?: string;
+  store_name?: string;
+  reporter_email?: string;
+  attachments?: SupportTicketAttachment[];
 }

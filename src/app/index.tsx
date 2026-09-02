@@ -33,10 +33,11 @@ import {
   RefreshCw,
   ShieldAlert,
   CheckCircle2,
+  Send,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromDevice, captureImageFromDevice, PickedImageResult } from '../utils/imagePickerHelper';
-import { Colors, BrandTheme, APP_LOGO_URL } from '../constants/theme';
+import { Colors, BrandTheme, DigiLocalColors, APP_LOGO_URL } from '../constants/theme';
 import {
   VendorUser,
   VendorItem,
@@ -58,12 +59,16 @@ import {
   uploadVendorLogoApi,
   VendorStatusResponse,
   clearAllAppCache,
+  logoutVendorApi,
+  resubmitVendorApplicationApi,
 } from '../services/apiService';
 import {
   clearSavedCredentials,
   saveVendorUser,
   getSavedVendorUser,
-  getSavedApiBaseUrlStorage
+  getSavedApiBaseUrlStorage,
+  hasSeenApprovedAlert,
+  markApprovedAlertSeen,
 } from '../services/authStorage';
 import {
   playAlarmSound,
@@ -85,6 +90,7 @@ import { SettingsScreenComponent } from '../components/SettingsScreen';
 import { PayoutsScreenComponent } from '../components/PayoutsScreen';
 import { AlarmOverlay } from '../components/AlarmOverlay';
 import { StoreDigitalCardModal } from '../components/StoreDigitalCardModal';
+import { ResubmitModal } from '../components/ResubmitModal';
 import { CustomAlertModal, CustomAlertState, AlertType } from '../components/CustomAlertModal';
 import { ToastContainer } from '../components/ToastNotification';
 import { isServiceCategory } from '../utils/translations';
@@ -104,9 +110,11 @@ export default function App() {
   const [showDrawer, setShowDrawer] = useState(false);
   const drawerAnim = useRef(new Animated.Value(300)).current;
 
-  // Vendor Approval Lifecycle State ('pending' | 'accepted' | 'rejected')
-  const [vendorApprovalStatus, setVendorApprovalStatus] = useState<'pending' | 'accepted' | 'rejected'>('pending');
+  // Vendor Approval Lifecycle State ('pending' | 'accepted' | 'rejected' | 'hold')
+  const [vendorApprovalStatus, setVendorApprovalStatus] = useState<'pending' | 'accepted' | 'rejected' | 'hold'>('pending');
   const [vendorRejectionReason, setVendorRejectionReason] = useState<string>('');
+  const [vendorMessage, setVendorMessage] = useState<string>('');
+  const [showResubmitModal, setShowResubmitModal] = useState<boolean>(false);
 
   // Initial Splash Screen Display Timer
   useEffect(() => {
@@ -128,14 +136,15 @@ export default function App() {
   };
 
   const closeDrawer = (cb?: () => void) => {
+    setShowDrawer(false);
     Animated.timing(drawerAnim, {
       toValue: 300,
-      duration: 220,
+      duration: 180,
       useNativeDriver: true,
-    }).start(() => {
-      setShowDrawer(false);
-      if (cb) cb();
-    });
+    }).start();
+    if (cb) {
+      setTimeout(cb, 50);
+    }
   };
 
   // Custom Alert Popup State
@@ -167,6 +176,9 @@ export default function App() {
     title: string;
     message: string;
     reason?: string;
+    rejectionReason?: string;
+    hasResubmitted?: boolean;
+    allowResubmit?: boolean;
   } | null>(null);
 
   const currentUserRef = useRef<VendorUser | null>(null);
@@ -176,6 +188,7 @@ export default function App() {
       const s = String(currentUser.status).toLowerCase();
       if (s === 'rejected') setVendorApprovalStatus('rejected');
       else if (s === 'active' || s === 'accepted') setVendorApprovalStatus('accepted');
+      else if (s === 'hold') setVendorApprovalStatus('hold');
       else setVendorApprovalStatus('pending');
     }
   }, [currentUser]);
@@ -225,8 +238,13 @@ export default function App() {
 
   const theme = Colors.light;
 
+  const isFetchingDashboardRef = useRef(false);
+
   // Load Vendor Dashboard Data with SWR (Cache Hydration + Live Server Query)
   const loadDashboardData = async (vendorId: number, forceRefresh: boolean = false) => {
+    if (!vendorId) return;
+    if (isFetchingDashboardRef.current) return;
+    isFetchingDashboardRef.current = true;
     try {
       // 1. Instant Cache Hydration: immediately populate state so products and orders appear with 0ms delay!
       const cached = await getCachedDashboard(vendorId);
@@ -246,11 +264,31 @@ export default function App() {
       }
 
       // 2. ALWAYS fetch fresh live updates directly from the backend server
-      const data = await fetchVendorDashboardApi(vendorId, true);
+      const data = await fetchVendorDashboardApi(vendorId, forceRefresh);
 
       if (data.vendor) {
+        const liveStatus = String(data.vendor.status || '').toLowerCase();
+        if (liveStatus === 'active' || liveStatus === 'accepted') {
+          setVendorApprovalStatus('accepted');
+        } else if (liveStatus === 'rejected') {
+          setVendorApprovalStatus('rejected');
+        } else if (liveStatus === 'hold') {
+          setVendorApprovalStatus('hold');
+        }
         saveVendorUser(data.vendor);
-        setCurrentUser(data.vendor);
+        setCurrentUser(prev => {
+          if (!prev) return data.vendor;
+          if (
+            prev.vendor_id === data.vendor.vendor_id &&
+            prev.store_name === data.vendor.store_name &&
+            prev.status === data.vendor.status &&
+            prev.logo_url === data.vendor.logo_url &&
+            prev.image_url === data.vendor.image_url
+          ) {
+            return prev;
+          }
+          return data.vendor;
+        });
       }
 
       if (Array.isArray(data.items)) {
@@ -289,6 +327,8 @@ export default function App() {
       setOrders(newOrders);
     } catch (err: any) {
       console.error('Error loading dashboard data:', err);
+    } finally {
+      isFetchingDashboardRef.current = false;
     }
   };
 
@@ -333,12 +373,16 @@ export default function App() {
             if (statusRes) {
               if (statusRes.is_rejected || statusRes.status === 'rejected') {
                 setVendorApprovalStatus('rejected');
-                setVendorRejectionReason(statusRes.rejection_reason || statusRes.message || '');
-              } else if (statusRes.is_accepted || statusRes.status === 'accepted' || statusRes.status === 'active') {
+                setVendorRejectionReason(statusRes.rejection_reason || '');
+              } else if (statusRes.is_accepted || statusRes.is_active || statusRes.status === 'accepted' || statusRes.status === 'active') {
                 setVendorApprovalStatus('accepted');
+              } else if (statusRes.is_on_hold || statusRes.status === 'hold') {
+                setVendorApprovalStatus('hold');
+                setVendorRejectionReason(statusRes.rejection_reason || '');
               } else {
                 setVendorApprovalStatus('pending');
               }
+              if (statusRes.message) setVendorMessage(statusRes.message);
             }
 
             setCurrentUser(vendorData);
@@ -360,32 +404,34 @@ export default function App() {
     restoreSession();
   }, []);
 
-  // Auto-polling & Push Token Registration
+  const currentVendorId = currentUser?.vendor_id;
+
+  // Auto-polling & Push Token Registration (Only for active/accepted vendors)
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentVendorId || vendorApprovalStatus !== 'accepted') return;
 
     registerForPushNotificationsAsync().then(token => {
       if (token) {
-        updateVendorPushTokenApi(currentUser.vendor_id, token);
+        updateVendorPushTokenApi(currentVendorId, token);
       }
     }).catch((_err) => {});
 
-    loadDashboardData(currentUser.vendor_id, true);
+    loadDashboardData(currentVendorId, false);
     const interval = setInterval(() => {
-      loadDashboardData(currentUser.vendor_id, true);
-    }, 6000);
+      loadDashboardData(currentVendorId, false);
+    }, 20000);
 
     return () => clearInterval(interval);
-  }, [currentUser]);
+  }, [currentVendorId, vendorApprovalStatus]);
 
-  // Socket.io Connection & Room Subscription
+  // Socket.io Connection & Room Subscription (Only for active/accepted vendors)
   useEffect(() => {
-    if (!currentUser) {
+    if (!currentVendorId || vendorApprovalStatus !== 'accepted') {
       disconnectSocket();
       return;
     }
 
-    connectSocket(currentUser.vendor_id, async (newOrder: VendorOrder) => {
+    connectSocket(currentVendorId, async (newOrder: VendorOrder) => {
       // Trigger the modal, notifications and continuous alarm loop
       setActiveAlarmOrder(newOrder);
       await triggerOrderNotification(newOrder);
@@ -395,7 +441,7 @@ export default function App() {
     return () => {
       disconnectSocket();
     };
-  }, [currentUser]);
+  }, [currentVendorId, vendorApprovalStatus]);
 
   const handleLoginSuccess = async (vendor: VendorUser) => {
     // 🛡️ Single Status Guard on Login Entry (Called ONLY ONCE)
@@ -427,12 +473,16 @@ export default function App() {
     if (statusRes) {
       if (statusRes.is_rejected || statusRes.status === 'rejected') {
         setVendorApprovalStatus('rejected');
-        setVendorRejectionReason(statusRes.rejection_reason || statusRes.message || '');
-      } else if (statusRes.is_accepted || statusRes.status === 'accepted' || statusRes.status === 'active') {
+        setVendorRejectionReason(statusRes.rejection_reason || '');
+      } else if (statusRes.is_accepted || statusRes.is_active || statusRes.status === 'accepted' || statusRes.status === 'active') {
         setVendorApprovalStatus('accepted');
+      } else if (statusRes.is_on_hold || statusRes.status === 'hold') {
+        setVendorApprovalStatus('hold');
+        setVendorRejectionReason(statusRes.rejection_reason || '');
       } else {
         setVendorApprovalStatus('pending');
       }
+      if (statusRes.message) setVendorMessage(statusRes.message);
     }
 
     setCurrentUser(vendor);
@@ -461,18 +511,30 @@ export default function App() {
   };
 
   const handleLogout = async () => {
-    if (currentUser) {
-      try {
-        await deleteVendorPushTokenApi(currentUser.vendor_id);
-      } catch (err) {
-        console.error('[App] Failed to delete push token on logout:', err);
-      }
-    }
-    await clearSavedCredentials();
+    const prevUser = currentUser;
+    setShowDrawer(false);
+    disconnectSocket();
     await stopAlarmSound();
     setActiveAlarmOrder(null);
-    setShowLogin(false);
     setCurrentUser(null);
+    setShowLogin(true);
+    setVendorApprovalStatus('pending');
+    setItems([]);
+    setOrders([]);
+    setSubscription(null);
+    setPayments([]);
+
+    // Clear saved credentials and cache
+    clearSavedCredentials().catch(() => {});
+    clearAllAppCache().catch(() => {});
+
+    // Notify backend server asynchronously without blocking UI
+    if (prevUser?.vendor_id) {
+      Promise.allSettled([
+        logoutVendorApi(prevUser.vendor_id),
+        deleteVendorPushTokenApi(prevUser.vendor_id),
+      ]).catch(() => {});
+    }
   };
 
   const handleAcceptAlarmOrder = async (orderId: string | number) => {
@@ -573,18 +635,18 @@ export default function App() {
   // ── Render Dedicated Red Rejection Screen if merchant is REJECTED ──
   if (vendorApprovalStatus === 'rejected') {
     return (
-      <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: '#FEF2F2' }]}>
-        <StatusBar barStyle="dark-content" backgroundColor="#FEF2F2" />
+      <View style={[styles.safeArea, { paddingTop: insets.top, backgroundColor: DigiLocalColors.canvasBase }]}>
+        <StatusBar barStyle="dark-content" backgroundColor={DigiLocalColors.canvasBase} />
         
         {/* Top Header */}
-        <View style={[styles.adminHeader, { backgroundColor: '#FFFFFF', borderBottomColor: '#FEE2E2' }]}>
-          <Text style={[styles.headerTitle, { color: '#991B1B', fontWeight: '800' }]}>Merchant Portal</Text>
+        <View style={[styles.adminHeader, { backgroundColor: DigiLocalColors.surfaceCard, borderBottomColor: DigiLocalColors.border }]}>
+          <Text style={[styles.headerTitle, { color: DigiLocalColors.primary, fontWeight: '800' }]}>Merchant Portal</Text>
           <TouchableOpacity
-            style={[styles.hamburgerBtn, { backgroundColor: '#FEE2E2' }]}
+            style={[styles.hamburgerBtn, { backgroundColor: DigiLocalColors.primaryLight }]}
             onPress={handleLogout}
             activeOpacity={0.8}
           >
-            <LogOut size={16} color="#DC2626" />
+            <LogOut size={16} color={DigiLocalColors.primary} />
           </TouchableOpacity>
         </View>
 
@@ -594,20 +656,20 @@ export default function App() {
             width: 80,
             height: 80,
             borderRadius: 40,
-            backgroundColor: '#FEE2E2',
+            backgroundColor: DigiLocalColors.dangerBg,
             borderWidth: 8,
-            borderColor: '#FEF2F2',
+            borderColor: '#FEE2E2',
             justifyContent: 'center',
             alignItems: 'center',
             marginBottom: 20
           }}>
-            <AlertOctagon size={40} color="#DC2626" />
+            <AlertOctagon size={40} color={DigiLocalColors.danger} />
           </View>
 
           <Text style={{
             fontSize: 22,
             fontWeight: '800',
-            color: '#991B1B',
+            color: DigiLocalColors.primary,
             textAlign: 'center',
             marginBottom: 12,
             fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
@@ -617,7 +679,7 @@ export default function App() {
 
           <Text style={{
             fontSize: 14.5,
-            color: '#4B5563',
+            color: DigiLocalColors.textMuted,
             textAlign: 'center',
             lineHeight: 22,
             marginBottom: 20,
@@ -629,32 +691,65 @@ export default function App() {
 
           {vendorRejectionReason ? (
             <View style={{
-              backgroundColor: '#FFFFFF',
-              borderRadius: 12,
-              padding: 14,
+              backgroundColor: DigiLocalColors.surfaceCard,
+              borderRadius: 14,
+              padding: 16,
               width: '100%',
               borderWidth: 1,
-              borderColor: '#FCA5A5',
-              marginBottom: 24
+              borderColor: DigiLocalColors.border,
+              marginBottom: 24,
+              shadowColor: DigiLocalColors.textDark,
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.04,
+              shadowRadius: 6,
+              elevation: 1
             }}>
-              <Text style={{ fontSize: 12, fontWeight: '700', color: '#991B1B', marginBottom: 4 }}>
+              <Text style={{ fontSize: 12, fontWeight: '700', color: DigiLocalColors.danger, marginBottom: 4 }}>
                 Reason from Admin:
               </Text>
-              <Text style={{ fontSize: 13, color: '#374151', lineHeight: 18 }}>
+              <Text style={{ fontSize: 13, color: DigiLocalColors.textDark, lineHeight: 18 }}>
                 {vendorRejectionReason}
               </Text>
             </View>
           ) : null}
 
+          {/* Primary CTA: Resubmit Application */}
           <TouchableOpacity
             style={{
               width: '100%',
-              backgroundColor: '#DC2626',
+              backgroundColor: DigiLocalColors.primary,
               borderRadius: 14,
               paddingVertical: 14,
               alignItems: 'center',
               justifyContent: 'center',
-              marginBottom: 12,
+              marginBottom: 10,
+              flexDirection: 'row',
+              gap: 8,
+              shadowColor: DigiLocalColors.primary,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: 0.2,
+              shadowRadius: 8,
+              elevation: 3
+            }}
+            onPress={() => setShowResubmitModal(true)}
+            activeOpacity={0.85}
+          >
+            <Send size={17} color="#FFFFFF" />
+            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>Resubmit Application</Text>
+          </TouchableOpacity>
+
+          {/* Secondary Action: Contact Support */}
+          <TouchableOpacity
+            style={{
+              width: '100%',
+              backgroundColor: DigiLocalColors.surfaceCard,
+              borderRadius: 14,
+              paddingVertical: 13,
+              borderWidth: 1.5,
+              borderColor: DigiLocalColors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginBottom: 10,
               flexDirection: 'row',
               gap: 8
             }}
@@ -663,18 +758,19 @@ export default function App() {
             }}
             activeOpacity={0.85}
           >
-            <PhoneCall size={18} color="#FFFFFF" />
-            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>Contact Support</Text>
+            <PhoneCall size={17} color={DigiLocalColors.primary} />
+            <Text style={{ color: DigiLocalColors.textDark, fontSize: 14, fontWeight: '700' }}>Contact Support</Text>
           </TouchableOpacity>
 
+          {/* Tertiary Action: Check Status Again */}
           <TouchableOpacity
             style={{
               width: '100%',
-              backgroundColor: '#FFFFFF',
+              backgroundColor: DigiLocalColors.surfaceIvory,
               borderRadius: 14,
-              paddingVertical: 13,
-              borderWidth: 1.5,
-              borderColor: '#E7DFD5',
+              paddingVertical: 12,
+              borderWidth: 1,
+              borderColor: DigiLocalColors.border,
               alignItems: 'center',
               justifyContent: 'center',
               marginBottom: 10,
@@ -684,8 +780,8 @@ export default function App() {
             onPress={() => loadDashboardData(currentUser.vendor_id, true)}
             activeOpacity={0.85}
           >
-            <RefreshCw size={16} color="#541D26" />
-            <Text style={{ color: '#211A19', fontSize: 14, fontWeight: '700' }}>Check Status Again</Text>
+            <RefreshCw size={15} color={DigiLocalColors.textMuted} />
+            <Text style={{ color: DigiLocalColors.textMuted, fontSize: 13.5, fontWeight: '700' }}>Check Status Again</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -693,7 +789,7 @@ export default function App() {
             onPress={handleLogout}
             activeOpacity={0.7}
           >
-            <Text style={{ color: '#6B7280', fontSize: 13.5, fontWeight: '600' }}>Sign Out</Text>
+            <Text style={{ color: DigiLocalColors.textMuted, fontSize: 13.5, fontWeight: '600' }}>Sign Out</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -813,12 +909,12 @@ export default function App() {
         </View>
       </View>
 
-      {/* ─── Clear Pending Status: Full-Width Prominent Banner ─── */}
-      {vendorApprovalStatus === 'pending' ? (
+      {/* ─── Pending / Hold Verification Status Banner (Hidden when Approved) ─── */}
+      {vendorApprovalStatus === 'pending' || vendorApprovalStatus === 'hold' ? (
         <View style={{
-          backgroundColor: '#FFFBEB',
+          backgroundColor: vendorApprovalStatus === 'hold' ? '#FEF2F2' : '#FFFBEB',
           borderBottomWidth: 1.5,
-          borderBottomColor: '#FDE68A',
+          borderBottomColor: vendorApprovalStatus === 'hold' ? '#FECACA' : '#FDE68A',
           paddingVertical: 12,
           paddingHorizontal: 16,
         }}>
@@ -828,20 +924,24 @@ export default function App() {
                 width: 26,
                 height: 26,
                 borderRadius: 13,
-                backgroundColor: '#FEF3C7',
+                backgroundColor: vendorApprovalStatus === 'hold' ? '#FEE2E2' : '#FEF3C7',
                 justifyContent: 'center',
                 alignItems: 'center',
               }}>
-                <Clock size={15} color="#D97706" strokeWidth={2.5} />
+                {vendorApprovalStatus === 'hold' ? (
+                  <AlertOctagon size={15} color="#DC2626" strokeWidth={2.5} />
+                ) : (
+                  <Clock size={15} color="#D97706" strokeWidth={2.5} />
+                )}
               </View>
               <Text style={{
                 fontSize: 14,
                 fontWeight: '800',
-                color: '#92400E',
+                color: vendorApprovalStatus === 'hold' ? '#991B1B' : '#92400E',
                 letterSpacing: 0.2,
                 fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
               }}>
-                Application Under Review
+                {vendorApprovalStatus === 'hold' ? 'Action Required' : 'Vendor Request Submitted'}
               </Text>
             </View>
 
@@ -851,29 +951,56 @@ export default function App() {
                 flexDirection: 'row',
                 alignItems: 'center',
                 gap: 4,
-                backgroundColor: '#FEF3C7',
+                backgroundColor: vendorApprovalStatus === 'hold' ? '#FEE2E2' : '#FEF3C7',
                 paddingHorizontal: 10,
                 paddingVertical: 5,
                 borderRadius: 8,
                 borderWidth: 0.5,
-                borderColor: '#FDE68A'
+                borderColor: vendorApprovalStatus === 'hold' ? '#FECACA' : '#FDE68A'
               }}
               activeOpacity={0.7}
             >
-              <RefreshCw size={12} color="#D97706" />
-              <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#D97706' }}>Refresh</Text>
+              <RefreshCw size={12} color={vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706"} />
+              <Text style={{ fontSize: 11.5, fontWeight: '700', color: vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706" }}>Refresh</Text>
             </TouchableOpacity>
+            
+            {vendorApprovalStatus === 'hold' && (
+              <TouchableOpacity
+                onPress={() => setShowResubmitModal(true)}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 4,
+                  backgroundColor: '#DC2626',
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 8,
+                  marginLeft: 8,
+                }}
+                activeOpacity={0.7}
+              >
+                <Send size={12} color="#FFFFFF" />
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#FFFFFF' }}>Resubmit</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           <Text style={{
             fontSize: 12,
-            color: '#78350F',
+            color: vendorApprovalStatus === 'hold' ? '#7F1D1D' : '#78350F',
             lineHeight: 17,
             marginTop: 2,
             fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular'
           }}>
-            Your merchant application has been submitted and is currently awaiting verification. Once approved, your store and products will go live on the DigiLocal marketplace.
+            {vendorMessage || (vendorApprovalStatus === 'hold' ? 'Your application is on hold. Please contact support.' : 'Your merchant application has been submitted and is currently awaiting verification. Once approved, your store and products will go live on the DigiLocal marketplace.')}
           </Text>
+          
+          {vendorApprovalStatus === 'hold' && vendorRejectionReason ? (
+            <View style={{ marginTop: 8, backgroundColor: '#FEF2F2', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#FECACA' }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#B91C1C', marginBottom: 2 }}>Hold Reason:</Text>
+              <Text style={{ fontSize: 12, color: '#991B1B' }}>{vendorRejectionReason}</Text>
+            </View>
+          ) : null}
         </View>
       ) : null}
 
@@ -1056,7 +1183,10 @@ export default function App() {
             <TouchableOpacity
               style={[styles.drawerItem, { marginTop: 4 }]}
               activeOpacity={0.8}
-              onPress={() => closeDrawer(handleLogout)}
+              onPress={() => {
+                setShowDrawer(false);
+                handleLogout();
+              }}
             >
               <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(239,68,68,0.12)' }]}>
                 <LogOut size={17} color="#EF4444" />
@@ -1090,6 +1220,17 @@ export default function App() {
           onExploreVendors={() => setCurrentTab('menu')}
         />
       )}
+
+      <ResubmitModal
+        visible={showResubmitModal}
+        onClose={() => setShowResubmitModal(false)}
+        vendor={currentUser}
+        showAlert={showAlert}
+        onSuccess={() => {
+          setVendorApprovalStatus('pending');
+          if (currentUser) loadDashboardData(currentUser.vendor_id, true);
+        }}
+      />
 
       {/* Custom Alert */}
       <CustomAlertModal
@@ -1140,6 +1281,8 @@ export default function App() {
           </View>
         </Pressable>
       </Modal>
+
+
 
       {/* Viewport-Level Floating Toast Notifications */}
       <ToastContainer bottomOffset={78 + (insets.bottom > 0 ? insets.bottom : 8)} />
@@ -1399,6 +1542,7 @@ const styles = StyleSheet.create({
   // ── Drawer ──
   drawerOverlay: {
     flex: 1,
+    position: 'relative',
   },
   drawerBackdrop: {
     position: 'absolute',
@@ -1407,6 +1551,7 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     backgroundColor: 'rgba(11,22,16,0.6)',
+    zIndex: 1,
   },
   drawerPanel: {
     position: 'absolute',
@@ -1422,7 +1567,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: -4, height: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 14,
-    elevation: 14,
+    elevation: 20,
+    zIndex: 100,
   },
   drawerHeader: {
     flexDirection: 'row',

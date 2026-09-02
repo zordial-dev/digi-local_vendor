@@ -81,15 +81,8 @@ export const safeFetch = async (
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
-      'X-Platform-Client': 'vendor_app',
       ...((options.headers as Record<string, string>) || {})
     };
-
-    if (url.includes('localtunnel.me')) {
-      headers['Bypass-Tunnel-Reminder'] = 'true';
-    }
 
     if (accessToken && !headers['Authorization'] && !headers['authorization']) {
       headers['Authorization'] = `Bearer ${accessToken}`;
@@ -115,7 +108,6 @@ export const safeFetch = async (
             headers: {
               'Content-Type': 'application/json',
               'Accept': 'application/json',
-              'X-Platform-Client': 'vendor_app',
             },
             body: JSON.stringify({ refreshToken })
           });
@@ -127,7 +119,6 @@ export const safeFetch = async (
               headers: {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json',
-                'X-Platform-Client': 'vendor_app',
               },
               body: JSON.stringify({ refreshToken })
             });

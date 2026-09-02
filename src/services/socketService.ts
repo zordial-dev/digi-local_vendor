@@ -13,7 +13,10 @@ export function connectSocket(vendorId: number, onNewOrder: (order: any) => void
   try {
     socketInstance = io(host, {
       transports: ['websocket'],
-      forceNew: true,
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 5000,
+      timeout: 10000,
     });
 
     socketInstance.on('connect', () => {
@@ -42,6 +45,7 @@ export function connectSocket(vendorId: number, onNewOrder: (order: any) => void
         order_id: data.order_id || data.id,
         vendor_id: data.vendor_id || vendorId,
         customer_name: data.customer_name || data.customer?.name || data.name || 'Resident Customer',
+        country_code: data.country_code || data.customer?.country_code || '+91',
         phone_number: data.phone_number || data.phone || data.customer?.phone || '',
         delivery_address: addressValue,
         address: addressValue,
@@ -52,8 +56,9 @@ export function connectSocket(vendorId: number, onNewOrder: (order: any) => void
         state: data.state || '',
         pincode: data.pincode || '',
         total_amount: String(data.total_amount || data.amount || '0.00'),
-        order_timestamp: data.created_at || data.created_at_readable || data.timestamp || new Date().toISOString(),
+        order_timestamp: data.created_at_readable || data.created_at_ist || data.created_at || data.timestamp || new Date().toISOString(),
         created_at: data.created_at,
+        created_at_ist: data.created_at_ist,
         created_at_readable: data.created_at_readable,
         timestamp: data.timestamp,
         status: data.status || 'PENDING',

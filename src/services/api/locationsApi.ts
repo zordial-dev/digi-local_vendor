@@ -27,7 +27,33 @@ export const getLocationSuggestionsApi = async (query: string): Promise<Location
   const baseUrl = getApiBaseUrl();
   const encodedQuery = encodeURIComponent(cleanQuery);
 
-  // 1. Try Primary Endpoint: GET /api/locations/suggestions?q=<SEARCH_TERM>
+  // 1. Try v4.1.0 Primary Endpoint: GET /api/vendors/locations/suggestions?query=<SEARCH_TERM>
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 7000);
+
+    const res = await fetch(`${baseUrl}/vendors/locations/suggestions?query=${encodedQuery}`, {
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json' },
+    });
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data === 'object') {
+        const rawItems = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+        return {
+          success: true,
+          total: rawItems.length,
+          query: cleanQuery,
+          suggestions: data.suggestions || rawItems.map((d: any) => d.area).filter(Boolean),
+          data: rawItems,
+        };
+      }
+    }
+  } catch (_) {}
+
+  // 2. Try Fallback Endpoint: GET /api/locations/suggestions?q=<SEARCH_TERM>
   try {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 7000);

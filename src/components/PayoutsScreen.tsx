@@ -90,7 +90,7 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
   const [selectedTxn, setSelectedTxn] = useState<PayoutTransaction | null>(null);
 
   // Request payout form state
-  const [payoutAmountInput, setPayoutAmountInput] = useState('0');
+  const [payoutAmountInput, setPayoutAmountInput] = useState('');
   const [requestSuccess, setRequestSuccess] = useState(false);
   const [submittingPayout, setSubmittingPayout] = useState(false);
 
@@ -239,12 +239,14 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
     : validOrders.map(o => {
         const s = String(o.status || '').toUpperCase();
         const isDelivered = s === 'DELIVERED' || s === 'COMPLETED';
-        const timestamp = o.order_timestamp || (o as any).created_at;
+        const timestamp = o.created_at_ist || o.created_at || o.order_timestamp;
+        const readableDate = o.created_at_readable ? o.created_at_readable.split(',')[0] : (timestamp ? new Date(timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today');
+        const readableTime = o.created_at_readable ? o.created_at_readable.split(',')[1]?.trim() : (timestamp ? new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '12:00 PM');
         return {
           id: `ORD${o.order_id}`,
           amount: parseFloat(String(o.total_amount)) || 0,
-          date: timestamp ? new Date(timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Today',
-          time: timestamp ? new Date(timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : '12:00 PM',
+          date: readableDate,
+          time: readableTime,
           accountMask: 'Direct Settlement (T+1)',
           status: isDelivered ? 'PAID' : 'PROCESSING',
           txnId: `ORD-${o.order_id}`,

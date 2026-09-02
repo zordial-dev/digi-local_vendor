@@ -784,8 +784,8 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
                 borderWidth: 1,
                 borderColor: '#FDE68A'
               }}>
-                <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', marginBottom: 6 }}>
-                  💡 What you can do right now:
+                <Text style={{ fontSize: 12, fontWeight: '800', color: '#92400E', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>
+                  Recommended Next Steps:
                 </Text>
                 <Text style={{ fontSize: 12, color: '#78350F', lineHeight: 18 }}>
                   • <Text style={{ fontWeight: '700' }}>Menu / Services tab</Text>: Add products, photos & pricing.{'\n'}
@@ -813,9 +813,11 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
           const badge = getStatusBadge(order.status);
           const isUpdating = updatingId === order.order_id;
           const digits = extractOrderDigits(order.order_id);
-          const dateString = formatScreenshotDate(
-            (order as any).created_at || (order as any).order_date || (order as any).timestamp
-          );
+          const dateString =
+            order.created_at_readable ||
+            formatScreenshotDate(
+              order.created_at_ist || order.created_at || (order as any).order_date || (order as any).timestamp
+            );
 
           const rawItems = order.items || (order as any).order_items || [];
           let rawList: any[] = typeof rawItems === 'string'

@@ -12,6 +12,7 @@ import { Colors } from '../theme/colors';
 
 interface SplashScreenProps {
   onFinish?: () => void;
+  isDarkMode?: boolean;
 }
 
 export const SplashScreenComponent: React.FC<SplashScreenProps> = ({ onFinish }) => {

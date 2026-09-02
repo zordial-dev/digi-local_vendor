@@ -410,7 +410,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
   const [unit, setUnit] = useState(isService ? '1 hour' : 'Piece');
   const [imageUrl, setImageUrl] = useState('');
   const [isAvailable, setIsAvailable] = useState(true);
-  const [stock, setStock] = useState('50');
+  const [stock, setStock] = useState('');
 
   // Service Provider Specific States
   const [pricingModel, setPricingModel] = useState<'FIXED' | 'STARTING_FROM'>('FIXED');
@@ -438,7 +438,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
     setShowUnitDropdown(false);
     setImageUrl('');
     setIsAvailable(true);
-    setStock('50');
+    setStock('');
     setEditingItem(null);
   };
 

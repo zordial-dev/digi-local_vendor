@@ -9,7 +9,9 @@ import {
   VendorSearchParams,
   VendorSearchResponse,
   PublicVendorItem,
-  VendorStatusResponse
+  VendorStatusResponse,
+  ServiceEnquiryLead,
+  VendorPayment
 } from './types';
 import { getCachedDashboard, setCachedDashboard, invalidateCache, CACHE_KEYS } from '../cacheService';
 
@@ -26,11 +28,18 @@ export async function fetchVendorDashboardApi(vendorId: number, forceRefresh: bo
       throw new Error(data?.error || 'Failed to fetch vendor dashboard data.');
     }
 
-    const vendor: VendorUser = data.vendor || {
-      vendor_id: vendorId,
-      store_name: 'Vendor Store',
-      email: '',
-      status: 'ACTIVE'
+    const rawVendor = data.vendor || data.data?.vendor || data;
+    const vendor: VendorUser = {
+      ...(typeof rawVendor === 'object' && rawVendor ? rawVendor : {}),
+      vendor_id: (rawVendor && rawVendor.vendor_id) || vendorId,
+      store_name: (rawVendor && rawVendor.store_name) || 'Vendor Store',
+      email: (rawVendor && rawVendor.email) || '',
+      country_code: (rawVendor && rawVendor.country_code) || '+91',
+      phone_number: (rawVendor && (rawVendor.phone_number || rawVendor.phone)) || '',
+      shop_number: (rawVendor && (rawVendor.shop_number || rawVendor.shop_no)) || '',
+      shop_no: (rawVendor && (rawVendor.shop_no || rawVendor.shop_number)) || '',
+      address: (rawVendor && rawVendor.address) || (rawVendor && (rawVendor.shop_number || rawVendor.shop_no) ? `${rawVendor.shop_number || rawVendor.shop_no}, ${rawVendor.area || ''}` : ''),
+      status: (rawVendor && rawVendor.status) || 'ACTIVE'
     };
 
     const items: VendorItem[] = Array.isArray(data.items)
@@ -212,11 +221,11 @@ export async function toggleItemAvailabilityApi(vendorId: number, itemId: number
   await invalidateCache(CACHE_KEYS.ITEMS(vendorId));
   await invalidateCache(CACHE_KEYS.DASHBOARD(vendorId));
 
-  // 1. Primary endpoint: PATCH /api/vendors/:vendorId/items/:itemId/availability
+  // 1. v4.1.0 Primary endpoint: PATCH /api/vendorPanel/items/:itemId/availability
   try {
-    const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/items/${itemId}/availability`, {
+    const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/items/${itemId}/availability`, {
       method: 'PATCH',
-      body: JSON.stringify({ is_available: isAvailable })
+      body: JSON.stringify({ in_stock: isAvailable, is_available: isAvailable })
     });
     if (res && res.ok) {
       await invalidateCache(CACHE_KEYS.ITEMS(vendorId));
@@ -225,8 +234,21 @@ export async function toggleItemAvailabilityApi(vendorId: number, itemId: number
     }
   } catch (_) {}
 
-  // 2. Fallback: PUT /api/vendors/:vendorId/items/:itemId
-  return updateMenuItemApi(vendorId, itemId, { is_available: isAvailable });
+  // 2. Fallback: PATCH /api/vendors/:vendorId/items/:itemId/availability
+  try {
+    const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/items/${itemId}/availability`, {
+      method: 'PATCH',
+      body: JSON.stringify({ in_stock: isAvailable, is_available: isAvailable })
+    });
+    if (res && res.ok) {
+      await invalidateCache(CACHE_KEYS.ITEMS(vendorId));
+      await invalidateCache(CACHE_KEYS.DASHBOARD(vendorId));
+      return true;
+    }
+  } catch (_) {}
+
+  // 3. Fallback: PUT /api/vendors/:vendorId/items/:itemId
+  return updateMenuItemApi(vendorId, itemId, { is_available: isAvailable, in_stock: isAvailable });
 }
 
 // ── Store Settings, Push Tokens & Media Upload APIs ────────────
@@ -235,23 +257,24 @@ export async function updateVendorPushTokenApi(vendorId: number | string, pushTo
   try {
     const platform = Platform.OS === 'ios' ? 'ios' : 'android';
     
-    // First try standard backend route /vendors/push-token
-    let { res } = await safeFetch(`${getApiBaseUrl()}/vendors/push-token`, {
+    // v4.1.0 Primary endpoint: POST /api/vendors/fcm-token
+    let { res } = await safeFetch(`${getApiBaseUrl()}/vendors/fcm-token`, {
       method: 'POST',
       body: JSON.stringify({
-        vendor_id: vendorId,
-        push_token: pushToken,
+        vendor_id: Number(vendorId),
         fcm_token: pushToken,
+        push_token: pushToken,
+        device_type: platform,
         platform: platform
       })
     });
 
-    // Fallback to /vendors/fcm-token if /vendors/push-token returns 404
     if (!res.ok && res.status === 404) {
-      const fallback = await safeFetch(`${getApiBaseUrl()}/vendors/fcm-token`, {
+      // Fallback: POST /api/vendors/push-token
+      const fallback = await safeFetch(`${getApiBaseUrl()}/vendors/push-token`, {
         method: 'POST',
         body: JSON.stringify({
-          vendor_id: vendorId,
+          vendor_id: Number(vendorId),
           push_token: pushToken,
           fcm_token: pushToken,
           platform: platform
@@ -272,7 +295,7 @@ export async function deleteVendorPushTokenApi(vendorId: number | string): Promi
     const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/fcm-token`, {
       method: 'DELETE',
       body: JSON.stringify({
-        vendor_id: vendorId
+        vendor_id: Number(vendorId)
       })
     });
     return res.ok;
@@ -308,10 +331,21 @@ export async function updateStoreSettingsApi(vendorId: number, settings: {
 }): Promise<boolean> {
   await invalidateCache(CACHE_KEYS.DASHBOARD(vendorId));
   try {
-    const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/settings`, {
+    // 1. v4.1.0 Primary endpoint: PUT /api/vendors/:vendorId/settings
+    let { res } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/settings`, {
       method: 'PUT',
       body: JSON.stringify(settings)
     });
+
+    if (!res.ok) {
+      // 2. Fallback: PUT /api/vendorPanel/:vendorId/settings
+      const fallback = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/settings`, {
+        method: 'PUT',
+        body: JSON.stringify(settings)
+      });
+      res = fallback.res;
+    }
+
     await invalidateCache(CACHE_KEYS.DASHBOARD(vendorId));
     return res.ok;
   } catch (e) {
@@ -320,11 +354,26 @@ export async function updateStoreSettingsApi(vendorId: number, settings: {
   }
 }
 
-export async function requestSubscriptionRenewalApi(vendorId: number, paymentMethod: string = 'Razorpay (UPI)'): Promise<boolean> {
+export async function requestSubscriptionRenewalApi(
+  vendorId: number,
+  options?: {
+    subscription_tier?: string;
+    duration_months?: number;
+    payment_method?: string;
+  } | string
+): Promise<boolean> {
   try {
+    const payload = typeof options === 'string'
+      ? { payment_method: options, subscription_tier: 'pro', duration_months: 12 }
+      : {
+          subscription_tier: options?.subscription_tier || 'pro',
+          duration_months: options?.duration_months || 12,
+          payment_method: options?.payment_method || 'Razorpay (UPI)'
+        };
+
     const { res } = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vendorId}/renew`, {
       method: 'POST',
-      body: JSON.stringify({ payment_method: paymentMethod })
+      body: JSON.stringify(payload)
     });
     return res.ok;
   } catch (e) {
@@ -569,16 +618,54 @@ export async function submitServiceEnquiryApi(payload: {
 }
 
 /**
- * Updates status of a service enquiry lead (NEW -> CONTACTED -> SCHEDULED -> COMPLETED).
+ * ⚡ 5.1 Get Received Enquiries (GET /api/vendors/:vendorId/enquiries)
+ */
+export async function fetchVendorEnquiriesApi(vendorId: number): Promise<ServiceEnquiryLead[]> {
+  try {
+    const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/enquiries`);
+    if (res.ok && data) {
+      const list = Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+      return list.map((e: any) => ({
+        enquiry_id: e.enquiry_id || e.id,
+        vendor_id: e.vendor_id || vendorId,
+        customer_name: e.customer_name || e.user_name || 'Resident',
+        customer_phone: e.customer_phone || e.user_phone || e.phone || '',
+        customer_address: e.customer_address || e.address,
+        service_requested: e.service_requested || e.service_type || 'Service Request',
+        preferred_date: e.preferred_date,
+        preferred_time_slot: e.preferred_time_slot || e.preferred_time,
+        message: e.message || e.description,
+        status: (e.status || 'PENDING').toUpperCase(),
+        created_at: e.created_at || e.created_at_ist,
+      }));
+    }
+  } catch (err) {
+    console.warn('Failed to fetch vendor enquiries:', err);
+  }
+  return [];
+}
+
+/**
+ * ⚡ 5.2 Update Enquiry Status (PUT /api/vendors/:vendorId/enquiries/:enquiryId)
  */
 export async function updateEnquiryStatusApi(
   enquiryId: string | number,
-  status: 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'COMPLETED' | 'CANCELLED'
+  status: 'NEW' | 'CONTACTED' | 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'ACCEPTED' | 'REJECTED' | string,
+  vendorId?: number
 ): Promise<boolean> {
+  const normStatus = (status || '').toUpperCase();
   try {
+    if (vendorId) {
+      const { res } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/enquiries/${enquiryId}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: normStatus }),
+      });
+      if (res.ok) return true;
+    }
+
     const { res } = await safeFetch(`${getApiBaseUrl()}/enquiries/${enquiryId}/status`, {
       method: 'PUT',
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ status: normStatus }),
     });
     return res.ok;
   } catch (err) {
@@ -587,11 +674,23 @@ export async function updateEnquiryStatusApi(
   }
 }
 
-
+/**
+ * ⚡ 6.2 Get Vendor Payout & Payment Transactions (GET /api/vendors/:id/payments)
+ */
+export async function fetchVendorPaymentsApi(vendorId: number): Promise<any[]> {
+  try {
+    const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/payments`);
+    if (res.ok && data) {
+      return Array.isArray(data) ? data : (Array.isArray(data.data) ? data.data : []);
+    }
+  } catch (e) {
+    console.warn('Failed to fetch vendor payments:', e);
+  }
+  return [];
+}
 
 /**
- * Saves vendor location settings (area, location, city, state, pincode, location_address).
- * Implements PUT /api/vendors/:vendorId/coverage (v3.0.0 Architecture)
+ * ⚡ 7.1 Update Serviceable Coverage & Delivery Area (PUT /api/vendors/:vendorId/coverage)
  */
 export async function updateVendorCoverageApi(
   vendorId: number,
@@ -604,6 +703,9 @@ export async function updateVendorCoverageApi(
     location_address?: string;
     address?: string;
     society_id?: number | null;
+    delivery_radius_km?: number;
+    is_global_coverage?: boolean;
+    selected_zones?: string[];
   }
 ): Promise<{ success: boolean; message?: string; vendor_id?: number }> {
   await invalidateCache(CACHE_KEYS.DASHBOARD(vendorId));
@@ -615,7 +717,10 @@ export async function updateVendorCoverageApi(
       state: payload.state || '',
       pincode: payload.pincode || '',
       location_address: payload.location_address || payload.address || '',
-      society_id: payload.society_id
+      society_id: payload.society_id,
+      delivery_radius_km: payload.delivery_radius_km ?? 5.0,
+      is_global_coverage: payload.is_global_coverage ?? false,
+      selected_zones: payload.selected_zones || []
     };
     const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/${vendorId}/coverage`, {
       method: 'PUT',
@@ -624,7 +729,7 @@ export async function updateVendorCoverageApi(
     await invalidateCache(CACHE_KEYS.DASHBOARD(vendorId));
     return {
       success: res.ok,
-      message: data?.message,
+      message: data?.message || 'Serviceable coverage updated successfully.',
       vendor_id: data?.vendor_id || vendorId,
     };
   } catch (err: any) {
@@ -700,12 +805,7 @@ export async function updateVendorPaymentDetailsApi(
   try {
     result = await safeFetch(`${getApiBaseUrl()}/vendorPanel/payment-details`, {
       method: 'PUT',
-      body: JSON.stringify(body),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'X-Platform-Client': 'vendor_app'
-      }
+      body: JSON.stringify(body)
     });
     if (!result.res.ok && (result.res.status === 404 || result.res.status === 405)) {
       throw new Error('Fallback to /vendors/payment-details');
@@ -714,12 +814,7 @@ export async function updateVendorPaymentDetailsApi(
     try {
       result = await safeFetch(`${getApiBaseUrl()}/vendors/payment-details`, {
         method: 'PUT',
-        body: JSON.stringify(body),
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-Platform-Client': 'vendor_app'
-        }
+        body: JSON.stringify(body)
       });
       if (!result.res.ok && (result.res.status === 404 || result.res.status === 405)) {
         throw new Error('Fallback to vendor ID endpoint');
@@ -728,12 +823,7 @@ export async function updateVendorPaymentDetailsApi(
       if (vId) {
         result = await safeFetch(`${getApiBaseUrl()}/vendorPanel/${vId}/payment-details`, {
           method: 'PUT',
-          body: JSON.stringify(body),
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-Platform-Client': 'vendor_app'
-          }
+          body: JSON.stringify(body)
         });
       } else {
         throw err2;
@@ -790,8 +880,7 @@ export async function searchPublicAreaVendorsApi(
     const { res, data } = await safeFetch(url, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
-        'X-Platform-Client': 'vendor_app'
+        'Accept': 'application/json'
       }
     });
 
@@ -839,8 +928,7 @@ export async function fetchVendorStatusApi(vendorId?: number | string): Promise<
     let { res, data } = await safeFetch(url, {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
-        'X-Platform-Client': 'vendor_app',
+        'Accept': 'application/json'
       },
     });
 
@@ -850,8 +938,7 @@ export async function fetchVendorStatusApi(vendorId?: number | string): Promise<
       const fallback = await safeFetch(url, {
         method: 'GET',
         headers: {
-          'Accept': 'application/json',
-          'X-Platform-Client': 'vendor_app',
+          'Accept': 'application/json'
         },
       });
       res = fallback.res;
@@ -892,18 +979,25 @@ export async function fetchVendorStatusApi(vendorId?: number | string): Promise<
       const isPending = rawStatus === 'pending' || Boolean(data.is_pending) || Boolean(data.data?.is_pending);
       const isAccepted = rawStatus === 'accepted' || rawStatus === 'active' || Boolean(data.is_accepted) || Boolean(data.is_active) || Boolean(data.data?.is_accepted);
       const isRejected = rawStatus === 'rejected' || Boolean(data.is_rejected) || Boolean(data.data?.is_rejected);
+      const isHold = rawStatus === 'hold' || Boolean(data.is_on_hold) || Boolean(data.data?.is_on_hold);
+
+      let computedStatus = 'pending';
+      if (isRejected) computedStatus = 'rejected';
+      else if (isAccepted) computedStatus = 'accepted';
+      else if (isHold) computedStatus = 'hold';
 
       return {
         success: true,
         vendor_id: resolvedVendorId,
-        status: isRejected ? 'rejected' : isAccepted ? 'accepted' : 'pending',
+        status: computedStatus,
         is_pending: isPending,
         is_accepted: isAccepted,
         is_active: isAccepted,
         is_rejected: isRejected,
         is_blocked: false,
-        message: data.message || data.data?.message || (isPending ? 'Your request will be processed soon.' : isRejected ? 'Merchant application was rejected by admin.' : 'Store is verified and active.'),
-        rejection_reason: data.rejection_reason || data.data?.rejection_reason,
+        is_on_hold: isHold,
+        message: data.message || data.data?.message || 'Status check complete.',
+        rejection_reason: data.rejection_reason || data.data?.rejection_reason || data.hold_reason || data.data?.hold_reason,
         vendor: data.vendor || data.data?.vendor,
       };
     }
@@ -920,7 +1014,7 @@ export async function fetchVendorStatusApi(vendorId?: number | string): Promise<
     is_active: false,
     is_rejected: false,
     is_blocked: false,
-    message: 'Your request will be processed soon.',
+    message: 'Status check failed. Please try again.',
   };
 }
 

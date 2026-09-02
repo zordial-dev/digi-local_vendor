@@ -257,3 +257,29 @@ export async function addSavedAddress(newAddress: { flat_no?: string; society_na
     return { success: false, message: e.message || 'Failed to save address.', addresses: [] };
   }
 }
+
+const APPROVED_ALERT_SEEN_KEY_PREFIX = 'digilocal_approved_alert_seen_';
+
+export async function hasSeenApprovedAlert(vendorId: number): Promise<boolean> {
+  try {
+    const key = `${APPROVED_ALERT_SEEN_KEY_PREFIX}${vendorId}`;
+    if (Platform.OS !== 'web' && SecureStore && typeof SecureStore.getItemAsync === 'function') {
+      const val = await SecureStore.getItemAsync(key);
+      return val === 'true';
+    } else if (typeof localStorage !== 'undefined') {
+      return localStorage.getItem(key) === 'true';
+    }
+  } catch (_) {}
+  return false;
+}
+
+export async function markApprovedAlertSeen(vendorId: number): Promise<void> {
+  try {
+    const key = `${APPROVED_ALERT_SEEN_KEY_PREFIX}${vendorId}`;
+    if (Platform.OS !== 'web' && SecureStore && typeof SecureStore.setItemAsync === 'function') {
+      await SecureStore.setItemAsync(key, 'true');
+    } else if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(key, 'true');
+    }
+  } catch (_) {}
+}

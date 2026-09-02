@@ -48,7 +48,8 @@ import {
   CheckSquare,
   Square,
   Eye,
-  EyeOff
+  EyeOff,
+  LifeBuoy
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromDevice, captureImageFromDevice, PickedImageResult } from '../utils/imagePickerHelper';
@@ -68,6 +69,7 @@ import {
 import { playAlarmSound } from '../services/notificationService';
 import { CustomAlertModal, CustomAlertState, AlertType } from './CustomAlertModal';
 import { StoreDigitalCardModal } from './StoreDigitalCardModal';
+import { SupportTicketsModal } from './SupportTicketsModal';
 
 interface SettingsScreenProps {
   vendor: VendorUser;
@@ -238,7 +240,7 @@ DigiLocal Vendor is a merchant platform that enables local shops and suppliers o
 
 2. CUSTOMER INFORMATION ACCESSIBLE TO VENDORS
 When a customer places an order, the vendor receives order fulfilment data (customer name, customer phone, tower/block, flat/unit number, delivery address, ordered items, quantity, order value, and order status).
-⚠️ Vendor Data-Use Restrictions:
+VENDOR DATA-USE RESTRICTIONS:
 Customer data is strictly for order fulfilment. Vendors must NOT copy, permanently store, sell, export, share, or misuse customer phone numbers for personal marketing or unsolicited communications. Misuse leads to immediate account termination and legal action.
 
 3. DEVICE PERMISSIONS
@@ -335,31 +337,31 @@ DigiLocal is a hyperlocal digital commerce platform built to connect local vendo
 We believe that the neighbourhood shops people already trust should have access to simple, modern digital tools without having to build their own technology.
 With DigiLocal Vendor, local merchants can manage their business digitally—from products and inventory to customer orders, deliveries and payouts.
 
-🛒 WHAT DIGILOCAL DOES
+CORE PLATFORM CAPABILITIES
 • Create and manage digital store
 • Add products and manage pricing
 • Define product quantities and units (kg, litre, packet, piece, box)
 • Update stock availability in real time
-• Receive instant customer orders with loud sound alarms
+• Receive instant customer orders with prompt audio alerts
 • Manage order status (Preparing, Out for Delivery, Delivered)
 • Track sales and earnings with live analytics
 • Receive automated T+1 payouts directly into bank accounts
 • Serve customers within participating communities efficiently
 
-🏢 BUILT FOR LOCAL COMMERCE
+BUILT FOR LOCAL COMMERCE
 DigiLocal is designed specifically for the unique needs of residential societies, gated communities and local neighbourhood commerce. Instead of relying only on traditional offline ordering, vendors can use DigiLocal to create a convenient digital connection with residents while continuing to operate their local businesses.
 
-🌟 OUR VISION
+OUR VISION
 To make local commerce faster, simpler and more connected. We want residents to discover and order everyday essentials from trusted nearby businesses while giving local vendors the technology they need to grow digitally.
 
-🤝 OUR COMMITMENT
+OUR COMMITMENT
 • Local First: Supporting neighbourhood businesses & community commerce.
 • Simple Technology: Easy-to-use digital tools for vendors.
 • Reliable Service: Rapid response to orders & smooth fulfillment.
 • Transparency: Clear breakdown of orders, commissions & payouts.
 • Community Focus: Built for vendors, residents & housing societies.
 
-🏢 OPERATED BY
+OPERATING DETAILS
 Zordial Technologies Private Limited
 Brand: DigiLocal Technologies
 Support: products@zordial.com
@@ -444,7 +446,7 @@ const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (
 };
 
 // ── Help & Support Modal ──────────────────────────────────────
-const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visible, onClose }) => (
+const HelpModal: React.FC<{ visible: boolean; onClose: () => void; onOpenTickets?: () => void }> = ({ visible, onClose, onOpenTickets }) => (
   <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
     <View style={docStyles.overlay}>
       <View style={[docStyles.sheet, { maxHeight: '94%' }]}>
@@ -455,17 +457,17 @@ const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visibl
         </View>
         <ScrollView showsVerticalScrollIndicator={false}>
           {/* Welcome Banner */}
-          <View style={{ backgroundColor: '#F0F7F2', borderRadius: 12, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: '#D1E5D7' }}>
-            <Text style={{ fontSize: 15, fontWeight: '800', color: '#211A19', marginBottom: 4 }}>
+          <View style={{ backgroundColor: '#F7EEF0', borderRadius: 14, padding: 16, marginBottom: 16, borderWidth: 1, borderColor: '#EEE5DA' }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: '#541D26', marginBottom: 4 }}>
               We're Here to Help
             </Text>
-            <Text style={{ fontSize: 12.5, color: '#3A4D3F', lineHeight: 18 }}>
+            <Text style={{ fontSize: 12.5, color: '#211A19', opacity: 0.85, lineHeight: 18 }}>
               Welcome to DigiLocal Vendor. If you need assistance with your account, orders, payments, products, or any other feature, our support team is here to help.
             </Text>
           </View>
 
           {/* Common Help Topics Header */}
-          <Text style={{ fontSize: 12, fontWeight: '800', color: '#211A19', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 }}>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: '#541D26', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 10 }}>
             Common Help Topics
           </Text>
 
@@ -495,12 +497,12 @@ const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visibl
           />
 
           {/* Contact Support Section */}
-          <Text style={{ fontSize: 12, fontWeight: '800', color: '#211A19', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 18, marginBottom: 10 }}>
+          <Text style={{ fontSize: 12, fontWeight: '800', color: '#541D26', textTransform: 'uppercase', letterSpacing: 0.6, marginTop: 18, marginBottom: 10 }}>
             Contact DigiLocal Support
           </Text>
 
           <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FAF8F5', borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#E7DFD5' }}
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#E7DFD5' }}
             onPress={() => Linking.openURL('mailto:products@zordial.com')}
             activeOpacity={0.85}
           >
@@ -512,7 +514,7 @@ const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visibl
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FAF8F5', borderRadius: 12, padding: 14, marginBottom: 12, borderWidth: 1, borderColor: '#E7DFD5' }}
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: '#E7DFD5' }}
             onPress={() => Linking.openURL('tel:+919461353008')}
             activeOpacity={0.85}
           >
@@ -523,45 +525,66 @@ const HelpModal: React.FC<{ visible: boolean; onClose: () => void }> = ({ visibl
             </View>
           </TouchableOpacity>
 
+          {/* Raise a Ticket Option */}
+          <TouchableOpacity
+            style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFFFF', borderRadius: 14, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: '#E7DFD5' }}
+            onPress={() => {
+              onClose();
+              if (onOpenTickets) onOpenTickets();
+            }}
+            activeOpacity={0.85}
+          >
+            <LifeBuoy size={20} color="#541D26" style={{ marginRight: 12 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#211A19' }}>Raise a Ticket</Text>
+              <Text style={{ fontSize: 12, color: '#78716C', marginTop: 1 }}>Log complaints, billing queries & payout disputes</Text>
+            </View>
+            <ChevronDown size={16} color="#78716C" style={{ transform: [{ rotate: '-90deg' }] }} />
+          </TouchableOpacity>
+
           {/* Operating Entity & Address Info */}
-          <View style={{ backgroundColor: '#FAF8F5', borderRadius: 12, padding: 13, borderWidth: 1, borderColor: '#E7DFD5', marginBottom: 14 }}>
-            <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#541D26', textTransform: 'uppercase', marginBottom: 6 }}>
-              🏢 Operating Entity Details
+          <View style={{ backgroundColor: '#FAF8F5', borderRadius: 14, padding: 14, borderWidth: 1, borderColor: '#E7DFD5', marginBottom: 14 }}>
+            <Text style={{ fontSize: 11.5, fontWeight: '800', color: '#541D26', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              Operating Entity Details
             </Text>
-            <Text style={{ fontSize: 12, color: '#211A19', fontWeight: '600' }}>
+            <Text style={{ fontSize: 12.5, color: '#211A19', fontWeight: '700' }}>
               Zordial Technologies Private Limited
             </Text>
-            <Text style={{ fontSize: 11.5, color: '#4B5563', marginTop: 2 }}>
+            <Text style={{ fontSize: 12, color: '#78716C', marginTop: 2 }}>
               Platform: DigiLocal Technologies
             </Text>
-            <Text style={{ fontSize: 11.5, color: '#4B5563', marginTop: 2 }}>
+            <Text style={{ fontSize: 12, color: '#78716C', marginTop: 2 }}>
               Address: Near Tonk Road, Pratap Nagar, Jaipur, Rajasthan, India
             </Text>
           </View>
 
-          {/* When Contacting Support Checklist */}
-          <View style={{ backgroundColor: '#FFFBEB', borderRadius: 12, padding: 13, borderWidth: 1, borderColor: '#FDE68A', marginBottom: 14 }}>
-            <Text style={{ fontSize: 12, fontWeight: '700', color: '#92400E', marginBottom: 6 }}>
-              📌 When Contacting Support
+          {/* When Contacting Support Guidelines */}
+          <View style={{ backgroundColor: '#FFFBEB', borderRadius: 16, padding: 16, borderWidth: 1.5, borderColor: '#EEE5DA', marginBottom: 14 }}>
+            <Text style={{ fontSize: 13, fontWeight: '800', color: '#541D26', marginBottom: 6, letterSpacing: 0.2 }}>
+              When Contacting Support
             </Text>
-            <Text style={{ fontSize: 11.5, color: '#78350F', lineHeight: 17 }}>
+            <Text style={{ fontSize: 12.5, color: '#211A19', fontWeight: '600', lineHeight: 18 }}>
               Please provide the following whenever applicable:
             </Text>
-            <Text style={{ fontSize: 11.5, color: '#78350F', marginTop: 4, lineHeight: 17 }}>
-              • Vendor/store name&#10;• Registered mobile number&#10;• Order ID & Society name&#10;• Description of the issue&#10;• Relevant screenshots or photographs
+            <Text style={{ fontSize: 12, color: '#78716C', marginTop: 6, lineHeight: 20 }}>
+              • <Text style={{ color: '#211A19', fontWeight: '700' }}>Vendor / store name</Text>{'\n'}
+              • <Text style={{ color: '#211A19', fontWeight: '700' }}>Registered mobile number</Text>{'\n'}
+              • <Text style={{ color: '#211A19', fontWeight: '700' }}>Order ID & Society name</Text>{'\n'}
+              • <Text style={{ color: '#211A19', fontWeight: '700' }}>Description of the issue</Text>{'\n'}
+              • <Text style={{ color: '#211A19', fontWeight: '700' }}>Relevant screenshots or photographs</Text>
             </Text>
-            <Text style={{ fontSize: 11, color: '#92400E', fontStyle: 'italic', marginTop: 5 }}>
+            <Text style={{ fontSize: 11.5, color: '#A88B58', fontStyle: 'italic', marginTop: 8, fontWeight: '600' }}>
               This helps us resolve your issue faster.
             </Text>
           </View>
 
           {/* Important Security Notice */}
-          <View style={{ backgroundColor: '#FEF2F2', borderRadius: 12, padding: 13, borderWidth: 1, borderColor: '#FECACA', marginBottom: 20 }}>
-            <Text style={{ fontSize: 12, fontWeight: '800', color: '#991B1B', marginBottom: 4 }}>
-              ⚠️ Important Security Notice
+          <View style={{ backgroundColor: '#F7EEF0', borderRadius: 16, padding: 16, borderWidth: 1.5, borderColor: '#D6B7A5', marginBottom: 20 }}>
+            <Text style={{ fontSize: 12.5, fontWeight: '800', color: '#541D26', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 6 }}>
+              Security Advisory
             </Text>
-            <Text style={{ fontSize: 11.5, color: '#7F1D1D', lineHeight: 16 }}>
-              DigiLocal Support will never ask you to share your OTP, password, UPI PIN, ATM PIN or other confidential authentication credentials. For security reasons, do not share such information with anyone claiming to represent DigiLocal.
+            <Text style={{ fontSize: 12, color: '#211A19', lineHeight: 18 }}>
+              DigiLocal Support will never ask you to share your OTP, password, UPI PIN, ATM PIN or other confidential credentials. For security reasons, do not share sensitive information with anyone.
             </Text>
           </View>
         </ScrollView>
@@ -665,6 +688,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   // Modals
   const [showQR, setShowQR] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showTickets, setShowTickets] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -700,11 +724,11 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   const [workingDays, setWorkingDays] = useState(vendor.working_days || 'Mon – Sat');
   const [whatsappNumber, setWhatsappNumber] = useState(vendor.whatsapp_number || vendor.phone_number || '');
 
-  const [gstPercent, setGstPercent] = useState('5');
-  const [serviceChargePercent, setServiceChargePercent] = useState('0');
-  const [deliveryCharge, setDeliveryCharge] = useState('20');
-  const [minOrderVal, setMinOrderVal] = useState('0');
-  const [maxQtyLimit, setMaxQtyLimit] = useState('10');
+  const [gstPercent, setGstPercent] = useState(vendor.gst_percentage ? String(vendor.gst_percentage) : '');
+  const [serviceChargePercent, setServiceChargePercent] = useState(vendor.service_charge_percentage ? String(vendor.service_charge_percentage) : '');
+  const [deliveryCharge, setDeliveryCharge] = useState(vendor.delivery_charge ? String(vendor.delivery_charge) : '');
+  const [minOrderVal, setMinOrderVal] = useState(vendor.min_order_value ? String(vendor.min_order_value) : '');
+  const [maxQtyLimit, setMaxQtyLimit] = useState(vendor.max_quantity_limit ? String(vendor.max_quantity_limit) : '');
   const [savingSettings, setSavingSettings] = useState(false);
 
   const handleSaveStoreConfigs = async () => {
@@ -930,10 +954,10 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
         </View>
 
         {/* Digital Card Button */}
-        <TouchableOpacity style={styles.digitalCardBtn} onPress={() => setShowQR(true)} activeOpacity={0.88}>
-          <QrCode size={15} color="#211A19" style={{ marginRight: 8 }} />
+        <TouchableOpacity style={styles.digitalCardBtn} onPress={() => setShowQR(true)} activeOpacity={0.85}>
+          <QrCode size={16} color="#541D26" style={{ marginRight: 10 }} />
           <Text style={styles.digitalCardBtnText}>View Digital Store Card & QR</Text>
-          <ExternalLink size={13} color="#211A19" style={{ marginLeft: 'auto' }} />
+          <ExternalLink size={14} color="#541D26" style={{ marginLeft: 'auto' }} />
         </TouchableOpacity>
       </View>
 
@@ -1351,7 +1375,8 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
         onClose={() => setShowQR(false)}
         onExploreVendors={onExploreVendors}
       />
-      <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} />
+      <HelpModal visible={showHelp} onClose={() => setShowHelp(false)} onOpenTickets={() => setShowTickets(true)} />
+      <SupportTicketsModal visible={showTickets} onClose={() => setShowTickets(false)} vendor={vendor} />
       <DocumentModal visible={showAbout} title="About DigiLocal" content={ABOUT_CONTENT} onClose={() => setShowAbout(false)} />
       <DocumentModal visible={showPrivacy} title="Privacy Policy" content={PRIVACY_CONTENT} onClose={() => setShowPrivacy(false)} />
       <DocumentModal visible={showTerms} title="Terms & Conditions" content={TERMS_CONTENT} onClose={() => setShowTerms(false)} />
@@ -1518,7 +1543,7 @@ const styles = StyleSheet.create({
     width: 58,
     height: 58,
     borderRadius: 18,
-    backgroundColor: '#211A19',
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 14,
@@ -1549,15 +1574,15 @@ const styles = StyleSheet.create({
   digitalCardBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#EEE5DA',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    backgroundColor: '#FAF8F5',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 13,
     marginTop: 14,
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#E7DFD5',
   },
-  digitalCardBtnText: { fontSize: 13, fontWeight: '700', color: '#211A19' },
+  digitalCardBtnText: { fontSize: 13.5, fontWeight: '700', color: '#211A19' },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
   cardTitle: { fontSize: 14, fontWeight: '800', color: '#211A19' },
   subDetailsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 },
@@ -1569,12 +1594,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: 46,
     borderRadius: 12,
-    backgroundColor: '#211A19',
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 4,
   },
-  renewBtnText: { color: '#F8F5EE', fontSize: 13, fontWeight: '700' },
+  renewBtnText: { color: '#FAF8F5', fontSize: 13, fontWeight: '700' },
   infoLine: { flexDirection: 'row', alignItems: 'center', paddingVertical: 7 },
   infoLineText: { fontSize: 13, fontWeight: '500', color: '#211A19' },
   sectionHeading: {
@@ -1619,28 +1644,28 @@ const styles = StyleSheet.create({
   dropdownTriggerText: {
     flex: 1,
     fontSize: 13,
-    color: '#111827',
+    color: '#211A19',
     fontWeight: '600',
   },
   saveConfigsBtn: {
     flexDirection: 'row',
     height: 46,
     borderRadius: 12,
-    backgroundColor: '#C8A878',
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 18,
   },
-  saveConfigsBtnText: { color: '#FFFFFF', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  saveConfigsBtnText: { color: '#FAF8F5', fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
   testBtn: {
     flexDirection: 'row',
     height: 44,
     borderRadius: 12,
-    backgroundColor: '#211A19',
+    backgroundColor: '#541D26',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  testBtnText: { color: '#F8F5EE', fontSize: 13, fontWeight: '700' },
+  testBtnText: { color: '#FAF8F5', fontSize: 13, fontWeight: '700' },
   settingsRowItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1676,9 +1701,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: 50,
     borderRadius: 14,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: '#FEF2F2',
     borderWidth: 1,
-    borderColor: '#FCA5A5',
+    borderColor: '#FECACA',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -1708,8 +1733,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF8F5',
   },
   bizTypeBtnActive: {
-    backgroundColor: '#211A19',
-    borderColor: '#211A19',
+    backgroundColor: '#541D26',
+    borderColor: '#541D26',
   },
   bizTypeBtnText: {
     fontSize: 12,
@@ -1718,6 +1743,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   bizTypeBtnTextActive: {
-    color: '#FFFFFF',
+    color: '#FAF8F5',
   },
 });

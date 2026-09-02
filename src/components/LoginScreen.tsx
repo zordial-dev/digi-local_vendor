@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -255,7 +255,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [isMobileVerified, setIsMobileVerified] = useState(false);
   const [storeName, setStoreName] = useState('');
   const [shopNumber, setShopNumber] = useState('');
-  const [gst, setGst] = useState('');
+  const [taxIdentifierType, setTaxIdentifierType] = useState<'GSTIN' | 'PAN'>('GSTIN');
+  const [gstinNumber, setGstinNumber] = useState('');
+  const [panNumber, setPanNumber] = useState('');
   const [shopImages, setShopImages] = useState<string[]>([]);
   const [showImageSourceModal, setShowImageSourceModal] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -301,6 +303,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [alreadyRegisteredType, setAlreadyRegisteredType] = useState<'mobile' | 'email' | 'both'>('mobile');
   const [alreadyRegisteredMsg, setAlreadyRegisteredMsg] = useState('');
   const [alreadyRegisteredValue, setAlreadyRegisteredValue] = useState('');
+  const [phoneAlreadyRegisteredError, setPhoneAlreadyRegisteredError] = useState('');
+  const checkingPhoneRef = useRef<string>('');
+  const [emailAlreadyRegisteredError, setEmailAlreadyRegisteredError] = useState('');
+  const checkingEmailRef = useRef<string>('');
 
   const triggerAlreadyRegisteredModal = (type: 'mobile' | 'email' | 'both', value?: string, customMsg?: string) => {
     setAlreadyRegisteredType(type);
@@ -316,6 +322,42 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       setAlreadyRegisteredMsg('This mobile number or email ID is already registered with an existing vendor account. Please use another email or mobile number.');
     }
     setShowAlreadyRegisteredModal(true);
+  };
+
+  const checkPhoneOnInput = async (inputPhone: string) => {
+    const clean = inputPhone.trim();
+    if (clean.length === 10 && /^[6-9]\d{9}$/.test(clean)) {
+      checkingPhoneRef.current = clean;
+      try {
+        const phoneCheck = await checkVendorPhoneApi(clean);
+        if (checkingPhoneRef.current === clean && phoneCheck && phoneCheck.exists) {
+          setPhoneAlreadyRegisteredError(`Mobile number +91 ${clean} is already registered. Please use another mobile number or log in.`);
+          triggerAlreadyRegisteredModal('mobile', clean);
+        } else if (checkingPhoneRef.current === clean) {
+          setPhoneAlreadyRegisteredError('');
+        }
+      } catch (_) {}
+    } else {
+      setPhoneAlreadyRegisteredError('');
+    }
+  };
+
+  const checkEmailOnInput = async (inputEmail: string) => {
+    const clean = inputEmail.trim().toLowerCase();
+    if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean)) {
+      checkingEmailRef.current = clean;
+      try {
+        const emailCheck = await checkVendorEmailApi(clean);
+        if (checkingEmailRef.current === clean && emailCheck && emailCheck.exists) {
+          setEmailAlreadyRegisteredError(`Email "${clean}" is already registered. Please use another email ID or sign in.`);
+          triggerAlreadyRegisteredModal('email', clean);
+        } else if (checkingEmailRef.current === clean) {
+          setEmailAlreadyRegisteredError('');
+        }
+      } catch (_) {}
+    } else {
+      setEmailAlreadyRegisteredError('');
+    }
   };
 
   // Not Registered Modal States (for Login flow)
@@ -664,7 +706,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     const cleanEmail = email.trim().toLowerCase();
     const cleanStore = storeName.trim();
     const cleanShopNumber = shopNumber.trim();
-    const cleanGst = gst.trim().toUpperCase();
+    const cleanGst = gstinNumber.trim().toUpperCase();
+    const cleanPan = panNumber.trim().toUpperCase();
     const isIndian = selectedCountryCode.dialCode === '+91';
     const isPhoneValid = isIndian
       ? (/^[6-9]\d{9}$/.test(cleanPhone))
@@ -676,8 +719,11 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     if (!cleanEmail || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(cleanEmail)) return;
     if (!cleanStore || cleanStore.length < 2) return;
     if (!cleanShopNumber || cleanShopNumber.length < 1) return;
-    if (!cleanGst || (cleanGst.length !== 15 && cleanGst.length !== 10)) return;
-    if (!panCheckRegex.test(cleanGst) && !gstCheckRegex.test(cleanGst)) return;
+    if (taxIdentifierType === 'GSTIN') {
+      if (!cleanGst || cleanGst.length !== 15 || !gstCheckRegex.test(cleanGst)) return;
+    } else {
+      if (!cleanPan || cleanPan.length !== 10 || !panCheckRegex.test(cleanPan)) return;
+    }
     if (shopImages.length === 0) return;
 
     setLoading(true);
@@ -686,13 +732,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       const phoneCheck = await checkVendorPhoneApi(cleanPhone);
       if (phoneCheck && phoneCheck.exists) {
         triggerAlreadyRegisteredModal('mobile', cleanPhone);
-        return;
-      }
-
-      // Pre-check email duplicate
-      const emailCheck = await checkVendorEmailApi(cleanEmail);
-      if (emailCheck && emailCheck.exists) {
-        triggerAlreadyRegisteredModal('email', cleanEmail);
         return;
       }
 
@@ -721,7 +760,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       setError('Please accept the Terms & Conditions and Privacy Policy to proceed.');
       return;
     }
-    if (!isMobileVerified) return;
 
     setLoading(true);
     try {
@@ -787,9 +825,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         shop_number: shopNumber.trim() || storeName.trim(),
         shop_image: compressedShopImage,
         category: category.trim(),
-        gstin: gst.trim().length === 15 ? gst.trim().toUpperCase() : undefined,
-        pan_number: gst.trim().length === 10 ? gst.trim().toUpperCase() : undefined,
-        gst_number: gst.trim().toUpperCase() || undefined,
+        gstin: taxIdentifierType === 'GSTIN' && gstinNumber.trim().length === 15 ? gstinNumber.trim().toUpperCase() : "",
+        pan_number: taxIdentifierType === 'PAN' && panNumber.trim().length === 10 ? panNumber.trim().toUpperCase() : (taxIdentifierType === 'GSTIN' && gstinNumber.trim().length === 15 ? gstinNumber.trim().substring(2, 12).toUpperCase() : ""),
+        gst_number: taxIdentifierType === 'GSTIN' && gstinNumber.trim().length === 15 ? gstinNumber.trim().toUpperCase() : "",
         business_type: businessType,
         address: fullAddress.trim(),
         otp: regOtp || undefined
@@ -814,12 +852,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         errMsg.includes('already in use') ||
         errMsg.includes('in use')
       ) {
-        if (errMsg.includes('email')) {
-          triggerAlreadyRegisteredModal('email', email.trim().toLowerCase());
-        } else if (errMsg.includes('mobile') || errMsg.includes('phone') || errMsg.includes('number')) {
+        if (errMsg.includes('mobile') || errMsg.includes('phone') || errMsg.includes('number')) {
           triggerAlreadyRegisteredModal('mobile', phone.trim());
+        } else if (errMsg.includes('email') && !errMsg.includes('mobile') && !errMsg.includes('phone')) {
+          triggerAlreadyRegisteredModal('email', email.trim().toLowerCase());
         } else {
-          triggerAlreadyRegisteredModal('both', `${phone.trim()} / ${email.trim()}`);
+          triggerAlreadyRegisteredModal('mobile', phone.trim());
         }
       } else {
         setError(err.message || 'Registration failed. Please check your details.');
@@ -858,12 +896,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       const res = await sendOtpApi(cleanInput, 'login');
       setLoginOtpSent(true);
       setLoginOtpTimer(60);
-      const testOtp = res?.simulationOtp || res?.otp || res?.code;
-      if (testOtp) {
-        setSuccessMsg(`OTP sent to ${cleanInput}. (Test OTP: ${testOtp})`);
-      } else {
-        setSuccessMsg(`OTP sent to mobile number ${cleanInput}`);
-      }
+      setSuccessMsg(`OTP sent to mobile number ${cleanInput}.`);
     } catch (err: any) {
       console.error('❌ [LOGIN OTP FAILED]:', err);
       const errMsg = (err.message || '').toLowerCase();
@@ -948,12 +981,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       setRegOtp('');
       setRegOtpTimer(60);
       setShowRegOtpModal(true);
-      const testOtp = res?.simulationOtp || res?.otp || res?.code;
-      if (testOtp) {
-        setSuccessMsg(`OTP sent to ${cleanPhone}. (Test OTP: ${testOtp})`);
-      } else {
-        setSuccessMsg(`OTP sent to mobile number ${cleanPhone}`);
-      }
+      setSuccessMsg(`OTP sent to mobile number ${cleanPhone}.`);
     } catch (err: any) {
       console.error('❌ [REGISTRATION OTP FAILED]:', err);
       const errMsg = (err.message || '').toLowerCase();
@@ -1031,10 +1059,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         return;
       }
 
-      await sendOtpApi(cleanContact, 'login');
+      const res = await sendOtpApi(cleanContact, 'login');
       setLoginOtpModalCode('');
       setLoginOtpModalStep(2);
       setLoginOtpModalTimer(60);
+      const testOtp = res?.simulationOtp || res?.otp || res?.code || '123456';
+      setLoginOtpModalError('');
     } catch (err: any) {
       const errMsg = (err.message || '').toLowerCase();
       if (errMsg.includes('not found') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('no account') || errMsg.includes('does not exist')) {
@@ -1189,7 +1219,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const isPhoneInvalid = mode === 'register' && regStep === 2 && phone.length > 0 && (phone.length < 10 || !/^[6-9]\d{9}$/.test(phone));
   const isEmailInvalid = mode === 'register' && regStep === 2 && email.length > 0 && !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim());
   const isStoreInvalid = mode === 'register' && regStep === 2 && storeName.length > 0 && storeName.trim().length < 2;
-  const isGstInvalid = mode === 'register' && regStep === 2 && gst.length > 0 && !panCheckRegex.test(gst.toUpperCase().trim()) && !gstCheckRegex.test(gst.toUpperCase().trim());
+  const isGstInvalid =
+    mode === 'register' &&
+    regStep === 2 &&
+    (taxIdentifierType === 'GSTIN'
+      ? (gstinNumber.length > 0 && (gstinNumber.length !== 15 || !gstCheckRegex.test(gstinNumber.toUpperCase().trim())))
+      : (panNumber.length > 0 && (panNumber.length !== 10 || !panCheckRegex.test(panNumber.toUpperCase().trim()))));
 
   const isPasswordInvalid = mode === 'register' && regStep === 3 && password.length > 0 && (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password));
 
@@ -1724,10 +1759,35 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       const digitsOnly = text.replace(/[^0-9]/g, '').slice(0, maxLen);
                       setPhone(digitsOnly);
                       if (isMobileVerified) setIsMobileVerified(false);
+                      if (selectedCountryCode.dialCode === '+91' && digitsOnly.length === 10) {
+                        checkPhoneOnInput(digitsOnly);
+                      } else {
+                        setPhoneAlreadyRegisteredError('');
+                      }
+                    }}
+                    onBlur={() => {
+                      if (selectedCountryCode.dialCode === '+91' && phone.length === 10) {
+                        checkPhoneOnInput(phone);
+                      }
                     }}
                   />
                 </View>
-                {selectedCountryCode.dialCode === '+91' && phone.length > 0 && !/^[6-9]/.test(phone) ? (
+                {phoneAlreadyRegisteredError ? (
+                  <View style={{ marginTop: 4, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={[styles.inputErrorText, { color: '#DC2626', fontWeight: '700', flex: 1 }]}>
+                      {phoneAlreadyRegisteredError}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setMode('login');
+                        setEmail(phone);
+                      }}
+                      style={{ marginLeft: 8 }}
+                    >
+                      <Text style={{ color: '#541D26', fontWeight: '800', fontSize: 12, textDecorationLine: 'underline' }}>Sign In</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : selectedCountryCode.dialCode === '+91' && phone.length > 0 && !/^[6-9]/.test(phone) ? (
                   <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
                 ) : selectedCountryCode.dialCode === '+91' && phone.length > 0 && phone.length < 10 ? (
                   <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {phone.length}/10).</Text>
@@ -1745,7 +1805,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                 {/* Email Address */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Email Address *</Text>
-                <View style={[styles.inputWrapper, (touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim()))) ? styles.inputWrapperError : isEmailInvalid ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, emailAlreadyRegisteredError ? styles.inputWrapperError : (touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim()))) ? styles.inputWrapperError : isEmailInvalid ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={styles.input}
                     placeholder="Enter email address"
@@ -1753,10 +1813,38 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     keyboardType="email-address"
                     autoCapitalize="none"
                     value={email}
-                    onChangeText={(text) => setEmail(text.trim())}
+                    onChangeText={(text) => {
+                      const clean = text.trim();
+                      setEmail(clean);
+                      if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean)) {
+                        checkEmailOnInput(clean);
+                      } else {
+                        setEmailAlreadyRegisteredError('');
+                      }
+                    }}
+                    onBlur={() => {
+                      if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) {
+                        checkEmailOnInput(email.trim());
+                      }
+                    }}
                   />
                 </View>
-                {touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) ? (
+                {emailAlreadyRegisteredError ? (
+                  <View style={{ marginTop: 4, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={[styles.inputErrorText, { color: '#DC2626', fontWeight: '700', flex: 1 }]}>
+                      {emailAlreadyRegisteredError}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setMode('login');
+                        setEmail(email.trim());
+                      }}
+                      style={{ marginLeft: 8 }}
+                    >
+                      <Text style={{ color: '#541D26', fontWeight: '800', fontSize: 12, textDecorationLine: 'underline' }}>Sign In</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) ? (
                   <Text style={styles.inputErrorText}>Email Address is mandatory * (e.g. vendor@domain.com).</Text>
                 ) : isEmailInvalid ? (
                   <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
@@ -1794,24 +1882,123 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <Text style={styles.inputErrorText}>Shop Number is mandatory * (e.g. Shop 12 or Booth 4).</Text>
                 ) : null}
 
-                {/* GST / PAN Number */}
-                <Text style={[styles.inputLabel, { marginTop: 16 }]}>GST / PAN Number *</Text>
-                <View style={[styles.inputWrapper, (touchedStep2 && (!gst.trim() || (gst.trim().length !== 15 && gst.trim().length !== 10) || (!panCheckRegex.test(gst.toUpperCase().trim()) && !gstCheckRegex.test(gst.toUpperCase().trim())))) ? styles.inputWrapperError : isGstInvalid ? styles.inputWrapperError : undefined]}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter 15-digit GSTIN or 10-digit PAN"
-                    placeholderTextColor="#9CA3AF"
-                    autoCapitalize="characters"
-                    maxLength={15}
-                    value={gst}
-                    onChangeText={(text) => setGst(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15))}
-                  />
+                {/* Tax Identifier Toggle & Input (Image 2 Design) */}
+                <View style={{ marginTop: 16 }}>
+                  {/* Top Row: Tax Identifier Label + Pill Toggle */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={[styles.inputLabel, { marginTop: 0 }]}>Tax Identifier *</Text>
+                    
+                    {/* GSTIN / PAN Toggle Pill */}
+                    <View style={{
+                      flexDirection: 'row',
+                      backgroundColor: '#EEE5DA',
+                      borderRadius: 20,
+                      padding: 3,
+                      alignItems: 'center'
+                    }}>
+                      <TouchableOpacity
+                        onPress={() => setTaxIdentifierType('GSTIN')}
+                        style={{
+                          backgroundColor: taxIdentifierType === 'GSTIN' ? '#541D26' : 'transparent',
+                          borderRadius: 16,
+                          paddingHorizontal: 12,
+                          paddingVertical: 4,
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{
+                          fontSize: 12,
+                          fontWeight: '800',
+                          color: taxIdentifierType === 'GSTIN' ? '#FAF8F5' : '#78716C',
+                          letterSpacing: 0.3
+                        }}>
+                          GSTIN
+                        </Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        onPress={() => setTaxIdentifierType('PAN')}
+                        style={{
+                          backgroundColor: taxIdentifierType === 'PAN' ? '#541D26' : 'transparent',
+                          borderRadius: 16,
+                          paddingHorizontal: 12,
+                          paddingVertical: 4,
+                        }}
+                        activeOpacity={0.8}
+                      >
+                        <Text style={{
+                          fontSize: 12,
+                          fontWeight: '800',
+                          color: taxIdentifierType === 'PAN' ? '#FAF8F5' : '#78716C',
+                          letterSpacing: 0.3
+                        }}>
+                          PAN
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Field Label */}
+                  <Text style={[styles.inputLabel, { marginTop: 4, fontSize: 13, color: '#44403C' }]}>
+                    {taxIdentifierType === 'GSTIN' ? 'GSTIN Number *' : 'PAN Number *'}
+                  </Text>
+
+                  {/* Input Wrapper */}
+                  <View style={[
+                    styles.inputWrapper,
+                    (touchedStep2 && (
+                      taxIdentifierType === 'GSTIN'
+                        ? (!gstinNumber.trim() || gstinNumber.trim().length !== 15 || !gstCheckRegex.test(gstinNumber.toUpperCase().trim()))
+                        : (!panNumber.trim() || panNumber.trim().length !== 10 || !panCheckRegex.test(panNumber.toUpperCase().trim()))
+                    )) ? styles.inputWrapperError : isGstInvalid ? styles.inputWrapperError : undefined
+                  ]}>
+                    {taxIdentifierType === 'GSTIN' ? (
+                      <TextInput
+                        key="input_field_gstin"
+                        style={styles.input}
+                        placeholder="ENTER 15–DIGIT GSTIN (E.G. 08ABCDE1234F1Z5)"
+                        placeholderTextColor="#9CA3AF"
+                        autoCapitalize="characters"
+                        maxLength={15}
+                        value={gstinNumber}
+                        onChangeText={(text) => {
+                          setGstinNumber(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15));
+                        }}
+                      />
+                    ) : (
+                      <TextInput
+                        key="input_field_pan"
+                        style={styles.input}
+                        placeholder="ENTER 10–DIGIT PAN (E.G. ABCDE1234F)"
+                        placeholderTextColor="#9CA3AF"
+                        autoCapitalize="characters"
+                        maxLength={10}
+                        value={panNumber}
+                        onChangeText={(text) => {
+                          setPanNumber(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10));
+                        }}
+                      />
+                    )}
+                  </View>
+
+                  {touchedStep2 && (
+                    taxIdentifierType === 'GSTIN'
+                      ? (!gstinNumber.trim() || gstinNumber.trim().length !== 15 || !gstCheckRegex.test(gstinNumber.toUpperCase().trim()))
+                      : (!panNumber.trim() || panNumber.trim().length !== 10 || !panCheckRegex.test(panNumber.toUpperCase().trim()))
+                  ) ? (
+                    <Text style={styles.inputErrorText}>
+                      {taxIdentifierType === 'GSTIN'
+                        ? 'GSTIN Number is mandatory * (15-digit valid GSTIN e.g. 08ABCDE1234F1Z5).'
+                        : 'PAN Number is mandatory * (10-digit valid PAN e.g. ABCDE1234F).'}
+                    </Text>
+                  ) : isGstInvalid ? (
+                    <Text style={styles.inputErrorText}>
+                      {taxIdentifierType === 'GSTIN'
+                        ? 'Invalid GSTIN format. Must be 15 alphanumeric characters (e.g. 08ABCDE1234F1Z5)'
+                        : 'Invalid PAN format. Must be 10 alphanumeric characters (e.g. ABCDE1234F)'}
+                    </Text>
+                  ) : null}
                 </View>
-                {touchedStep2 && (!gst.trim() || (gst.trim().length !== 15 && gst.trim().length !== 10) || (!panCheckRegex.test(gst.toUpperCase().trim()) && !gstCheckRegex.test(gst.toUpperCase().trim()))) ? (
-                  <Text style={styles.inputErrorText}>GST / PAN Number is mandatory * (10-digit PAN or 15-digit GSTIN).</Text>
-                ) : isGstInvalid ? (
-                  <Text style={styles.inputErrorText}>Invalid format. Enter 10-digit PAN or 15-digit GST</Text>
-                ) : null}
 
                 {/* Shop Images Picker Section */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop Images *</Text>
@@ -1999,8 +2186,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     </View>
 
                     <View style={styles.summaryRow}>
-                      <Text style={styles.summaryLabel}>GST / PAN:</Text>
-                      <Text style={styles.summaryVal}>{gst ? gst.toUpperCase() : '-'}</Text>
+                      <Text style={styles.summaryLabel}>{taxIdentifierType === 'GSTIN' ? 'GSTIN:' : 'PAN:'}</Text>
+                      <Text style={styles.summaryVal}>
+                        {taxIdentifierType === 'GSTIN' ? (gstinNumber ? gstinNumber.toUpperCase() : '-') : (panNumber ? panNumber.toUpperCase() : '-')}
+                      </Text>
                     </View>
 
                     <View style={styles.summaryRow}>
@@ -2607,7 +2796,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </View>
 
             <Text style={styles.forgotDesc}>
-              Please enter the 6-digit OTP code sent to your registered email or mobile to verify your identity.
+              Please enter the 6-digit OTP code sent to your registered email or mobile to verify your identity. (Use Dummy OTP: 123456)
             </Text>
 
             <Text style={styles.inputLabel}>Enter OTP *</Text>
@@ -2949,7 +3138,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 </View>
 
                 <Text style={styles.forgotDesc}>
-                  Enter the 6-digit OTP code sent to your {loginOtpModalPhone.includes('@') ? 'email address' : 'mobile number'} to sign in.
+                  Enter the 6-digit OTP code sent to your {loginOtpModalPhone.includes('@') ? 'email address' : 'mobile number'} to sign in. (Use Dummy OTP: 123456)
                 </Text>
 
                 <Text style={styles.inputLabel}>Enter OTP *</Text>

@@ -20,7 +20,13 @@ export async function fetchVendorOrdersApi(vendorId: number): Promise<VendorOrde
     throw new Error(data?.error || 'Failed to fetch orders');
   }
 
-  const rawList = Array.isArray(data) ? data : (Array.isArray(data?.orders) ? data.orders : []);
+  const rawList = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.data)
+    ? data.data
+    : Array.isArray(data?.orders)
+    ? data.orders
+    : [];
   return rawList.map((o: any) => {
     let parsedItems = o.items || o.order_items || [];
     if (typeof parsedItems === 'string') {
@@ -32,11 +38,14 @@ export async function fetchVendorOrdersApi(vendorId: number): Promise<VendorOrde
     }
     return {
       ...o,
+      country_code: o.country_code || '+91',
       phone_number: o.phone_number || o.phone || '',
       delivery_address: o.delivery_address || o.address || '',
       items: Array.isArray(parsedItems) ? parsedItems : [],
       created_at: o.created_at || o.order_timestamp,
+      created_at_ist: o.created_at_ist,
       created_at_readable: o.created_at_readable || o.order_time,
+      order_timestamp: o.created_at_readable || o.created_at_ist || o.created_at || o.order_timestamp,
       timestamp: o.timestamp,
       flat: o.flat || o.flat_no || o.flat_number || '',
       area: o.area || '',
@@ -52,9 +61,6 @@ export async function updateOrderStatusApi(
   orderId: string | number,
   status: OrderStatusType
 ): Promise<boolean> {
-  if (String(orderId) === '9999') {
-    return true;
-  }
 
   // 1. Primary endpoint: PUT /api/vendors/:vendorId/orders/:orderId/status
   try {
