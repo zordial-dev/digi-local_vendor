@@ -10,7 +10,9 @@ import {
   ActivityIndicator,
   Alert,
   SafeAreaView,
-  StatusBar
+  StatusBar,
+  KeyboardAvoidingView,
+  Platform
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import {
@@ -264,11 +266,12 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
           </TouchableOpacity>
         </View>
 
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-        >
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
           {activeTab === 'history' ? (
             <View style={styles.historyContainer}>
               <View style={styles.historyHeaderRow}>
@@ -595,6 +598,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
             </View>
           )}
         </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
 
       {/* Category Dropdown Picker Modal */}

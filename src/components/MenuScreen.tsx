@@ -1026,7 +1026,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
       {/* Add / Edit Product or Service Modal */}
       <Modal visible={isModalOpen} transparent animationType="slide">
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
           style={styles.modalOverlay}
         >
           <View style={[styles.modalCard, isService && styles.serviceModalCard]}>

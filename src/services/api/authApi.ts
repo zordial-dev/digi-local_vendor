@@ -271,7 +271,7 @@ export async function registerVendorApi(payload: RegisterVendorPayload): Promise
     const cleanWhatsapp = payload.whatsapp_number || payload.whatsapp || cleanPhone;
     const cleanShopNo = payload.shop_number || payload.shop_no || payload.shopNumber || 'Shop #1';
     const defaultShopImg = 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=600&q=80';
-    const cleanShopImg = payload.shop_image || payload.logo || payload.image_url || defaultShopImg;
+    const cleanShopImg = payload.shop_image || payload.image_url || defaultShopImg;
     const cleanCategory = payload.category || 'General';
     const cleanGstin = payload.gstin || (payload.gst_number && payload.gst_number.length === 15 ? payload.gst_number : undefined);
     const cleanPan = payload.pan_number || (payload.gst_number && payload.gst_number.length === 10 ? payload.gst_number : undefined) || payload.pan;
@@ -400,10 +400,10 @@ export async function registerVendorApi(payload: RegisterVendorPayload): Promise
       pincode: (rawVendor && rawVendor.pincode) || cleanPincode,
       whatsapp_number: (rawVendor && rawVendor.whatsapp_number) || cleanWhatsapp,
       shop_image: (rawVendor && (rawVendor.shop_image || rawVendor.image_url)) || cleanShopImg,
-      logo_url: (rawVendor && (rawVendor.logo_url || rawVendor.logo || rawVendor.store_logo)) || '',
+      logo_url: (rawVendor && (rawVendor.logo_url || rawVendor.store_logo)) ? (rawVendor.logo_url || rawVendor.store_logo) : (rawVendor && rawVendor.logo && rawVendor.logo !== rawVendor.shop_image && rawVendor.logo !== rawVendor.image_url ? rawVendor.logo : ''),
       image_url: (rawVendor && (rawVendor.image_url || rawVendor.shop_image)) || cleanShopImg,
-      logo: (rawVendor && (rawVendor.logo || rawVendor.logo_url || rawVendor.store_logo)) || '',
-      store_logo: (rawVendor && (rawVendor.store_logo || rawVendor.logo || rawVendor.logo_url)) || '',
+      logo: (rawVendor && rawVendor.logo && rawVendor.logo !== rawVendor.shop_image && rawVendor.logo !== rawVendor.image_url) ? rawVendor.logo : (rawVendor && (rawVendor.logo_url || rawVendor.store_logo) ? (rawVendor.logo_url || rawVendor.store_logo) : ''),
+      store_logo: (rawVendor && (rawVendor.store_logo || rawVendor.logo_url)) ? (rawVendor.store_logo || rawVendor.logo_url) : (rawVendor && rawVendor.logo && rawVendor.logo !== rawVendor.shop_image && rawVendor.logo !== rawVendor.image_url ? rawVendor.logo : ''),
       gstin: (rawVendor && rawVendor.gstin) || cleanGstin,
       pan_number: (rawVendor && rawVendor.pan_number) || cleanPan,
       created_at: (rawVendor && rawVendor.created_at) || data.created_at,

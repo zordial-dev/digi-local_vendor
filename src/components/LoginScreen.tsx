@@ -1371,7 +1371,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: '#F8F6F0' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
     >
       <StatusBar barStyle="dark-content" backgroundColor="#F8F6F0" />

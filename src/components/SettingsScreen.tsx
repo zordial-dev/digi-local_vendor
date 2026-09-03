@@ -1131,32 +1131,44 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       {/* Store Header Card */}
       <View style={styles.card}>
         <View style={styles.storeHeader}>
-          <TouchableOpacity
-            style={styles.avatarBox}
-            onPress={handleUploadStoreLogo}
-            activeOpacity={0.85}
-          >
-            {vendor.logo_url || vendor.logo || vendor.store_logo ? (
-              <Image
-                source={{ uri: vendor.logo_url || vendor.logo || vendor.store_logo }}
-                style={{ width: 56, height: 56, borderRadius: 16 }}
-              />
-            ) : (
-              <Store color="#ffffff" size={28} />
-            )}
-            <View style={styles.qrBadge}>
-              <Camera size={10} color="#FFFFFF" />
-            </View>
-          </TouchableOpacity>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.storeTitle}>{vendor.store_name}</Text>
-            <Text style={styles.vendorName}>Owner: {vendor.vendor_name}</Text>
-            <TouchableOpacity onPress={handleUploadStoreLogo} style={{ marginTop: 3 }}>
-              <Text style={{ fontSize: 11.5, color: '#541D26', fontWeight: '700' }}>
-                {vendor.logo_url || vendor.logo || vendor.store_logo ? 'Change Store Logo' : '+ Add Store Logo'}
-              </Text>
-            </TouchableOpacity>
-          </View>
+          {(() => {
+            const storeLogoUri = (
+              vendor.logo_url && vendor.logo_url !== vendor.shop_image && vendor.logo_url !== vendor.image_url ? vendor.logo_url :
+              vendor.logo && vendor.logo !== vendor.shop_image && vendor.logo !== vendor.image_url ? vendor.logo :
+              vendor.store_logo && vendor.store_logo !== vendor.shop_image && vendor.store_logo !== vendor.image_url ? vendor.store_logo :
+              ''
+            );
+            return (
+              <>
+                <TouchableOpacity
+                  style={styles.avatarBox}
+                  onPress={handleUploadStoreLogo}
+                  activeOpacity={0.85}
+                >
+                  {storeLogoUri ? (
+                    <Image
+                      source={{ uri: storeLogoUri }}
+                      style={{ width: 56, height: 56, borderRadius: 16 }}
+                    />
+                  ) : (
+                    <Store color="#ffffff" size={28} />
+                  )}
+                  <View style={styles.qrBadge}>
+                    <Camera size={10} color="#FFFFFF" />
+                  </View>
+                </TouchableOpacity>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.storeTitle}>{vendor.store_name}</Text>
+                  <Text style={styles.vendorName}>Owner: {vendor.vendor_name}</Text>
+                  <TouchableOpacity onPress={handleUploadStoreLogo} style={{ marginTop: 3 }}>
+                    <Text style={{ fontSize: 11.5, color: '#541D26', fontWeight: '700' }}>
+                      {storeLogoUri ? 'Change Store Logo' : '+ Add Store Logo'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            );
+          })()}
         </View>
 
         {/* Digital Card Button */}

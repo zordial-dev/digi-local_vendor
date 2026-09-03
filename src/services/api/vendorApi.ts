@@ -430,14 +430,14 @@ export async function uploadMediaApi(
   base64OrUri: string,
   filename?: string,
   fileType?: string
-): Promise<{ url: string; logo_url?: string; image_url?: string; logo?: string }> {
+): Promise<{ url: string; image_url?: string }> {
   const cleanName = filename || `upload_${Date.now()}.jpg`;
   const cleanType = fileType || 'image/jpeg';
   const apiBase = getApiBaseUrl();
 
   // Method C: Direct Image URL
   if (base64OrUri.startsWith('http://') || base64OrUri.startsWith('https://')) {
-    return { url: base64OrUri, image_url: base64OrUri, logo_url: base64OrUri, logo: base64OrUri };
+    return { url: base64OrUri, image_url: base64OrUri };
   }
 
   // Method A: Extract base64 and build JSON payload (Payload Options A.1, A.2, A.3)
@@ -457,10 +457,8 @@ export async function uploadMediaApi(
 
   const uploadEndpoints = [
     `${apiBase}/upload-image`,
-    `${apiBase}/upload-logo`,
     `${apiBase}/upload`,
     `${apiBase}/vendorPanel/upload-image`,
-    `${apiBase}/vendorPanel/upload-logo`,
   ];
 
   for (const endpoint of uploadEndpoints) {
@@ -471,13 +469,11 @@ export async function uploadMediaApi(
       });
 
       if (res.ok && data) {
-        const returnedUrl = data.image_url || data.logo_url || data.logo || data.url;
+        const returnedUrl = data.image_url || data.url || data.filename;
         if (returnedUrl) {
           return {
             url: returnedUrl,
             image_url: returnedUrl,
-            logo_url: data.logo_url || returnedUrl,
-            logo: data.logo || returnedUrl,
           };
         }
       }
@@ -487,8 +483,6 @@ export async function uploadMediaApi(
   return {
     url: fullDataUri,
     image_url: fullDataUri,
-    logo_url: fullDataUri,
-    logo: fullDataUri,
   };
 }
 

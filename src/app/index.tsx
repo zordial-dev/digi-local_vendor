@@ -934,19 +934,27 @@ export default function App() {
           onPress={handleUploadStoreLogo}
           activeOpacity={0.8}
         >
-          {currentUser?.logo_url || currentUser?.logo || currentUser?.store_logo ? (
-            <Image
-              source={{ uri: currentUser.logo_url || currentUser.logo || currentUser.store_logo }}
-              style={styles.vendorLogoImg}
-            />
-          ) : (
-            <View style={styles.vendorLogoPlaceholder}>
-              <Store size={18} color={BrandTheme.forestGreen} />
-              <View style={styles.cameraIconBadge}>
-                <Camera size={9} color="#FFFFFF" />
+          {(() => {
+            const storeLogoUri = (
+              currentUser?.logo_url && currentUser.logo_url !== currentUser.shop_image && currentUser.logo_url !== currentUser.image_url ? currentUser.logo_url :
+              currentUser?.logo && currentUser.logo !== currentUser.shop_image && currentUser.logo !== currentUser.image_url ? currentUser.logo :
+              currentUser?.store_logo && currentUser.store_logo !== currentUser.shop_image && currentUser.store_logo !== currentUser.image_url ? currentUser.store_logo :
+              ''
+            );
+            return storeLogoUri ? (
+              <Image
+                source={{ uri: storeLogoUri }}
+                style={styles.vendorLogoImg}
+              />
+            ) : (
+              <View style={styles.vendorLogoPlaceholder}>
+                <Store size={18} color={BrandTheme.forestGreen} />
+                <View style={styles.cameraIconBadge}>
+                  <Camera size={9} color="#FFFFFF" />
+                </View>
               </View>
-            </View>
-          )}
+            );
+          })()}
         </TouchableOpacity>
 
         <View style={styles.headerTitleContainer}>
@@ -980,51 +988,53 @@ export default function App() {
           paddingVertical: 14,
           paddingHorizontal: 16,
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
               <View style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
+                width: 26,
+                height: 26,
+                borderRadius: 13,
                 backgroundColor: vendorApprovalStatus === 'hold' ? '#FEE2E2' : '#FEF3C7',
                 justifyContent: 'center',
                 alignItems: 'center',
+                flexShrink: 0,
               }}>
                 {vendorApprovalStatus === 'hold' ? (
-                  <AlertTriangle size={16} color="#DC2626" strokeWidth={2.5} />
+                  <AlertTriangle size={15} color="#DC2626" strokeWidth={2.5} />
                 ) : (
-                  <Clock size={16} color="#D97706" strokeWidth={2.5} />
+                  <Clock size={15} color="#D97706" strokeWidth={2.5} />
                 )}
               </View>
               <Text style={{
-                fontSize: 15,
+                fontSize: 14.5,
                 fontWeight: '800',
                 color: vendorApprovalStatus === 'hold' ? '#991B1B' : '#92400E',
-                letterSpacing: 0.2,
-                fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
+                letterSpacing: 0.1,
+                fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold',
+                flex: 1,
               }}>
                 {vendorApprovalStatus === 'hold' ? 'Request Placed on Hold' : 'Submitted for Admin Approval'}
               </Text>
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexShrink: 0, gap: 6 }}>
               <TouchableOpacity
                 onPress={() => loadDashboardData(currentUser.vendor_id, true)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
-                  gap: 4,
+                  gap: 3,
                   backgroundColor: vendorApprovalStatus === 'hold' ? '#FEE2E2' : '#FEF3C7',
-                  paddingHorizontal: 10,
-                  paddingVertical: 6,
-                  borderRadius: 8,
+                  paddingHorizontal: 8,
+                  paddingVertical: 4,
+                  borderRadius: 6,
                   borderWidth: 0.5,
                   borderColor: vendorApprovalStatus === 'hold' ? '#FECACA' : '#FDE68A'
                 }}
                 activeOpacity={0.7}
               >
-                <RefreshCw size={12} color={vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706"} />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706" }}>
+                <RefreshCw size={10} color={vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706"} />
+                <Text style={{ fontSize: 10, fontWeight: '700', color: vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706" }}>
                   Refresh Status
                 </Text>
               </TouchableOpacity>
@@ -1035,17 +1045,16 @@ export default function App() {
                   style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    gap: 4,
+                    gap: 3,
                     backgroundColor: '#541D26',
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 8,
-                    marginLeft: 8,
+                    paddingHorizontal: 9,
+                    paddingVertical: 4,
+                    borderRadius: 6,
                   }}
                   activeOpacity={0.8}
                 >
-                  <Send size={12} color="#FFFFFF" />
-                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#FFFFFF' }}>Resubmit</Text>
+                  <Send size={10} color="#FFFFFF" />
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#FFFFFF' }}>Resubmit</Text>
                 </TouchableOpacity>
               )}
             </View>
