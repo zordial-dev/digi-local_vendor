@@ -162,6 +162,7 @@ export async function clearSavedCredentials(): Promise<void> {
       await SecureStore.deleteItemAsync(VENDOR_KEY).catch(() => {});
       await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY).catch(() => {});
       await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {});
+      await SecureStore.deleteItemAsync(API_URL_KEY).catch(() => {});
     }
   } catch (e) {}
 
@@ -172,6 +173,8 @@ export async function clearSavedCredentials(): Promise<void> {
       await AsyncStorage.removeItem(CRED_KEY).catch(() => {});
       await AsyncStorage.removeItem(ACCESS_TOKEN_KEY).catch(() => {});
       await AsyncStorage.removeItem(REFRESH_TOKEN_KEY).catch(() => {});
+      await AsyncStorage.removeItem(API_URL_KEY).catch(() => {});
+      await AsyncStorage.clear().catch(() => {});
     }
   } catch (e) {}
 
@@ -181,6 +184,8 @@ export async function clearSavedCredentials(): Promise<void> {
       localStorage.removeItem(VENDOR_KEY);
       localStorage.removeItem(ACCESS_TOKEN_KEY);
       localStorage.removeItem(REFRESH_TOKEN_KEY);
+      localStorage.removeItem(API_URL_KEY);
+      localStorage.clear();
     }
   } catch (e) {}
 }

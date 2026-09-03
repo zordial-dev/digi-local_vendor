@@ -457,6 +457,8 @@ const styles = StyleSheet.create({
     fontSize: 13.5,
     color: BrandTheme.darkForestGreen,
     fontWeight: '500',
+    textAlign: 'left',
+    textAlignVertical: 'center',
   },
   textArea: {
     height: 70,

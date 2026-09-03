@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   content: { padding: 20 },
   description: { fontSize: 14, color: DigiLocalColors.textMuted, marginBottom: 20 },
   label: { fontSize: 13, fontWeight: '600', color: DigiLocalColors.textDark, marginBottom: 8, marginTop: 12 },
-  input: { borderWidth: 1, borderColor: DigiLocalColors.border, borderRadius: 12, padding: 12, fontSize: 14, backgroundColor: DigiLocalColors.surfaceIvory },
+  input: { borderWidth: 1, borderColor: DigiLocalColors.border, borderRadius: 12, padding: 12, fontSize: 14, backgroundColor: DigiLocalColors.surfaceIvory, textAlign: 'left', textAlignVertical: 'center' },
   textArea: { height: 80, textAlignVertical: 'top' },
   radioGroup: { flexDirection: 'row', gap: 20, marginBottom: 12 },
   radioOption: { flexDirection: 'row', alignItems: 'center', gap: 8 },

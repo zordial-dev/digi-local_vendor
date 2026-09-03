@@ -202,7 +202,7 @@ export const UserLocationPromptModal: React.FC<UserLocationPromptModalProps> = (
             <TextInput
               style={styles.input}
               placeholder="Search City, Sector, or Society..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#78716C"
               value={query}
               onChangeText={handleInputChange}
               autoCapitalize="none"
@@ -211,7 +211,7 @@ export const UserLocationPromptModal: React.FC<UserLocationPromptModalProps> = (
               <ActivityIndicator size="small" color="#541D26" />
             ) : query ? (
               <TouchableOpacity onPress={() => { setQuery(''); setSuggestions([]); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <X size={16} color="#9CA3AF" />
+                <X size={16} color="#78716C" />
               </TouchableOpacity>
             ) : null}
           </View>

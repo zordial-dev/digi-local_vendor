@@ -67,6 +67,7 @@ import {
   clearSavedCredentials,
   saveVendorUser,
   getSavedVendorUser,
+  getAccessToken,
   getSavedApiBaseUrlStorage,
   hasSeenApprovedAlert,
   markApprovedAlertSeen,
@@ -345,61 +346,72 @@ export default function App() {
         if (savedUrl) {
           setApiBaseUrl(savedUrl);
         }
+        const token = await getAccessToken();
         const savedVendor = await getSavedVendorUser();
+        if (!token || !savedVendor || typeof savedVendor !== 'object') {
+          await clearSavedCredentials().catch(() => {});
+          setCurrentUser(null);
+          setShowLogin(true);
+          return;
+        }
         if (savedVendor && typeof savedVendor === 'object') {
           const vendorData: VendorUser = savedVendor.vendor || savedVendor;
-          if (vendorData && vendorData.vendor_id && vendorData.store_name) {
-            // 🛡️ Single Status Guard on App Startup (Called ONLY ONCE)
-            const statusRes = await fetchVendorStatusApi(vendorData.vendor_id);
-            if (
-              statusRes &&
-              (statusRes.is_blocked ||
-                statusRes.status === 'blocked' ||
-                statusRes.action === 'logout' ||
-                statusRes.code === 'VENDOR_BLOCKED')
-            ) {
-              console.warn('⚠️ Vendor account is blocked on app launch. Purging session storage and logging out...');
-              await clearSavedCredentials();
-              await clearAllAppCache();
-              setCurrentUser(null);
-              setShowLogin(true);
-              setBlockedAccountInfo({
-                visible: true,
-                title: 'Account Blocked by Admin',
-                message:
-                  statusRes.message ||
-                  statusRes.error ||
-                  'Your vendor store account has been blocked by administrator. Access denied.',
-                reason: statusRes.block_reason || 'Policy or compliance violation',
-              });
-              return;
-            }
+          if (!vendorData || !vendorData.vendor_id || !vendorData.store_name) {
+            await clearSavedCredentials().catch(() => {});
+            setCurrentUser(null);
+            setShowLogin(true);
+            return;
+          }
+          // 🛡️ Single Status Guard on App Startup (Called ONLY ONCE)
+          const statusRes = await fetchVendorStatusApi(vendorData.vendor_id);
+          if (
+            statusRes &&
+            (statusRes.is_blocked ||
+              statusRes.status === 'blocked' ||
+              statusRes.action === 'logout' ||
+              statusRes.code === 'VENDOR_BLOCKED')
+          ) {
+            console.warn('⚠️ Vendor account is blocked on app launch. Purging session storage and logging out...');
+            await clearSavedCredentials();
+            await clearAllAppCache();
+            setCurrentUser(null);
+            setShowLogin(true);
+            setBlockedAccountInfo({
+              visible: true,
+              title: 'Account Blocked by Admin',
+              message:
+                statusRes.message ||
+                statusRes.error ||
+                'Your vendor store account has been blocked by administrator. Access denied.',
+              reason: statusRes.block_reason || 'Policy or compliance violation',
+            });
+            return;
+          }
 
-            if (statusRes) {
-              if (statusRes.is_rejected || statusRes.status === 'rejected') {
-                setVendorApprovalStatus('rejected');
-                setVendorRejectionReason(statusRes.rejection_reason || '');
-              } else if (statusRes.is_accepted || statusRes.is_active || statusRes.status === 'accepted' || statusRes.status === 'active') {
-                setVendorApprovalStatus('accepted');
-              } else if (statusRes.is_on_hold || statusRes.status === 'hold') {
-                setVendorApprovalStatus('hold');
-                setVendorRejectionReason(statusRes.rejection_reason || '');
-              } else {
-                setVendorApprovalStatus('pending');
-              }
-              if (statusRes.message) setVendorMessage(statusRes.message);
+          if (statusRes) {
+            if (statusRes.is_rejected || statusRes.status === 'rejected') {
+              setVendorApprovalStatus('rejected');
+              setVendorRejectionReason(statusRes.rejection_reason || '');
+            } else if (statusRes.is_accepted || statusRes.is_active || statusRes.status === 'accepted' || statusRes.status === 'active') {
+              setVendorApprovalStatus('accepted');
+            } else if (statusRes.is_on_hold || statusRes.status === 'hold') {
+              setVendorApprovalStatus('hold');
+              setVendorRejectionReason(statusRes.rejection_reason || '');
+            } else {
+              setVendorApprovalStatus('pending');
             }
+            if (statusRes.message) setVendorMessage(statusRes.message);
+          }
 
-            setCurrentUser(vendorData);
+          setCurrentUser(vendorData);
 
-            // Instant 0ms Cache Hydration
-            const cached = await getCachedDashboard(vendorData.vendor_id);
-            if (cached) {
-              if (Array.isArray(cached.items) && cached.items.length > 0) setItems(cached.items);
-              if (Array.isArray(cached.orders) && cached.orders.length > 0) setOrders(cached.orders);
-              if (cached.subscription) setSubscription(cached.subscription);
-              if (Array.isArray(cached.payments) && cached.payments.length > 0) setPayments(cached.payments);
-            }
+          // Instant 0ms Cache Hydration
+          const cached = await getCachedDashboard(vendorData.vendor_id);
+          if (cached) {
+            if (Array.isArray(cached.items) && cached.items.length > 0) setItems(cached.items);
+            if (Array.isArray(cached.orders) && cached.orders.length > 0) setOrders(cached.orders);
+            if (cached.subscription) setSubscription(cached.subscription);
+            if (Array.isArray(cached.payments) && cached.payments.length > 0) setPayments(cached.payments);
           }
         }
       } catch (e) {
@@ -410,6 +422,48 @@ export default function App() {
   }, []);
 
   const currentVendorId = currentUser?.vendor_id;
+
+  // 🔄 Real-time Status Polling (Reflects Hold -> Accepted / Blocked instantly without manual refresh)
+  useEffect(() => {
+    if (!currentUser?.vendor_id || vendorApprovalStatus === 'accepted') return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const statusRes = await fetchVendorStatusApi(currentUser.vendor_id);
+        if (statusRes) {
+          const reasonText = statusRes.hold_reason || statusRes.rejection_reason || statusRes.reason || '';
+          if (reasonText) setVendorRejectionReason(reasonText);
+
+          if (statusRes.is_blocked || statusRes.status === 'blocked' || statusRes.action === 'logout' || statusRes.code === 'VENDOR_BLOCKED') {
+            await clearSavedCredentials();
+            await clearAllAppCache();
+            setCurrentUser(null);
+            setShowLogin(true);
+            setBlockedAccountInfo({
+              visible: true,
+              title: 'Account Blocked by Admin',
+              message: statusRes.message || statusRes.error || 'Your vendor store account has been blocked by administrator. Access denied.',
+              reason: statusRes.block_reason || 'Policy or compliance violation',
+            });
+            return;
+          }
+
+          if (statusRes.is_rejected || statusRes.status === 'rejected') {
+            setVendorApprovalStatus('rejected');
+          } else if (statusRes.is_accepted || statusRes.is_active || statusRes.status === 'accepted' || statusRes.status === 'active') {
+            setVendorApprovalStatus('accepted');
+            loadDashboardData(currentUser.vendor_id);
+          } else if (statusRes.is_on_hold || statusRes.status === 'hold') {
+            setVendorApprovalStatus('hold');
+          } else {
+            setVendorApprovalStatus('pending');
+          }
+        }
+      } catch (_) {}
+    }, 5000);
+
+    return () => clearInterval(pollInterval);
+  }, [currentUser?.vendor_id, vendorApprovalStatus]);
 
   // Auto-polling & Push Token Registration (Only for active/accepted vendors)
   useEffect(() => {
@@ -880,9 +934,9 @@ export default function App() {
           onPress={handleUploadStoreLogo}
           activeOpacity={0.8}
         >
-          {currentUser?.logo_url || currentUser?.image_url ? (
+          {currentUser?.logo_url || currentUser?.logo || currentUser?.store_logo ? (
             <Image
-              source={{ uri: currentUser.logo_url || currentUser.image_url }}
+              source={{ uri: currentUser.logo_url || currentUser.logo || currentUser.store_logo }}
               style={styles.vendorLogoImg}
             />
           ) : (

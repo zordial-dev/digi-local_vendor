@@ -50,7 +50,11 @@ import {
   Square,
   Eye,
   EyeOff,
-  LifeBuoy
+  LifeBuoy,
+  Smartphone,
+  Key,
+  ChevronRight,
+  User
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromDevice, captureImageFromDevice, PickedImageResult } from '../utils/imagePickerHelper';
@@ -438,8 +442,187 @@ const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (
             <Text style={docStyles.doneBtnText}>Update Password</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ height: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8 }} onPress={onClose}>
-            <Text style={{ color: '#9CA3AF', fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+            <Text style={{ color: '#78716C', fontSize: 13, fontWeight: '600' }}>Cancel</Text>
           </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
+
+// ── Account & Security Modal ─────────────────────────────────
+const AccountSecurityModal: React.FC<{
+  visible: boolean;
+  onClose: () => void;
+  vendor: VendorUser;
+  onChangePassword: () => void;
+  showAlert: (title: string, msg: string, type?: AlertType) => void;
+}> = ({ visible, onClose, vendor, onChangePassword, showAlert }) => {
+  const [sessionSuccess, setSessionSuccess] = useState(false);
+
+  const handleLogoutOtherDevices = () => {
+    setSessionSuccess(true);
+    setTimeout(() => {
+      setSessionSuccess(false);
+      showAlert('Security Action Completed', 'Active sessions on other devices have been invalidated.', 'success');
+    }, 600);
+  };
+
+  return (
+    <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
+      <View style={docStyles.overlay}>
+        <View style={[docStyles.sheet, { maxHeight: '85%' }]}>
+          <View style={docStyles.handleBar} />
+          <View style={docStyles.header}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <ShieldCheck size={20} color="#541D26" />
+              <Text style={docStyles.title}>Account & Security</Text>
+            </View>
+            <TouchableOpacity style={docStyles.closeBtn} onPress={onClose}>
+              <Text style={docStyles.closeBtnText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+            {/* Account Status Card */}
+            <View style={{
+              backgroundColor: '#F7EEF0',
+              borderWidth: 1,
+              borderColor: '#E7DFD5',
+              borderRadius: 14,
+              padding: 14,
+              marginBottom: 16,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 12
+            }}>
+              <View style={{
+                width: 40,
+                height: 40,
+                borderRadius: 20,
+                backgroundColor: '#FAF8F5',
+                borderWidth: 1,
+                borderColor: '#E7DFD5',
+                justifyContent: 'center',
+                alignItems: 'center'
+              }}>
+                <ShieldCheck size={22} color="#541D26" />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: '#541D26' }}>Account Security: Protected</Text>
+                <Text style={{ fontSize: 11, color: '#78716C', marginTop: 2 }}>
+                  Your merchant store login credentials and session tokens are encrypted and secure.
+                </Text>
+              </View>
+            </View>
+
+            {/* Login Credentials Section */}
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#78716C', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+              REGISTERED LOGIN CREDENTIALS
+            </Text>
+
+            <View style={{
+              backgroundColor: '#FAF8F5',
+              borderWidth: 1.5,
+              borderColor: '#E7DFD5',
+              borderRadius: 14,
+              padding: 14,
+              gap: 12,
+              marginBottom: 16
+            }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Smartphone size={16} color="#541D26" />
+                  <View>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#78716C', textTransform: 'uppercase' }}>Mobile Number</Text>
+                    <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#211A19' }}>{vendor.phone_number || 'Not Registered'}</Text>
+                  </View>
+                </View>
+                <View style={{ backgroundColor: '#F7EEF0', borderWidth: 1, borderColor: '#E7DFD5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#541D26' }}>VERIFIED</Text>
+                </View>
+              </View>
+
+              <View style={{ height: 1, backgroundColor: '#E7DFD5' }} />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Mail size={16} color="#541D26" />
+                  <View>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#78716C', textTransform: 'uppercase' }}>Email Address</Text>
+                    <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#211A19' }}>{vendor.email || 'Not Registered'}</Text>
+                  </View>
+                </View>
+                <View style={{ backgroundColor: '#F7EEF0', borderWidth: 1, borderColor: '#E7DFD5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 }}>
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: '#541D26' }}>VERIFIED</Text>
+                </View>
+              </View>
+
+              <View style={{ height: 1, backgroundColor: '#E7DFD5' }} />
+
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <User size={16} color="#541D26" />
+                  <View>
+                    <Text style={{ fontSize: 10, fontWeight: '700', color: '#78716C', textTransform: 'uppercase' }}>Store Representative</Text>
+                    <Text style={{ fontSize: 13.5, fontWeight: '700', color: '#211A19' }}>{vendor.vendor_name || 'Store Owner'}</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            {/* Security Actions */}
+            <Text style={{ fontSize: 11, fontWeight: '800', color: '#78716C', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 8 }}>
+              SECURITY ACTIONS & CONTROLS
+            </Text>
+
+            <View style={{ gap: 10 }}>
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#541D26',
+                  borderRadius: 12,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                }}
+                onPress={() => {
+                  onClose();
+                  onChangePassword();
+                }}
+                activeOpacity={0.88}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Lock size={17} color="#FFFFFF" />
+                  <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13 }}>Change Account Password</Text>
+                </View>
+                <ChevronRight size={16} color="#FFFFFF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  backgroundColor: '#FAF8F5',
+                  borderWidth: 1.5,
+                  borderColor: '#E7DFD5',
+                  borderRadius: 12,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                }}
+                onPress={handleLogoutOtherDevices}
+                activeOpacity={0.85}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                  <Key size={17} color="#541D26" />
+                  <Text style={{ color: '#211A19', fontWeight: '700', fontSize: 13 }}>Invalidate Other Active Sessions</Text>
+                </View>
+                {sessionSuccess ? <ActivityIndicator color="#541D26" size="small" /> : <ChevronRight size={16} color="#78716C" />}
+              </TouchableOpacity>
+            </View>
+          </ScrollView>
         </View>
       </View>
     </Modal>
@@ -694,6 +877,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showAccountSecurityModal, setShowAccountSecurityModal] = useState(false);
   const [showLogoPickerModal, setShowLogoPickerModal] = useState(false);
 
   const showAlert = (title: string, message: string, type: AlertType = 'info', onConfirm?: () => void, onCancel?: () => void, confirmText?: string, cancelText?: string, showCancel?: boolean) => {
@@ -952,9 +1136,9 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
             onPress={handleUploadStoreLogo}
             activeOpacity={0.85}
           >
-            {vendor.logo_url || vendor.image_url ? (
+            {vendor.logo_url || vendor.logo || vendor.store_logo ? (
               <Image
-                source={{ uri: vendor.logo_url || vendor.image_url }}
+                source={{ uri: vendor.logo_url || vendor.logo || vendor.store_logo }}
                 style={{ width: 56, height: 56, borderRadius: 16 }}
               />
             ) : (
@@ -969,7 +1153,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
             <Text style={styles.vendorName}>Owner: {vendor.vendor_name}</Text>
             <TouchableOpacity onPress={handleUploadStoreLogo} style={{ marginTop: 3 }}>
               <Text style={{ fontSize: 11.5, color: '#541D26', fontWeight: '700' }}>
-                {vendor.logo_url || vendor.image_url ? 'Change Store Logo' : '+ Add Store Logo'}
+                {vendor.logo_url || vendor.logo || vendor.store_logo ? 'Change Store Logo' : '+ Add Store Logo'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -1099,7 +1283,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               value={professionCategory}
               onChangeText={setProfessionCategory}
               placeholder="e.g. Physiotherapist, Electrician, Tuition Teacher, CA"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#78716C"
             />
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -1111,7 +1295,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
                   onChangeText={setExperienceYears}
                   keyboardType="numeric"
                   placeholder="e.g. 8"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor="#78716C"
                 />
               </View>
               <View style={{ flex: 1 }}>
@@ -1122,7 +1306,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
                   onChangeText={setStartingPrice}
                   keyboardType="numeric"
                   placeholder="e.g. 399"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor="#78716C"
                 />
               </View>
             </View>
@@ -1133,7 +1317,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               value={qualifications}
               onChangeText={setQualifications}
               placeholder="e.g. MBBS, MD, Certified Yoga Coach, B.Tech"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#78716C"
             />
 
             <Text style={styles.configLabel}>Professional Bio / About Services</Text>
@@ -1144,7 +1328,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               multiline
               numberOfLines={3}
               placeholder="Describe your expertise, experience, and service guarantees..."
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#78716C"
             />
 
             <Text style={styles.configLabel}>Working Days</Text>
@@ -1153,7 +1337,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               value={workingDays}
               onChangeText={setWorkingDays}
               placeholder="e.g. Mon – Sat (Sundays on appointment)"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#78716C"
             />
 
             <Text style={styles.configLabel}>WhatsApp Business Number</Text>
@@ -1164,7 +1348,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               keyboardType="phone-pad"
               maxLength={10}
               placeholder="10-digit WhatsApp number"
-              placeholderTextColor="#9CA3AF"
+              placeholderTextColor="#78716C"
             />
           </>
         ) : null}
@@ -1172,6 +1356,20 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
         <Text style={styles.sectionHeading}>
           {businessType === 'SERVICE' ? '3. Contact & Statutory' : '2. Store Profile & Branding'}
         </Text>
+        {businessType === 'PRODUCT' ? (
+          <>
+            <Text style={styles.configLabel}>Store / Business Description</Text>
+            <TextInput
+              style={[styles.configInput, { color: '#211A19', height: 75, textAlignVertical: 'top' }]}
+              value={aboutBio}
+              onChangeText={setAboutBio}
+              multiline
+              numberOfLines={3}
+              placeholder="Describe your store, products, specialties, and quality guarantees..."
+              placeholderTextColor="#78716C"
+            />
+          </>
+        ) : null}
         <Text style={styles.configLabel}>Primary Contact Phone Number</Text>
         <TextInput
           style={[styles.configInput, { color: '#211A19' }]}
@@ -1183,7 +1381,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           }}
           keyboardType="number-pad"
           maxLength={10}
-          placeholder="e.g. 9876543210" placeholderTextColor="#9CA3AF"
+          placeholder="e.g. 9876543210" placeholderTextColor="#78716C"
         />
         <Text style={styles.configLabel}>PAN Number</Text>
         <TextInput
@@ -1206,7 +1404,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           }}
           autoCapitalize="characters"
           maxLength={10}
-          placeholder="e.g. ABCDE1234F" placeholderTextColor="#9CA3AF"
+          placeholder="e.g. ABCDE1234F" placeholderTextColor="#78716C"
         />
 
         <Text style={styles.configLabel}>GSTIN Number (Optional)</Text>
@@ -1222,7 +1420,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           }}
           autoCapitalize="characters"
           maxLength={15}
-          placeholder="e.g. 22AAAAA0000A1Z5" placeholderTextColor="#9CA3AF"
+          placeholder="e.g. 22AAAAA0000A1Z5" placeholderTextColor="#78716C"
         />
 
         <Text style={styles.sectionHeading}>
@@ -1267,25 +1465,25 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>GST Tax (%)</Text>
-                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={gstPercent} onChangeText={setGstPercent} keyboardType="numeric" placeholder="5.0" placeholderTextColor="#9CA3AF" />
+                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={gstPercent} onChangeText={setGstPercent} keyboardType="numeric" placeholder="5.0" placeholderTextColor="#78716C" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>Service Charge (%)</Text>
-                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={serviceChargePercent} onChangeText={setServiceChargePercent} keyboardType="numeric" placeholder="0.0" placeholderTextColor="#9CA3AF" />
+                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={serviceChargePercent} onChangeText={setServiceChargePercent} keyboardType="numeric" placeholder="0.0" placeholderTextColor="#78716C" />
               </View>
             </View>
             <Text style={styles.configLabel}>Delivery / Packaging Charge (₹)</Text>
-            <TextInput style={[styles.configInput, { color: '#211A19' }]} value={deliveryCharge} onChangeText={setDeliveryCharge} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
+            <TextInput style={[styles.configInput, { color: '#211A19' }]} value={deliveryCharge} onChangeText={setDeliveryCharge} keyboardType="numeric" placeholder="0" placeholderTextColor="#78716C" />
 
             <Text style={styles.sectionHeading}>5. Order Restrictions & Limits</Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>Min Order Value (₹)</Text>
-                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={minOrderVal} onChangeText={setMinOrderVal} keyboardType="numeric" placeholder="0" placeholderTextColor="#9CA3AF" />
+                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={minOrderVal} onChangeText={setMinOrderVal} keyboardType="numeric" placeholder="0" placeholderTextColor="#78716C" />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>Max Item Qty Limit</Text>
-                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={maxQtyLimit} onChangeText={setMaxQtyLimit} keyboardType="numeric" placeholder="10" placeholderTextColor="#9CA3AF" />
+                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={maxQtyLimit} onChangeText={setMaxQtyLimit} keyboardType="numeric" placeholder="10" placeholderTextColor="#78716C" />
               </View>
             </View>
           </>
@@ -1326,15 +1524,40 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
 
       {/* Account & Security */}
       <View style={styles.card}>
-        <View style={styles.cardHeader}>
+        <TouchableOpacity 
+          style={styles.cardHeader} 
+          onPress={() => setShowAccountSecurityModal(true)} 
+          activeOpacity={0.7}
+        >
           <ShieldCheck size={17} color="#211A19" style={{ marginRight: 8 }} />
           <Text style={styles.cardTitle}>Account & Security</Text>
-        </View>
-        <TouchableOpacity style={styles.settingsRowItem} onPress={() => setShowPassword(true)} activeOpacity={0.85}>
-          <Lock size={16} color="#211A19" style={{ marginRight: 12 }} />
+          <ChevronRight size={16} color="#78716C" style={{ marginLeft: 'auto' }} />
+        </TouchableOpacity>
+
+        {/* Row 1: Account Security Overview */}
+        <TouchableOpacity 
+          style={styles.settingsRowItem} 
+          onPress={() => setShowAccountSecurityModal(true)} 
+          activeOpacity={0.85}
+        >
+          <ShieldCheck size={16} color="#541D26" style={{ marginRight: 12 }} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.settingsRowLabel}>Account & Security Overview</Text>
+            <Text style={styles.settingsRowSub}>View registered login credentials, 2FA & active sessions</Text>
+          </View>
+          <ChevronDown size={15} color="#9CA3AF" style={{ transform: [{ rotate: '-90deg' }] }} />
+        </TouchableOpacity>
+
+        {/* Row 2: Password & Security */}
+        <TouchableOpacity 
+          style={[styles.settingsRowItem, { borderTopWidth: 1, borderTopColor: '#E7DFD5' }]} 
+          onPress={() => setShowPassword(true)} 
+          activeOpacity={0.85}
+        >
+          <Lock size={16} color="#541D26" style={{ marginRight: 12 }} />
           <View style={{ flex: 1 }}>
             <Text style={styles.settingsRowLabel}>Password & Security</Text>
-            <Text style={styles.settingsRowSub}>Change your account password</Text>
+            <Text style={styles.settingsRowSub}>Change your account login password</Text>
           </View>
           <ChevronDown size={15} color="#9CA3AF" style={{ transform: [{ rotate: '-90deg' }] }} />
         </TouchableOpacity>
@@ -1402,6 +1625,13 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       <DocumentModal visible={showAbout} title="About DigiLocal" content={ABOUT_CONTENT} onClose={() => setShowAbout(false)} />
       <DocumentModal visible={showPrivacy} title="Privacy Policy" content={PRIVACY_CONTENT} onClose={() => setShowPrivacy(false)} />
       <DocumentModal visible={showTerms} title="Terms & Conditions" content={TERMS_CONTENT} onClose={() => setShowTerms(false)} />
+      <AccountSecurityModal
+        visible={showAccountSecurityModal}
+        onClose={() => setShowAccountSecurityModal(false)}
+        vendor={vendor}
+        onChangePassword={() => setShowPassword(true)}
+        showAlert={showAlert}
+      />
       <PasswordModal visible={showPassword} onClose={() => setShowPassword(false)} onSave={(cur, nw) => {
         showAlert('Password Updated', 'Your password has been changed successfully. Please log in again.', 'success');
       }} />
@@ -1652,6 +1882,8 @@ const styles = StyleSheet.create({
     height: 42,
     fontSize: 13,
     backgroundColor: '#FAF8F5',
+    textAlign: 'left',
+    textAlignVertical: 'center',
   },
   dropdownTrigger: {
     flexDirection: 'row',

@@ -888,14 +888,14 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                 width: 64,
                 height: 64,
                 borderRadius: 32,
-                backgroundColor: '#DCFCE7',
+                backgroundColor: '#F7EEF0',
                 justifyContent: 'center',
                 alignItems: 'center',
                 marginBottom: 14,
                 borderWidth: 4,
-                borderColor: '#F0FDF4'
+                borderColor: '#FAF8F5'
               }}>
-                <Sparkles size={28} color="#16A34A" />
+                <Sparkles size={28} color="#541D26" />
               </View>
               <Text style={styles.emptyTitle}>
                 {isService ? 'List Your Services' : 'Build Your Store Catalog'}
@@ -1109,7 +1109,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                 <TextInput
                   style={styles.serviceInput}
                   placeholder="e.g. Split AC Deep Cleaning & Servicing"
-                  placeholderTextColor="#A0AFA5"
+                  placeholderTextColor="#78716C"
                   value={itemName}
                   onChangeText={setItemName}
                 />
@@ -1170,7 +1170,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                     <TextInput
                       style={styles.serviceInput}
                       placeholder="e.g. Solar Panel Installation"
-                      placeholderTextColor="#A0AFA5"
+                      placeholderTextColor="#78716C"
                       value={customCategoryInput}
                       onChangeText={setCustomCategoryInput}
                     />
@@ -1214,7 +1214,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                       <TextInput
                         style={styles.serviceSpinnerTextInput}
                         placeholder="499.00"
-                        placeholderTextColor="#A0AFA5"
+                        placeholderTextColor="#78716C"
                         keyboardType="numeric"
                         value={price}
                         onChangeText={setPrice}
@@ -1344,7 +1344,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                   <TextInput
                     style={styles.serviceTextArea}
                     placeholder="Service details, what's included..."
-                    placeholderTextColor="#9EAFA3"
+                    placeholderTextColor="#78716C"
                     multiline
                     value={description}
                     onChangeText={setDescription}
@@ -1410,7 +1410,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                 <TextInput
                   style={styles.modalInput}
                   placeholder="https://... (image URL)"
-                  placeholderTextColor="#A0AFA5"
+                  placeholderTextColor="#78716C"
                   value={imageUrl}
                   onChangeText={setImageUrl}
                 />
@@ -1420,7 +1420,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                 <TextInput
                   style={styles.modalInput}
                   placeholder="e.g. Amul Gold Fresh Milk 1L"
-                  placeholderTextColor="#A0AFA5"
+                  placeholderTextColor="#78716C"
                   value={itemName}
                   onChangeText={setItemName}
                 />
@@ -1481,7 +1481,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                     <TextInput
                       style={styles.modalInput}
                       placeholder="e.g. Organic Spices"
-                      placeholderTextColor="#A0AFA5"
+                      placeholderTextColor="#78716C"
                       value={customCategoryInput}
                       onChangeText={setCustomCategoryInput}
                     />
@@ -1494,7 +1494,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                   <TextInput
                     style={styles.spinnerTextInput}
                     placeholder="100.00"
-                    placeholderTextColor="#A0AFA5"
+                    placeholderTextColor="#78716C"
                     keyboardType="numeric"
                     value={price}
                     onChangeText={setPrice}
@@ -1562,7 +1562,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                     <TextInput
                       style={styles.modalInput}
                       placeholder="e.g. packet of 4"
-                      placeholderTextColor="#A0AFA5"
+                      placeholderTextColor="#78716C"
                       value={customUnitInput}
                       onChangeText={setCustomUnitInput}
                     />
@@ -1575,7 +1575,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                   <TextInput
                     style={styles.spinnerTextInput}
                     placeholder="50"
-                    placeholderTextColor="#A0AFA5"
+                    placeholderTextColor="#78716C"
                     keyboardType="numeric"
                     value={stock}
                     onChangeText={setStock}
@@ -1609,7 +1609,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                 <TextInput
                   style={[styles.modalInput, { height: 72, textAlignVertical: 'top', paddingTop: 10 }]}
                   placeholder="Item specifications or details..."
-                  placeholderTextColor="#A0AFA5"
+                  placeholderTextColor="#78716C"
                   multiline
                   value={description}
                   onChangeText={setDescription}
@@ -1989,6 +1989,8 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: BrandTheme.darkForestGreen,
     backgroundColor: BrandTheme.creamCanvas,
+    textAlign: 'left',
+    textAlignVertical: 'center',
   },
   rowTwo: {
     flexDirection: 'row',
@@ -2156,6 +2158,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: BrandTheme.darkForestGreen,
     paddingVertical: 0,
+    textAlign: 'left',
+    textAlignVertical: 'center',
   },
   spinnerButtons: {
     flexDirection: 'column',
@@ -2338,6 +2342,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#211A19',
     paddingVertical: 0,
+    textAlign: 'left',
+    textAlignVertical: 'center',
   },
   serviceSpinnerArrows: {
     flexDirection: 'column',

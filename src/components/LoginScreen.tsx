@@ -403,7 +403,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         const phoneCheck = await checkVendorPhoneApi(clean);
         if (checkingPhoneRef.current === clean && phoneCheck && phoneCheck.exists) {
           setPhoneAlreadyRegisteredError(`Mobile number +91 ${clean} is already registered. Please use another mobile number or log in.`);
-          triggerAlreadyRegisteredModal('mobile', clean);
         } else if (checkingPhoneRef.current === clean) {
           setPhoneAlreadyRegisteredError('');
         }
@@ -421,7 +420,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         const emailCheck = await checkVendorEmailApi(clean);
         if (checkingEmailRef.current === clean && emailCheck && emailCheck.exists) {
           setEmailAlreadyRegisteredError(`Email "${clean}" is already registered. Please use another email ID or sign in.`);
-          triggerAlreadyRegisteredModal('email', clean);
         } else if (checkingEmailRef.current === clean) {
           setEmailAlreadyRegisteredError('');
         }
@@ -840,22 +838,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
     if (shopImages.length === 0) return;
 
+    if (phoneAlreadyRegisteredError || emailAlreadyRegisteredError) {
+      return;
+    }
+
     setLoading(true);
     try {
       // Pre-check phone duplicate
       const phoneCheck = await checkVendorPhoneApi(cleanPhone);
       if (phoneCheck && phoneCheck.exists) {
-        setLoading(false);
-        triggerAlreadyRegisteredModal('mobile', cleanPhone);
+        setPhoneAlreadyRegisteredError(`Mobile number +91 ${cleanPhone} is already registered. Please use another mobile number or log in.`);
         return;
+      } else {
+        setPhoneAlreadyRegisteredError('');
       }
 
       // Pre-check email duplicate
       const emailCheck = await checkVendorEmailApi(cleanEmail);
       if (emailCheck && emailCheck.exists) {
-        setLoading(false);
-        triggerAlreadyRegisteredModal('email', cleanEmail);
+        setEmailAlreadyRegisteredError(`Email "${cleanEmail}" is already registered. Please use another email ID or sign in.`);
         return;
+      } else {
+        setEmailAlreadyRegisteredError('');
       }
 
       setRegStep(3);
@@ -886,70 +890,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setLoading(true);
     try {
-      // Pre-check duplicate phone & email before proceeding
       const cleanPhone = phone.trim();
       const cleanEmail = email.trim().toLowerCase();
 
-      try {
-        const phoneCheck = await checkVendorPhoneApi(cleanPhone);
-        if (phoneCheck && phoneCheck.exists) {
-          setLoading(false);
-          triggerAlreadyRegisteredModal('mobile', cleanPhone);
-          return;
-        }
-      } catch (_) {}
-
-      try {
-        const emailCheck = await checkVendorEmailApi(cleanEmail);
-        if (emailCheck && emailCheck.exists) {
-          setLoading(false);
-          triggerAlreadyRegisteredModal('email', cleanEmail);
-          return;
-        }
-      } catch (_) {}
+      if (phoneAlreadyRegisteredError || emailAlreadyRegisteredError) {
+        setLoading(false);
+        setRegStep(2);
+        return;
+      }
 
       const cleanArea = areaName.trim();
       const fullAddress = [cleanArea, city.trim(), stateName.trim(), pincode.trim()].filter(Boolean).join(', ');
-
-      // Compress shop image to guarantee payload is under 50KB while preserving selected image
-      let compressedShopImage = (shopImages.length > 0 && shopImages[0]) ? shopImages[0] : '';
-      if (compressedShopImage && typeof window !== 'undefined' && typeof document !== 'undefined' && (window as any).Image) {
-        const rawImg = compressedShopImage;
-        try {
-          const comp = await new Promise<string>((resolve) => {
-            const domImg = new (window as any).Image();
-            domImg.onload = () => {
-              const maxDim = 400;
-              let w = domImg.width || 400;
-              let h = domImg.height || 300;
-              if (w > h) {
-                if (w > maxDim) {
-                  h = Math.round((h * maxDim) / w);
-                  w = maxDim;
-                }
-              } else {
-                if (h > maxDim) {
-                  w = Math.round((w * maxDim) / h);
-                  h = maxDim;
-                }
-              }
-              const canvas = document.createElement('canvas');
-              canvas.width = w;
-              canvas.height = h;
-              const ctx = canvas.getContext('2d');
-              if (ctx) {
-                ctx.drawImage(domImg, 0, 0, w, h);
-                resolve(canvas.toDataURL('image/jpeg', 0.45));
-              } else {
-                resolve(rawImg);
-              }
-            };
-            domImg.onerror = () => resolve(rawImg);
-            domImg.src = rawImg;
-          });
-          if (comp) compressedShopImage = comp;
-        } catch (_) {}
-      }
+      const compressedShopImage = (shopImages.length > 0 && shopImages[0]) ? shopImages[0] : '';
 
       const res = await registerVendorApi({
         vendor_name: vendorName.trim(),
@@ -985,22 +937,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     } catch (err: any) {
       console.error('❌ [REGISTRATION ERROR]:', err);
       const errMsg = (err.message || '').toLowerCase();
-      if (
-        errMsg.includes('already exists') ||
-        errMsg.includes('already registered') ||
-        errMsg.includes('duplicate') ||
-        errMsg.includes('already in use') ||
-        errMsg.includes('in use')
-      ) {
-        if (errMsg.includes('mobile') || errMsg.includes('phone') || errMsg.includes('number')) {
-          triggerAlreadyRegisteredModal('mobile', phone.trim());
-        } else if (errMsg.includes('email') && !errMsg.includes('mobile') && !errMsg.includes('phone')) {
-          triggerAlreadyRegisteredModal('email', email.trim().toLowerCase());
-        } else {
-          triggerAlreadyRegisteredModal('mobile', phone.trim());
-        }
+      const isMobileDuplicate =
+        errMsg.includes('mobile number already') ||
+        errMsg.includes('phone number already') ||
+        errMsg.includes('mobile already registered') ||
+        errMsg.includes('phone already registered') ||
+        errMsg.includes('mobile is already') ||
+        errMsg.includes('phone is already');
+
+      const isEmailDuplicate =
+        errMsg.includes('email already registered') ||
+        errMsg.includes('email address already') ||
+        errMsg.includes('email is already');
+
+      if (isMobileDuplicate) {
+        triggerAlreadyRegisteredModal('mobile', phone.trim());
+      } else if (isEmailDuplicate) {
+        triggerAlreadyRegisteredModal('email', email.trim().toLowerCase());
       } else {
-        setError(err.message || 'Registration failed. Please check your details.');
+        setError(err.message || 'Registration failed. Please check your input details and try again.');
       }
     } finally {
       setLoading(false);
@@ -1499,7 +1454,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 {/* Welcome Text */}
                 <Text style={{
                   fontSize: 13.5,
-                  color: '#6B7280',
+                  color: '#78716C',
                   textAlign: 'center',
                   fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
                 }}>
@@ -1587,7 +1542,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <TextInput
                   style={styles.input}
                   placeholder="Enter mobile number or email id"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor="#78716C"
                   autoCapitalize="none"
                   autoCorrect={false}
                   keyboardType={/^\d+$/.test(email) ? "number-pad" : "email-address"}
@@ -1611,7 +1566,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <TextInput
                   style={[styles.input, { paddingVertical: 0 }]}
                   placeholder="Enter your password"
-                  placeholderTextColor="#9CA3AF"
+                  placeholderTextColor="#78716C"
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
@@ -1668,7 +1623,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <TextInput
                       style={styles.input}
                       placeholder="Search or enter society, area or sector (e.g. Mansarovar)"
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor="#78716C"
                       value={areaName}
                       onChangeText={handleAreaChange}
                       onFocus={() => {
@@ -1746,7 +1701,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         <TextInput
                           style={styles.input}
                           placeholder="Pincode"
-                          placeholderTextColor="#9CA3AF"
+                          placeholderTextColor="#78716C"
                           keyboardType="number-pad"
                           maxLength={6}
                           value={pincode}
@@ -1765,7 +1720,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         <TextInput
                           style={styles.input}
                           placeholder="City"
-                          placeholderTextColor="#9CA3AF"
+                          placeholderTextColor="#78716C"
                           value={city}
                           onChangeText={setCity}
                           editable={areaName.trim().length >= 2}
@@ -1783,7 +1738,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     <TextInput
                       style={styles.input}
                       placeholder="State"
-                      placeholderTextColor="#9CA3AF"
+                      placeholderTextColor="#78716C"
                       value={stateName}
                       onChangeText={setStateName}
                       editable={areaName.trim().length >= 2}
@@ -1896,7 +1851,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={styles.input}
                     placeholder="Enter owner name"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     value={vendorName}
                     onChangeText={(text) => setVendorName(text.replace(/[^a-zA-Z\s]/g, ''))}
                   />
@@ -1941,7 +1896,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={styles.input}
                     placeholder={selectedCountryCode.dialCode === '+91' ? 'Enter 10-digit mobile number' : 'Enter mobile number'}
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     keyboardType="number-pad"
                     maxLength={selectedCountryCode.dialCode === '+91' ? 10 : 15}
                     value={phone}
@@ -2000,7 +1955,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={styles.input}
                     placeholder="Enter email address"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     keyboardType="email-address"
                     autoCapitalize="none"
                     value={email}
@@ -2047,7 +2002,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={styles.input}
                     placeholder="Enter shop / business name"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     value={storeName}
                     onChangeText={(text) => setStoreName(text.replace(/[^a-zA-Z\s]/g, ''))}
                   />
@@ -2064,7 +2019,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={styles.input}
                     placeholder="e.g. Shop No. 12, Ground Floor"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     value={shopNumber}
                     onChangeText={setShopNumber}
                   />
@@ -2148,7 +2103,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         key="input_field_gstin"
                         style={styles.input}
                         placeholder="ENTER 15–DIGIT GSTIN (E.G. 08ABCDE1234F1Z5)"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor="#78716C"
                         autoCapitalize="characters"
                         maxLength={15}
                         value={gstinNumber}
@@ -2161,7 +2116,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         key="input_field_pan"
                         style={styles.input}
                         placeholder="ENTER 10–DIGIT PAN (E.G. ABCDE1234F)"
-                        placeholderTextColor="#9CA3AF"
+                        placeholderTextColor="#78716C"
                         autoCapitalize="characters"
                         maxLength={10}
                         value={panNumber}
@@ -2229,9 +2184,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                 {/* Next Button */}
                 <TouchableOpacity
-                  style={[styles.submitButton, { marginTop: 20 }]}
+                  style={[styles.submitButton, { marginTop: 20 }, (Boolean(phoneAlreadyRegisteredError) || Boolean(emailAlreadyRegisteredError)) && { opacity: 0.5 }]}
                   onPress={handleNextStep2}
-                  disabled={loading}
+                  disabled={loading || Boolean(phoneAlreadyRegisteredError) || Boolean(emailAlreadyRegisteredError)}
                   activeOpacity={0.9}
                 >
                   {loading ? (
@@ -2250,7 +2205,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Min. 8 chars, 1 uppercase, 1 num, 1 sym"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     secureTextEntry={!showPassword}
                     value={password}
                     onChangeText={setPassword}
@@ -2279,7 +2234,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Re-enter password"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     secureTextEntry={!showConfirmPassword}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
@@ -2865,7 +2820,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <TextInput
                 style={styles.input}
                 placeholder="Search country or code (e.g. UAE, +1, UK)"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#78716C"
                 value={countrySearchQuery}
                 onChangeText={setCountrySearchQuery}
                 autoCorrect={false}
@@ -2993,7 +2948,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <TextInput
                 style={[styles.input, { letterSpacing: 8, fontSize: 20, textAlign: 'center', fontWeight: '700' }]}
                 placeholder="------"
-                placeholderTextColor="#D1D5DB"
+                placeholderTextColor="#78716C"
                 keyboardType="number-pad"
                 maxLength={6}
                 value={regOtp}
@@ -3058,7 +3013,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <TextInput
                   style={styles.input}
                   placeholder="Enter new password (min 6 chars)"
-                  placeholderTextColor="#A3938B"
+                  placeholderTextColor="#78716C"
                   secureTextEntry={!showSetPass1}
                   value={setPasswordNew}
                   onChangeText={setSetPasswordNew}
@@ -3077,7 +3032,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <TextInput
                   style={styles.input}
                   placeholder="Re-enter new password"
-                  placeholderTextColor="#A3938B"
+                  placeholderTextColor="#78716C"
                   secureTextEntry={!showSetPass2}
                   value={setPasswordConfirm}
                   onChangeText={setSetPasswordConfirm}
@@ -3170,7 +3125,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={styles.input}
                     placeholder="Enter mobile number or email id"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType={/^\d+$/.test(forgotEmail) ? 'number-pad' : 'email-address'}
@@ -3235,7 +3190,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={[styles.input, { letterSpacing: 8, fontSize: 20, textAlign: 'center', fontWeight: '700' }]}
                     placeholder="------"
-                    placeholderTextColor="#D1D5DB"
+                    placeholderTextColor="#78716C"
                     keyboardType="number-pad"
                     maxLength={6}
                     value={forgotOtp}
@@ -3291,7 +3246,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Enter new password"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     secureTextEntry={!forgotShowPass}
                     autoCapitalize="none"
                     value={forgotNewPass}
@@ -3308,7 +3263,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Confirm new password"
-                    placeholderTextColor="#9CA3AF"
+                    placeholderTextColor="#78716C"
                     secureTextEntry={!forgotShowPass}
                     autoCapitalize="none"
                     value={forgotConfirmPass}
@@ -3385,7 +3340,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <TextInput
                 style={styles.input}
                 placeholder="Enter mobile number or email id"
-                placeholderTextColor="#9CA3AF"
+                placeholderTextColor="#78716C"
                 autoCapitalize="none"
                 autoCorrect={false}
                 keyboardType={/^\d+$/.test(loginOtpModalPhone) ? 'number-pad' : 'email-address'}
@@ -3828,6 +3783,8 @@ const styles = StyleSheet.create({
     color: '#211A19',
     height: '100%',
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
+    textAlign: 'left',
+    textAlignVertical: 'center',
   },
   categoryText: {
     flex: 1,

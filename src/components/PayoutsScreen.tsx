@@ -420,20 +420,7 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
     <View style={styles.container}>
       {/* ─── TOP HEADER ─── */}
       <View style={styles.headerBar}>
-        {activeTab !== 'overview' ? (
-          <TouchableOpacity
-            style={styles.backBtn}
-            onPress={() => setActiveTab('overview')}
-            activeOpacity={0.7}
-          >
-            <ArrowLeft size={20} color={BrandTheme.darkForestGreen} />
-            <Text style={styles.headerTitle}>
-              {activeTab === 'account' ? 'Payout Account' : 'Payout History'}
-            </Text>
-          </TouchableOpacity>
-        ) : (
-          <Text style={styles.headerTitle}>Payouts</Text>
-        )}
+        <Text style={styles.headerTitle}>Payouts</Text>
 
         <View style={styles.headerRightRow}>
           {activeTab === 'history' ? (
@@ -444,53 +431,52 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
             >
               <Filter size={18} color={BrandTheme.darkForestGreen} />
             </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={styles.helpBtn}
-              onPress={() => setShowHelpModal(true)}
-              activeOpacity={0.7}
-            >
-              <HelpCircle size={20} color={BrandTheme.darkForestGreen} />
-            </TouchableOpacity>
-          )}
+          ) : null}
+          <TouchableOpacity
+            style={styles.helpBtn}
+            onPress={() => setShowHelpModal(true)}
+            activeOpacity={0.7}
+          >
+            <HelpCircle size={20} color={BrandTheme.darkForestGreen} />
+          </TouchableOpacity>
         </View>
       </View>
 
-      {/* ─── SEGMENTED CONTROL TABS (Visible on Overview) ─── */}
-      {activeTab === 'overview' ? (
-        <View style={styles.segmentContainer}>
-          <TouchableOpacity
-            style={[styles.segmentBtn, styles.segmentBtnActive]}
-            onPress={() => setActiveTab('overview')}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.segmentText, styles.segmentTextActive]}>
-              Overview
-            </Text>
-            <View style={styles.segmentIndicator} />
-          </TouchableOpacity>
+      {/* ─── SEGMENTED CONTROL TABS (Always visible beneath Payouts header) ─── */}
+      <View style={styles.segmentContainer}>
+        <TouchableOpacity
+          style={[styles.segmentBtn, activeTab === 'overview' && styles.segmentBtnActive]}
+          onPress={() => setActiveTab('overview')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.segmentText, activeTab === 'overview' && styles.segmentTextActive]}>
+            Overview
+          </Text>
+          {activeTab === 'overview' ? <View style={styles.segmentIndicator} /> : null}
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.segmentBtn}
-            onPress={() => setActiveTab('account')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.segmentText}>
-              Payout Account
-            </Text>
-          </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.segmentBtn, activeTab === 'account' && styles.segmentBtnActive]}
+          onPress={() => setActiveTab('account')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.segmentText, activeTab === 'account' && styles.segmentTextActive]}>
+            Payout Account
+          </Text>
+          {activeTab === 'account' ? <View style={styles.segmentIndicator} /> : null}
+        </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.segmentBtn}
-            onPress={() => setActiveTab('history')}
-            activeOpacity={0.8}
-          >
-            <Text style={styles.segmentText}>
-              Payout History
-            </Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
+        <TouchableOpacity
+          style={[styles.segmentBtn, activeTab === 'history' && styles.segmentBtnActive]}
+          onPress={() => setActiveTab('history')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.segmentText, activeTab === 'history' && styles.segmentTextActive]}>
+            Payout History
+          </Text>
+          {activeTab === 'history' ? <View style={styles.segmentIndicator} /> : null}
+        </TouchableOpacity>
+      </View>
 
       {/* ═══════════════════════════════════════════════
           SCREEN 1: OVERVIEW TAB CONTENT
@@ -725,17 +711,6 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Verified Status Banner */}
-          <View style={styles.verifiedBanner}>
-            <ShieldCheck size={22} color={BrandTheme.emeraldGreen} style={{ marginRight: 10 }} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.verifiedBannerTitle}>Your payout account is verified</Text>
-              <Text style={styles.verifiedBannerSubtitle}>
-                Payouts will be sent to this account.
-              </Text>
-            </View>
-          </View>
-
           {/* Bank Account Details Card */}
           <View style={styles.whiteCard}>
             <View style={styles.cardHeaderRow}>
@@ -2095,6 +2070,8 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: BrandTheme.darkForestGreen,
     backgroundColor: BrandTheme.creamCanvas,
+    textAlign: 'left',
+    textAlignVertical: 'center',
   },
   formErrorBox: {
     flexDirection: 'row',

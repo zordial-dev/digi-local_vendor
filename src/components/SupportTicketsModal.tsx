@@ -25,14 +25,21 @@ import {
   User,
   ChevronDown,
   Check,
-  ArrowLeft
+  ArrowLeft,
+  CreditCard,
+  Wrench,
+  Users,
+  FileText,
+  MessageSquare
 } from 'lucide-react-native';
 import {
   SupportTicketCategory,
+  SupportTicket,
   VendorUser
 } from '../services/api/types';
 import {
   createSupportTicketApi,
+  fetchVendorTicketsApi,
   uploadTicketAttachmentApi
 } from '../services/api/supportApi';
 
@@ -45,31 +52,31 @@ interface SupportTicketsModalProps {
   initialDescription?: string;
 }
 
-const CATEGORY_OPTIONS: Array<{ key: SupportTicketCategory; label: string; icon: string }> = [
-  { key: 'billing', label: 'Vendor Settlement & Payouts', icon: '💰' },
-  { key: 'technical', label: 'Technical & App Issue', icon: '🛠️' },
-  { key: 'vendor_vs_user', label: 'Customer Dispute', icon: '👥' },
-  { key: 'onboarding', label: 'Store Activation & KYC', icon: '📋' },
-  { key: 'general', label: 'General Store Inquiry', icon: '💬' },
+const CATEGORY_OPTIONS: Array<{ key: SupportTicketCategory; label: string; icon: any }> = [
+  { key: 'billing', label: 'Vendor Settlement & Payouts', icon: CreditCard },
+  { key: 'technical', label: 'Technical & App Issue', icon: Wrench },
+  { key: 'vendor_vs_user', label: 'Customer Dispute', icon: Users },
+  { key: 'onboarding', label: 'Store Activation & KYC', icon: FileText },
+  { key: 'general', label: 'General Store Inquiry', icon: MessageSquare },
 ];
 
 export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
   visible,
   onClose,
   vendor,
-  initialCategory = 'billing',
+  initialCategory,
   initialSubject = '',
   initialDescription = '',
 }) => {
   const [filingRole, setFilingRole] = useState<'vendor' | 'customer'>('vendor');
 
-  // Form Fields
-  const [fullName, setFullName] = useState(vendor?.vendor_name || '');
-  const [email, setEmail] = useState(vendor?.email || '');
-  const [category, setCategory] = useState<SupportTicketCategory>(initialCategory);
+  // Form Fields - Start empty so no auto-filled data appears
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [category, setCategory] = useState<SupportTicketCategory | ''>('');
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [orderId, setOrderId] = useState('');
-  const [reportedStoreName, setReportedStoreName] = useState(vendor?.store_name || '');
+  const [reportedStoreName, setReportedStoreName] = useState('');
   const [subject, setSubject] = useState(initialSubject);
   const [description, setDescription] = useState(initialDescription);
   const [attachment, setAttachment] = useState<{ uri: string; name: string; type?: string } | null>(null);
@@ -83,18 +90,36 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
   } | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
 
+  const [activeTab, setActiveTab] = useState<'create' | 'history'>('create');
+  const [tickets, setTickets] = useState<SupportTicket[]>([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+
+  const loadTickets = async () => {
+    setLoadingTickets(true);
+    try {
+      const list = await fetchVendorTicketsApi();
+      setTickets(list);
+    } catch (_) {
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
+
   useEffect(() => {
     if (visible) {
-      if (vendor?.vendor_name) setFullName(vendor.vendor_name);
-      if (vendor?.email) setEmail(vendor.email);
-      if (vendor?.store_name) setReportedStoreName(vendor.store_name);
-      if (initialCategory) setCategory(initialCategory);
-      if (initialSubject) setSubject(initialSubject);
-      if (initialDescription) setDescription(initialDescription);
+      setFullName('');
+      setEmail('');
+      setOrderId('');
+      setReportedStoreName('');
+      setCategory(initialCategory ? initialCategory : '');
+      setSubject(initialSubject || '');
+      setDescription(initialDescription || '');
+      setAttachment(null);
       setSubmitSuccess(null);
       setErrorMessage('');
+      loadTickets();
     }
-  }, [visible, vendor, initialCategory, initialSubject, initialDescription]);
+  }, [visible, initialCategory, initialSubject, initialDescription]);
 
   const handlePickAttachment = async () => {
     try {
@@ -120,15 +145,19 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
   const handleSubmitTicket = async () => {
     setErrorMessage('');
     if (!fullName.trim()) {
-      setErrorMessage('Please enter your full name.');
+      setErrorMessage('Please enter your Full Name.');
       return;
     }
     if (!email.trim() || !email.includes('@')) {
-      setErrorMessage('Please enter a valid contact email address.');
+      setErrorMessage('Please enter a valid Email Address.');
+      return;
+    }
+    if (!category) {
+      setErrorMessage('Please select a category for your complaint.');
       return;
     }
     if (!subject.trim()) {
-      setErrorMessage('Please enter a subject / summary for your inquiry.');
+      setErrorMessage('Please enter a Subject for your complaint.');
       return;
     }
     if (!description.trim()) {
@@ -141,7 +170,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
       const res = await createSupportTicketApi({
         subject: subject.trim(),
         description: description.trim(),
-        category,
+        category: category as SupportTicketCategory,
         priority: category === 'billing' ? 'high' : 'medium',
         store_name: reportedStoreName.trim() || vendor?.store_name || '',
         reporter_name: fullName.trim(),
@@ -164,6 +193,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
         sla_minutes_remaining: res.sla_minutes_remaining || 45,
         created_at_readable: res.created_at_readable || 'Just now'
       });
+      loadTickets();
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to submit support complaint. Please try again.');
     } finally {
@@ -175,12 +205,13 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
     setSubject('');
     setDescription('');
     setOrderId('');
+    setCategory('');
     setAttachment(null);
     setSubmitSuccess(null);
     setErrorMessage('');
   };
 
-  const selectedCategoryObj = CATEGORY_OPTIONS.find(c => c.key === category) || CATEGORY_OPTIONS[0];
+  const selectedCategoryObj = category ? CATEGORY_OPTIONS.find(c => c.key === category) : null;
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
@@ -205,12 +236,134 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
           </TouchableOpacity>
         </View>
 
+        {/* Sub-Header Segment Control */}
+        <View style={styles.segmentBar}>
+          <TouchableOpacity
+            style={[styles.segmentBtn, activeTab === 'create' && styles.segmentBtnActive]}
+            onPress={() => setActiveTab('create')}
+            activeOpacity={0.85}
+          >
+            <LifeBuoy size={14} color={activeTab === 'create' ? '#FFFFFF' : '#78716C'} style={{ marginRight: 6 }} />
+            <Text style={[styles.segmentBtnText, activeTab === 'create' && styles.segmentBtnTextActive]}>
+              Log New Complaint
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.segmentBtn, activeTab === 'history' && styles.segmentBtnActive]}
+            onPress={() => {
+              setActiveTab('history');
+              loadTickets();
+            }}
+            activeOpacity={0.85}
+          >
+            <Clock size={14} color={activeTab === 'history' ? '#FFFFFF' : '#78716C'} style={{ marginRight: 6 }} />
+            <Text style={[styles.segmentBtnText, activeTab === 'history' && styles.segmentBtnTextActive]}>
+              My Submitted Tickets {tickets.length > 0 ? `(${tickets.length})` : ''}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <ScrollView
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          {submitSuccess ? (
+          {activeTab === 'history' ? (
+            <View style={styles.historyContainer}>
+              <View style={styles.historyHeaderRow}>
+                <Text style={styles.historySectionTitle}>PREVIOUSLY SUBMITTED TICKETS</Text>
+                <TouchableOpacity onPress={loadTickets} disabled={loadingTickets} activeOpacity={0.7}>
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#541D26' }}>
+                    {loadingTickets ? 'Refreshing...' : '🔄 Refresh'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
+              {loadingTickets && tickets.length === 0 ? (
+                <View style={styles.loadingBox}>
+                  <ActivityIndicator size="small" color="#541D26" />
+                  <Text style={styles.loadingText}>Fetching ticket history...</Text>
+                </View>
+              ) : tickets.length === 0 ? (
+                <View style={styles.emptyTicketsCard}>
+                  <LifeBuoy size={36} color="#78716C" style={{ marginBottom: 10 }} />
+                  <Text style={styles.emptyTicketsTitle}>No Tickets Submitted Yet</Text>
+                  <Text style={styles.emptyTicketsSub}>
+                    You haven't filed any support complaints or inquiries. If you face any issues with payouts, orders, or store activation, log a ticket below.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.actionBtnPrimary}
+                    onPress={() => setActiveTab('create')}
+                    activeOpacity={0.88}
+                  >
+                    <Text style={styles.actionBtnPrimaryText}>Log New Ticket</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                tickets.map((t) => {
+                  const catObj = CATEGORY_OPTIONS.find((c) => c.key === t.category);
+                  const isResolved = t.status?.toLowerCase() === 'resolved' || t.status?.toLowerCase() === 'closed';
+                  const isPending = t.status?.toLowerCase() === 'open' || t.status?.toLowerCase() === 'pending';
+
+                  return (
+                    <View key={t.ticket_id} style={styles.ticketCard}>
+                      <View style={styles.ticketCardHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={styles.ticketNumText}>ID: {t.ticket_number}</Text>
+                          {catObj ? (
+                            <View style={styles.categoryBadge}>
+                              <Text style={styles.categoryBadgeText}>{catObj.label.split('&')[0]}</Text>
+                            </View>
+                          ) : null}
+                        </View>
+                        <View
+                          style={[
+                            styles.statusPill,
+                            isResolved
+                              ? styles.statusPillResolved
+                              : isPending
+                              ? styles.statusPillPending
+                              : styles.statusPillProgress,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.statusPillText,
+                              isResolved
+                                ? styles.statusPillTextResolved
+                                : isPending
+                                ? styles.statusPillTextPending
+                                : styles.statusPillTextProgress,
+                            ]}
+                          >
+                            {(t.status || 'OPEN').toUpperCase()}
+                          </Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.ticketSubject}>{t.subject}</Text>
+                      {t.description ? (
+                        <Text style={styles.ticketDesc} numberOfLines={2}>
+                          {t.description}
+                        </Text>
+                      ) : null}
+
+                      <View style={styles.ticketFooterRow}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          <Clock size={12} color="#78716C" />
+                          <Text style={styles.ticketTimeText}>{t.created_at_readable || 'Recently'}</Text>
+                        </View>
+                        {t.sla_minutes_remaining ? (
+                          <Text style={styles.ticketSlaText}>SLA: ~{t.sla_minutes_remaining} mins</Text>
+                        ) : null}
+                      </View>
+                    </View>
+                  );
+                })
+              )}
+            </View>
+          ) : submitSuccess ? (
             <View style={styles.successCard}>
               <View style={styles.successIconBadge}>
                 <CheckCircle2 size={34} color="#16A34A" />
@@ -233,10 +386,13 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 18, width: '100%' }}>
                 <TouchableOpacity
                   style={styles.actionBtnOutline}
-                  onPress={handleResetForm}
+                  onPress={() => {
+                    handleResetForm();
+                    setActiveTab('history');
+                  }}
                   activeOpacity={0.85}
                 >
-                  <Text style={styles.actionBtnOutlineText}>File Another</Text>
+                  <Text style={styles.actionBtnOutlineText}>View My Tickets</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={styles.actionBtnPrimary}
@@ -261,15 +417,17 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                   onPress={() => setFilingRole('vendor')}
                   activeOpacity={0.85}
                 >
-                  <View style={styles.roleCardHeader}>
-                    <Store size={14} color={filingRole === 'vendor' ? '#FFFFFF' : '#78716C'} />
-                    <Text style={[styles.roleCardTitle, filingRole === 'vendor' && styles.roleCardTitleActive]}>
-                      Vendor Merchant
-                    </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                    <Store size={14} color={filingRole === 'vendor' ? '#FFFFFF' : '#78716C'} style={{ marginTop: 2 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.roleCardTitle, filingRole === 'vendor' && styles.roleCardTitleActive]}>
+                        Vendor Merchant
+                      </Text>
+                      <Text style={[styles.roleCardSub, filingRole === 'vendor' && styles.roleCardSubActive]}>
+                        Payouts, Catalog & Listings
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[styles.roleCardSub, filingRole === 'vendor' && styles.roleCardSubActive]} numberOfLines={1}>
-                    Payouts, Catalog & Listings
-                  </Text>
                 </TouchableOpacity>
 
                 {/* Option 2: Resident Customer */}
@@ -281,15 +439,17 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                   onPress={() => setFilingRole('customer')}
                   activeOpacity={0.85}
                 >
-                  <View style={styles.roleCardHeader}>
-                    <User size={14} color={filingRole === 'customer' ? '#FFFFFF' : '#78716C'} />
-                    <Text style={[styles.roleCardTitle, filingRole === 'customer' && styles.roleCardTitleActive]}>
-                      Resident Customer
-                    </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 6 }}>
+                    <User size={14} color={filingRole === 'customer' ? '#FFFFFF' : '#78716C'} style={{ marginTop: 2 }} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.roleCardTitle, filingRole === 'customer' && styles.roleCardTitleActive]}>
+                        Resident Customer
+                      </Text>
+                      <Text style={[styles.roleCardSub, filingRole === 'customer' && styles.roleCardSubActive]}>
+                        Orders, Delivery & Refunds
+                      </Text>
+                    </View>
                   </View>
-                  <Text style={[styles.roleCardSub, filingRole === 'customer' && styles.roleCardSubActive]} numberOfLines={1}>
-                    Orders, Delivery & Refunds
-                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -302,7 +462,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                     value={fullName}
                     onChangeText={setFullName}
                     placeholder="e.g. Raj Gehlot"
-                    placeholderTextColor="#A8A29E"
+                    placeholderTextColor="#78716C"
                   />
                 </View>
                 <View style={styles.col}>
@@ -314,7 +474,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                     keyboardType="email-address"
                     autoCapitalize="none"
                     placeholder="name@mail.com"
-                    placeholderTextColor="#A8A29E"
+                    placeholderTextColor="#78716C"
                   />
                 </View>
               </View>
@@ -328,8 +488,8 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                     onPress={() => setShowCategoryPicker(true)}
                     activeOpacity={0.85}
                   >
-                    <Text style={styles.dropdownValue} numberOfLines={1}>
-                      {selectedCategoryObj.icon} {selectedCategoryObj.label}
+                    <Text style={[styles.dropdownValue, !selectedCategoryObj && { color: '#78716C', fontWeight: '400' }]} numberOfLines={1}>
+                      {selectedCategoryObj ? `${selectedCategoryObj.icon} ${selectedCategoryObj.label}` : 'Select category'}
                     </Text>
                     <ChevronDown size={14} color="#541D26" />
                   </TouchableOpacity>
@@ -341,7 +501,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                     value={orderId}
                     onChangeText={setOrderId}
                     placeholder="ORD-9842"
-                    placeholderTextColor="#A8A29E"
+                    placeholderTextColor="#78716C"
                   />
                 </View>
               </View>
@@ -354,7 +514,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                   value={reportedStoreName}
                   onChangeText={setReportedStoreName}
                   placeholder="e.g. Fresh Grocery Store"
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                 />
               </View>
 
@@ -366,7 +526,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                   value={subject}
                   onChangeText={setSubject}
                   placeholder="e.g. Settlement issue for recent orders"
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                 />
               </View>
 
@@ -381,7 +541,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                   numberOfLines={4}
                   textAlignVertical="top"
                   placeholder="Provide complete details including transaction info, timeline, or relevant dispute details..."
-                  placeholderTextColor="#A8A29E"
+                  placeholderTextColor="#78716C"
                 />
               </View>
 
@@ -453,6 +613,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
             </View>
             {CATEGORY_OPTIONS.map((opt) => {
               const isSelected = category === opt.key;
+              const OptIcon = opt.icon;
               return (
                 <TouchableOpacity
                   key={opt.key}
@@ -463,7 +624,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                   }}
                   activeOpacity={0.8}
                 >
-                  <Text style={{ fontSize: 15, marginRight: 8 }}>{opt.icon}</Text>
+                  <OptIcon size={16} color={isSelected ? '#541D26' : '#78716C'} style={{ marginRight: 8 }} />
                   <Text style={[styles.pickerOptionText, isSelected && styles.pickerOptionTextActive]}>
                     {opt.label}
                   </Text>
@@ -491,6 +652,165 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#E7DFD5',
+  },
+  segmentBar: {
+    flexDirection: 'row',
+    backgroundColor: '#FAF8F5',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E7DFD5',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    gap: 8,
+  },
+  segmentBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    height: 38,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FAF8F5',
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+  },
+  segmentBtnActive: {
+    backgroundColor: '#541D26',
+    borderColor: '#541D26',
+  },
+  segmentBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#78716C',
+  },
+  segmentBtnTextActive: {
+    color: '#FFFFFF',
+  },
+  historyContainer: {
+    gap: 12,
+  },
+  historyHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  historySectionTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#78716C',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+  },
+  loadingBox: {
+    padding: 30,
+    alignItems: 'center',
+    gap: 10,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: '#78716C',
+    fontWeight: '600',
+  },
+  emptyTicketsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+    padding: 24,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  emptyTicketsTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#211A19',
+    marginBottom: 6,
+  },
+  emptyTicketsSub: {
+    fontSize: 12,
+    color: '#78716C',
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  ticketCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E7DFD5',
+    padding: 14,
+    gap: 8,
+  },
+  ticketCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  categoryBadge: {
+    backgroundColor: '#F7EEF0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  categoryBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#541D26',
+  },
+  statusPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  statusPillPending: {
+    backgroundColor: '#FFFBEB',
+    borderWidth: 1,
+    borderColor: '#FDE68A',
+  },
+  statusPillProgress: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  statusPillResolved: {
+    backgroundColor: '#F0FDF4',
+    borderWidth: 1,
+    borderColor: '#DCFCE7',
+  },
+  statusPillText: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  statusPillTextPending: { color: '#B45309' },
+  statusPillTextProgress: { color: '#1D4ED8' },
+  statusPillTextResolved: { color: '#15803D' },
+  ticketSubject: {
+    fontSize: 13.5,
+    fontWeight: '700',
+    color: '#211A19',
+  },
+  ticketDesc: {
+    fontSize: 12,
+    color: '#78716C',
+    lineHeight: 17,
+  },
+  ticketFooterRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 4,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#FAF8F5',
+  },
+  ticketTimeText: {
+    fontSize: 11,
+    color: '#78716C',
+  },
+  ticketSlaText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#541D26',
   },
   backBtn: {
     width: 34,
@@ -550,9 +870,10 @@ const styles = StyleSheet.create({
   roleCard: {
     flex: 1,
     borderRadius: 12,
-    padding: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
     borderWidth: 1.5,
-    minHeight: 62,
+    minHeight: 64,
     justifyContent: 'center',
   },
   roleCardActive: {
@@ -566,20 +887,22 @@ const styles = StyleSheet.create({
   roleCardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
-    marginBottom: 2,
+    gap: 6,
+    marginBottom: 3,
   },
   roleCardTitle: {
-    fontSize: 11.5,
+    fontSize: 12,
     fontWeight: '700',
     color: '#211A19',
+    flexShrink: 1,
   },
   roleCardTitleActive: {
     color: '#FFFFFF',
   },
   roleCardSub: {
-    fontSize: 9.5,
+    fontSize: 10,
     color: '#78716C',
+    lineHeight: 14,
   },
   roleCardSubActive: {
     color: '#EEE5DA',
@@ -609,6 +932,8 @@ const styles = StyleSheet.create({
     height: 40,
     fontSize: 12,
     color: '#211A19',
+    textAlign: 'left',
+    textAlignVertical: 'center',
   },
   textArea: {
     height: 75,
