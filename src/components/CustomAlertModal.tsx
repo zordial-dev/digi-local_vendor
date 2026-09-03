@@ -82,7 +82,7 @@ export const CustomAlertModal: React.FC<CustomAlertModalProps> = ({
       case 'error':
         return '#DC2626';
       case 'warning':
-        return '#DC2626'; // Red for warning confirm actions like Delete
+        return '#D97706';
       default:
         return '#541D26';
     }

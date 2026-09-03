@@ -100,7 +100,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.All,
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.7,
       });
 

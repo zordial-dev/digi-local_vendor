@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   FlatList,
+  RefreshControl,
   Modal,
   Switch,
   Image,
@@ -865,8 +866,23 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
         data={filteredItems}
         keyExtractor={item => String(item.item_id)}
         contentContainerStyle={styles.listContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={onRefresh}
+            colors={['#541D26']}
+            tintColor="#541D26"
+          />
+        }
         ListEmptyComponent={
-          isPendingApproval ? (
+          isLoading ? (
+            <View style={{ paddingVertical: 60, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator size="large" color="#541D26" />
+              <Text style={{ marginTop: 14, fontSize: 13, fontWeight: '700', color: '#541D26' }}>
+                Loading menu items...
+              </Text>
+            </View>
+          ) : isPendingApproval ? (
             <View style={styles.emptyState}>
               <View style={{
                 width: 64,

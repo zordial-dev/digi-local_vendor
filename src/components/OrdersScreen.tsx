@@ -711,7 +711,14 @@ export const OrdersScreenComponent: React.FC<OrdersScreenProps> = React.memo(({
           />
         }
         ListEmptyComponent={
-          isPendingApproval ? (
+          isLoading ? (
+            <View style={{ paddingVertical: 60, alignItems: 'center', justifyContent: 'center' }}>
+              <ActivityIndicator size="large" color="#541D26" />
+              <Text style={{ marginTop: 14, fontSize: 13, fontWeight: '700', color: '#541D26' }}>
+                Loading customer orders...
+              </Text>
+            </View>
+          ) : isPendingApproval ? (
             <View style={{
               marginHorizontal: 16,
               marginTop: 20,

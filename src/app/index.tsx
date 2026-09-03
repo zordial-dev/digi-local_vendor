@@ -29,6 +29,7 @@ import {
   Clock,
   AlertTriangle,
   AlertOctagon,
+  AlertCircle,
   PhoneCall,
   RefreshCw,
   ShieldAlert,
@@ -268,6 +269,10 @@ export default function App() {
 
       if (data.vendor) {
         const liveStatus = String(data.vendor.status || '').toLowerCase();
+        const reasonText = data.vendor.hold_reason || data.vendor.rejection_reason || data.vendor.reason || '';
+        if (reasonText) {
+          setVendorRejectionReason(reasonText);
+        }
         if (liveStatus === 'active' || liveStatus === 'accepted') {
           setVendorApprovalStatus('accepted');
         } else if (liveStatus === 'rejected') {
@@ -471,14 +476,17 @@ export default function App() {
     }
 
     if (statusRes) {
+      const reasonText = statusRes.rejection_reason || statusRes.hold_reason || statusRes.reason || '';
+      if (reasonText) {
+        setVendorRejectionReason(reasonText);
+      }
+
       if (statusRes.is_rejected || statusRes.status === 'rejected') {
         setVendorApprovalStatus('rejected');
-        setVendorRejectionReason(statusRes.rejection_reason || '');
       } else if (statusRes.is_accepted || statusRes.is_active || statusRes.status === 'accepted' || statusRes.status === 'active') {
         setVendorApprovalStatus('accepted');
       } else if (statusRes.is_on_hold || statusRes.status === 'hold') {
         setVendorApprovalStatus('hold');
-        setVendorRejectionReason(statusRes.rejection_reason || '');
       } else {
         setVendorApprovalStatus('pending');
       }
@@ -524,9 +532,9 @@ export default function App() {
     setSubscription(null);
     setPayments([]);
 
-    // Clear saved credentials and cache
-    clearSavedCredentials().catch(() => {});
-    clearAllAppCache().catch(() => {});
+    // Clear saved credentials and cache synchronously
+    await clearSavedCredentials().catch(() => {});
+    await clearAllAppCache().catch(() => {});
 
     // Notify backend server asynchronously without blocking UI
     if (prevUser?.vendor_id) {
@@ -826,7 +834,7 @@ export default function App() {
     setShowLogoPickerModal(false);
     try {
       const captured = await captureImageFromDevice({
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [1, 1],
         quality: 0.8,
       });
@@ -842,7 +850,7 @@ export default function App() {
     setShowLogoPickerModal(false);
     try {
       const picked = await pickImageFromDevice({
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [1, 1],
         quality: 0.8,
       });
@@ -909,96 +917,128 @@ export default function App() {
         </View>
       </View>
 
-      {/* ─── Pending / Hold Verification Status Banner (Hidden when Approved) ─── */}
+      {/* ─── Pending / Hold Verification Status Banner with Admin Reason ─── */}
       {vendorApprovalStatus === 'pending' || vendorApprovalStatus === 'hold' ? (
         <View style={{
           backgroundColor: vendorApprovalStatus === 'hold' ? '#FEF2F2' : '#FFFBEB',
           borderBottomWidth: 1.5,
-          borderBottomColor: vendorApprovalStatus === 'hold' ? '#FECACA' : '#FDE68A',
-          paddingVertical: 12,
+          borderBottomColor: vendorApprovalStatus === 'hold' ? '#FECDD3' : '#FDE68A',
+          paddingVertical: 14,
           paddingHorizontal: 16,
         }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
               <View style={{
-                width: 26,
-                height: 26,
-                borderRadius: 13,
+                width: 28,
+                height: 28,
+                borderRadius: 14,
                 backgroundColor: vendorApprovalStatus === 'hold' ? '#FEE2E2' : '#FEF3C7',
                 justifyContent: 'center',
                 alignItems: 'center',
               }}>
                 {vendorApprovalStatus === 'hold' ? (
-                  <AlertOctagon size={15} color="#DC2626" strokeWidth={2.5} />
+                  <AlertTriangle size={16} color="#DC2626" strokeWidth={2.5} />
                 ) : (
-                  <Clock size={15} color="#D97706" strokeWidth={2.5} />
+                  <Clock size={16} color="#D97706" strokeWidth={2.5} />
                 )}
               </View>
               <Text style={{
-                fontSize: 14,
+                fontSize: 15,
                 fontWeight: '800',
                 color: vendorApprovalStatus === 'hold' ? '#991B1B' : '#92400E',
                 letterSpacing: 0.2,
                 fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_700Bold'
               }}>
-                {vendorApprovalStatus === 'hold' ? 'Action Required' : 'Vendor Request Submitted'}
+                {vendorApprovalStatus === 'hold' ? 'Request Placed on Hold' : 'Submitted for Admin Approval'}
               </Text>
             </View>
 
-            <TouchableOpacity
-              onPress={() => loadDashboardData(currentUser.vendor_id, true)}
-              style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                gap: 4,
-                backgroundColor: vendorApprovalStatus === 'hold' ? '#FEE2E2' : '#FEF3C7',
-                paddingHorizontal: 10,
-                paddingVertical: 5,
-                borderRadius: 8,
-                borderWidth: 0.5,
-                borderColor: vendorApprovalStatus === 'hold' ? '#FECACA' : '#FDE68A'
-              }}
-              activeOpacity={0.7}
-            >
-              <RefreshCw size={12} color={vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706"} />
-              <Text style={{ fontSize: 11.5, fontWeight: '700', color: vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706" }}>Refresh</Text>
-            </TouchableOpacity>
-            
-            {vendorApprovalStatus === 'hold' && (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <TouchableOpacity
-                onPress={() => setShowResubmitModal(true)}
+                onPress={() => loadDashboardData(currentUser.vendor_id, true)}
                 style={{
                   flexDirection: 'row',
                   alignItems: 'center',
                   gap: 4,
-                  backgroundColor: '#DC2626',
+                  backgroundColor: vendorApprovalStatus === 'hold' ? '#FEE2E2' : '#FEF3C7',
                   paddingHorizontal: 10,
-                  paddingVertical: 5,
+                  paddingVertical: 6,
                   borderRadius: 8,
-                  marginLeft: 8,
+                  borderWidth: 0.5,
+                  borderColor: vendorApprovalStatus === 'hold' ? '#FECACA' : '#FDE68A'
                 }}
                 activeOpacity={0.7}
               >
-                <Send size={12} color="#FFFFFF" />
-                <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#FFFFFF' }}>Resubmit</Text>
+                <RefreshCw size={12} color={vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706"} />
+                <Text style={{ fontSize: 11.5, fontWeight: '700', color: vendorApprovalStatus === 'hold' ? "#DC2626" : "#D97706" }}>
+                  Refresh Status
+                </Text>
               </TouchableOpacity>
-            )}
+
+              {vendorApprovalStatus === 'hold' && (
+                <TouchableOpacity
+                  onPress={() => setShowResubmitModal(true)}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    gap: 4,
+                    backgroundColor: '#541D26',
+                    paddingHorizontal: 12,
+                    paddingVertical: 6,
+                    borderRadius: 8,
+                    marginLeft: 8,
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Send size={12} color="#FFFFFF" />
+                  <Text style={{ fontSize: 11.5, fontWeight: '700', color: '#FFFFFF' }}>Resubmit</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
 
           <Text style={{
-            fontSize: 12,
+            fontSize: 12.5,
             color: vendorApprovalStatus === 'hold' ? '#7F1D1D' : '#78350F',
-            lineHeight: 17,
+            lineHeight: 18,
             marginTop: 2,
             fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular'
           }}>
-            {vendorMessage || (vendorApprovalStatus === 'hold' ? 'Your application is on hold. Please contact support.' : 'Your merchant application has been submitted and is currently awaiting verification. Once approved, your store and products will go live on the DigiLocal marketplace.')}
+            {vendorMessage || (vendorApprovalStatus === 'hold'
+              ? 'Your vendor request is on hold. Please review the admin reason below and resubmit your details.'
+              : 'Your merchant application has been submitted and is currently awaiting verification by admin.')}
           </Text>
-          
-          {vendorApprovalStatus === 'hold' && vendorRejectionReason ? (
-            <View style={{ marginTop: 8, backgroundColor: '#FEF2F2', padding: 8, borderRadius: 6, borderWidth: 1, borderColor: '#FECACA' }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#B91C1C', marginBottom: 2 }}>Hold Reason:</Text>
-              <Text style={{ fontSize: 12, color: '#991B1B' }}>{vendorRejectionReason}</Text>
+
+          {/* ── Admin Hold / Feedback Reason Field Box ── */}
+          {(vendorRejectionReason || currentUser?.hold_reason || currentUser?.rejection_reason || currentUser?.reason) ? (
+            <View style={{
+              marginTop: 10,
+              backgroundColor: '#FFFFFF',
+              padding: 12,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: vendorApprovalStatus === 'hold' ? '#FECDD3' : '#FDE68A',
+            }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                <AlertCircle size={14} color={vendorApprovalStatus === 'hold' ? '#991B1B' : '#92400E'} />
+                <Text style={{
+                  fontSize: 11.5,
+                  fontWeight: '800',
+                  color: vendorApprovalStatus === 'hold' ? '#991B1B' : '#92400E',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.5
+                }}>
+                  {vendorApprovalStatus === 'hold' ? 'Admin Hold Reason:' : 'Admin Feedback / Note:'}
+                </Text>
+              </View>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: '600',
+                color: '#211A19',
+                lineHeight: 19
+              }}>
+                {vendorRejectionReason || currentUser?.hold_reason || currentUser?.rejection_reason || currentUser?.reason}
+              </Text>
             </View>
           ) : null}
         </View>

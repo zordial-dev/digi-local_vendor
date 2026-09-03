@@ -141,16 +141,17 @@ export const safeFetch = async (
     let data: any = {};
 
     if (contentType.includes('application/json')) {
-      data = await res.json();
+      try {
+        data = await res.json();
+      } catch (_) {
+        data = {};
+      }
     } else {
       const rawText = await res.text();
-      if (!res.ok) {
-        throw new Error(`Server returned status ${res.status}. Ensure backend is active.`);
-      }
       try {
         data = JSON.parse(rawText);
       } catch (_) {
-        data = { message: rawText };
+        data = { message: rawText, error: rawText };
       }
     }
 

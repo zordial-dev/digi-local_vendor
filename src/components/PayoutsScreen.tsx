@@ -4,6 +4,7 @@ import {
   View,
   Text,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   TextInput,
   Modal,
@@ -499,6 +500,14 @@ export const PayoutsScreenComponent: React.FC<PayoutsScreenProps> = React.memo((
           style={styles.scrollArea}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={!!isLoading}
+              onRefresh={onRefresh}
+              colors={['#541D26']}
+              tintColor="#541D26"
+            />
+          }
         >
           {/* ── 1. Hero Available Balance Card ── */}
           <View style={styles.heroCard}>

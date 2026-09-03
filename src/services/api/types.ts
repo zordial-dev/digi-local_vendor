@@ -85,6 +85,9 @@ export interface VendorUser {
   public_id?: string;
   has_resubmitted?: boolean;
   resubmitted_at_ist?: string;
+  hold_reason?: string;
+  rejection_reason?: string;
+  reason?: string;
   shop_image?: string;
   category?: string;
   gstin?: string;
@@ -365,6 +368,8 @@ export interface VendorStatusResponse {
   message?: string;
   recommended_ui_text?: string;
   rejection_reason?: string;
+  hold_reason?: string;
+  reason?: string;
   block_reason?: string;
   vendor?: Partial<VendorUser>;
 }

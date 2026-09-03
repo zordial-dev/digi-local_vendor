@@ -4,6 +4,7 @@ import {
   View,
   Text,
   ScrollView,
+  RefreshControl,
   TouchableOpacity,
   ActivityIndicator,
   Share,
@@ -877,7 +878,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
     setShowLogoPickerModal(false);
     try {
       const captured = await captureImageFromDevice({
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [1, 1],
         quality: 0.8,
       });
@@ -893,7 +894,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
     setShowLogoPickerModal(false);
     try {
       const picked = await pickImageFromDevice({
-        allowsEditing: true,
+        allowsEditing: false,
         aspect: [1, 1],
         quality: 0.8,
       });
@@ -919,8 +920,29 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
     { icon: FileText, label: 'Terms & Conditions', sub: 'Store & platform rules', onPress: () => setShowTerms(true), color: '#C8A878' },
   ];
 
+  const [refreshing, setRefreshing] = useState(false);
+  const handlePullRefresh = async () => {
+    setRefreshing(true);
+    try {
+      if (onRefresh) await onRefresh();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   return (
-    <ScrollView style={[styles.container, { backgroundColor: '#F8F6F0' }]} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: '#F8F6F0' }]}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={handlePullRefresh}
+          colors={['#541D26']}
+          tintColor="#541D26"
+        />
+      }
+    >
 
       {/* Store Header Card */}
       <View style={styles.card}>

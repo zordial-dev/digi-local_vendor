@@ -158,19 +158,31 @@ export async function getSavedApiBaseUrlStorage(): Promise<string | null> {
 export async function clearSavedCredentials(): Promise<void> {
   try {
     if (Platform.OS !== 'web' && SecureStore && typeof SecureStore.deleteItemAsync === 'function') {
-      await SecureStore.deleteItemAsync(CRED_KEY);
-      await SecureStore.deleteItemAsync(VENDOR_KEY);
-      await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
-      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    } else if (typeof localStorage !== 'undefined') {
+      await SecureStore.deleteItemAsync(CRED_KEY).catch(() => {});
+      await SecureStore.deleteItemAsync(VENDOR_KEY).catch(() => {});
+      await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY).catch(() => {});
+      await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY).catch(() => {});
+    }
+  } catch (e) {}
+
+  try {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    if (AsyncStorage) {
+      await AsyncStorage.removeItem(VENDOR_KEY).catch(() => {});
+      await AsyncStorage.removeItem(CRED_KEY).catch(() => {});
+      await AsyncStorage.removeItem(ACCESS_TOKEN_KEY).catch(() => {});
+      await AsyncStorage.removeItem(REFRESH_TOKEN_KEY).catch(() => {});
+    }
+  } catch (e) {}
+
+  try {
+    if (typeof localStorage !== 'undefined') {
       localStorage.removeItem(CRED_KEY);
       localStorage.removeItem(VENDOR_KEY);
       localStorage.removeItem(ACCESS_TOKEN_KEY);
       localStorage.removeItem(REFRESH_TOKEN_KEY);
     }
-  } catch (e) {
-    console.error('Failed to clear vendor credentials:', e);
-  }
+  } catch (e) {}
 }
 
 const FAV_VENDORS_KEY = 'digilocal_favorite_vendors';

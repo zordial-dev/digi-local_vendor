@@ -10,8 +10,9 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   ScrollView,
+  Image,
 } from 'react-native';
-import { X, Upload, Send } from 'lucide-react-native';
+import { X, Upload, Send, CheckCircle2 } from 'lucide-react-native';
 import { VendorUser } from '../services/api/types';
 import { resubmitVendorApplicationApi } from '../services/api/authApi';
 import { DigiLocalColors } from '../constants/theme';
@@ -60,7 +61,7 @@ export const ResubmitModal: React.FC<ResubmitModalProps> = ({ visible, onClose, 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
+        allowsEditing: false,
         quality: 0.6,
         base64: true,
       });
@@ -162,8 +163,17 @@ export const ResubmitModal: React.FC<ResubmitModalProps> = ({ visible, onClose, 
             <Text style={styles.label}>Shop Image</Text>
             <TouchableOpacity style={styles.uploadBtn} onPress={handlePickImage}>
               <Upload size={16} color={DigiLocalColors.primary} />
-              <Text style={styles.uploadBtnText}>{shopImage ? 'Image Selected (Tap to change)' : 'Upload Shop Image'}</Text>
+              <Text style={styles.uploadBtnText}>{shopImage ? 'Done (Tap to change image)' : 'Upload Shop Image'}</Text>
             </TouchableOpacity>
+            {shopImage ? (
+              <View style={{ marginTop: 10, alignItems: 'center', backgroundColor: '#F0FDF4', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#BBF7D0' }}>
+                <Image source={{ uri: shopImage }} style={{ width: 120, height: 90, borderRadius: 8, marginBottom: 6 }} />
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <CheckCircle2 size={14} color="#166534" />
+                  <Text style={{ color: '#166534', fontSize: 13, fontWeight: '700' }}>Done</Text>
+                </View>
+              </View>
+            ) : null}
           </ScrollView>
 
           <View style={styles.footer}>
