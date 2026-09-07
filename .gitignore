@@ -57,8 +57,11 @@ android/.gradle/
 android/build/
 android/app/build/
 android/app/.cxx/
-android/.kotlin/
+android/kotlin/
 android/local.properties
+*.apk
+*.aab
+*.ipa
 
 # IDEs and Editors
 .idea/
