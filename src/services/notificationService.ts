@@ -1,7 +1,14 @@
 import { Platform, Vibration } from 'react-native';
-import { Audio } from 'expo-av';
 import { VendorOrder } from './apiService';
 import Constants from 'expo-constants';
+
+// Safely obtain Audio from expo-av to avoid top-level crashes if ExponentAV native module is missing
+let Audio: typeof import('expo-av').Audio | null = null;
+try {
+  Audio = require('expo-av').Audio;
+} catch (err) {
+  // Graceful fallback if expo-av or ExponentAV is unavailable
+}
 
 // Detect if running inside Expo Go client (SDK 53+ removed remote push in Expo Go)
 const isExpoGo =
@@ -118,7 +125,7 @@ export async function requestAlarmPermissions(): Promise<boolean> {
 
 // ── PILLAR 2: Continuous Background Audio Ringtone & Vibration Loop ──
 
-const activeSoundObjects = new Set<Audio.Sound>();
+const activeSoundObjects = new Set<any>();
 let isRingtonePlaying = false;
 let isStartingRingtone = false;
 
@@ -134,8 +141,10 @@ async function stopAllActiveSounds() {
 
   for (const s of soundsToStop) {
     try {
-      await s.stopAsync();
-      await s.unloadAsync();
+      if (s && typeof s.stopAsync === 'function') {
+        await s.stopAsync();
+        await s.unloadAsync();
+      }
     } catch (_) {}
   }
 }
@@ -154,12 +163,12 @@ export async function startContinuousOrderRingtone(
   try {
     await stopAllActiveSounds();
 
-    if (!isRingtonePlaying) {
+    if (!isRingtonePlaying || !Audio) {
       isStartingRingtone = false;
       return;
     }
 
-    if (Platform.OS !== 'web') {
+    if (Platform.OS !== 'web' && Audio.setAudioModeAsync) {
       await Audio.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
@@ -167,21 +176,24 @@ export async function startContinuousOrderRingtone(
       }).catch(() => {});
     }
 
-    const { sound } = await Audio.Sound.createAsync(
-      typeof soundSource === 'string' ? { uri: soundSource } : soundSource,
-      { shouldPlay: true, isLooping: true, volume }
-    );
+    if (Audio.Sound) {
+      const { sound } = await Audio.Sound.createAsync(
+        typeof soundSource === 'string' ? { uri: soundSource } : soundSource,
+        { shouldPlay: true, isLooping: true, volume }
+      );
 
-    if (!isRingtonePlaying) {
-      try {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-      } catch (_) {}
-      isStartingRingtone = false;
-      return;
+      if (!isRingtonePlaying) {
+        try {
+          await sound.stopAsync();
+          await sound.unloadAsync();
+        } catch (_) {}
+        isStartingRingtone = false;
+        return;
+      }
+
+      activeSoundObjects.add(sound);
     }
 
-    activeSoundObjects.add(sound);
     if (Platform.OS !== 'web') {
       Vibration.vibrate([1000, 1000, 1000], true);
     }

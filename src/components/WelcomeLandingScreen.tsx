@@ -100,7 +100,7 @@ export const WelcomeLandingScreen: React.FC<WelcomeLandingScreenProps> = ({
         paddingBottom: Math.max(insets.bottom, 12),
       }
     ]}>
-      <StatusBar barStyle="dark-content" backgroundColor={DigiLocalColors.canvasBase} />
+      <StatusBar barStyle="dark-content" backgroundColor={DigiLocalColors.canvasBase} translucent={false} />
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}

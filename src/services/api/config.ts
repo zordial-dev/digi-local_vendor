@@ -73,7 +73,8 @@ export const safeFetch = async (
   retryCount = 0
 ): Promise<{ res: Response; data: any }> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  const timeoutMs = retryCount > 0 ? 5000 : 7000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const accessToken = await getAccessToken();

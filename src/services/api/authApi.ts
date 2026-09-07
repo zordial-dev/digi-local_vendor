@@ -356,13 +356,24 @@ export async function registerVendorApi(payload: RegisterVendorPayload): Promise
         body: JSON.stringify(body)
       });
       if (!result.res.ok && result.res.status === 404) {
-        throw new Error('Fallback to legacy route');
+        result = await safeFetch(`${getApiBaseUrl()}/registerVender`, {
+          method: 'POST',
+          body: JSON.stringify(body)
+        });
       }
-    } catch (_) {
-      result = await safeFetch(`${getApiBaseUrl()}/registerVender`, {
-        method: 'POST',
-        body: JSON.stringify(body)
-      });
+    } catch (fetchErr: any) {
+      if (fetchErr.name === 'AbortError' || fetchErr.message?.includes('timed out')) {
+        throw fetchErr;
+      }
+      // Only attempt fallback if first network attempt failed with non-abort error
+      try {
+        result = await safeFetch(`${getApiBaseUrl()}/registerVender`, {
+          method: 'POST',
+          body: JSON.stringify(body)
+        });
+      } catch (_) {
+        throw fetchErr;
+      }
     }
 
     const { res, data } = result;
@@ -733,19 +744,18 @@ export async function verifyOtpApi(
         otp: cleanOtp
       };
 
-  // 1. If dummy OTP is provided, accept immediately or attempt backend verification gracefully
+  // 1. If dummy OTP is provided, accept immediately and fire non-blocking background notification
   if (isDummyOtp(cleanOtp)) {
-    try {
-      await safeFetch(`${getApiBaseUrl()}/vendors/verify-otp`, {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-    } catch (_) {}
-    console.log('✅ [DUMMY OTP ACCEPTED]: OTP verification bypassed with code', cleanOtp);
+    // Non-blocking fire-and-forget attempt in background (does not delay UI)
+    safeFetch(`${getApiBaseUrl()}/vendors/verify-otp`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }).catch(() => {});
+    console.log('✅ [DUMMY OTP ACCEPTED]: OTP verification accepted instantly with code', cleanOtp);
     return true;
   }
 
-  // 1. Try v3.6.0 primary endpoint: POST /api/vendors/verify-otp
+  // 2. Try v3.6.0 primary endpoint: POST /api/vendors/verify-otp
   try {
     const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/verify-otp`, {
       method: 'POST',
@@ -754,19 +764,23 @@ export async function verifyOtpApi(
     if (res.ok && (data.success !== false)) {
       return true;
     }
-  } catch (_) {}
+    if (res.status !== 404) {
+      throw new Error(data?.error || data?.message || 'Invalid or expired OTP code');
+    }
+  } catch (primaryErr: any) {
+    if (primaryErr.message && !primaryErr.message.includes('404') && !primaryErr.message.includes('not found')) {
+      throw primaryErr;
+    }
+  }
 
-  // 2. Fallback: POST /api/otp/verify-otp
+  // 3. Fallback: POST /api/otp/verify-otp (only if primary returned 404)
   const { res, data } = await safeFetch(`${getApiBaseUrl()}/otp/verify-otp`, {
     method: 'POST',
     body: JSON.stringify(payload)
   });
 
   if (!res.ok || data.success === false) {
-    if (isDummyOtp(cleanOtp)) {
-      return true;
-    }
-    throw new Error(data.error || data.message || 'Invalid or expired OTP code');
+    throw new Error(data?.error || data?.message || 'Invalid or expired OTP code');
   }
   return true;
 }

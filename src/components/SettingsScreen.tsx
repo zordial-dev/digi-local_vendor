@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -15,7 +15,10 @@ import {
   Linking,
   Platform,
   Switch,
+  KeyboardAvoidingView,
+  findNodeHandle,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { CustomTimePicker } from './CustomTimePicker';
 import {
   Store,
@@ -259,8 +262,8 @@ Customer data is strictly for order fulfilment. Vendors must NOT copy, permanent
 To authenticate accounts via OTP, manage catalogues, process customer orders, dispatch live alerts, compute commissions, process automated T+1 bank payouts, resolve disputes, prevent fraud, and comply with statutory regulations.
 
 5. THIRD-PARTY PROVIDERS
-• Firebase / Google (Phone Auth OTP, FCM push alerts, cloud services)
-• SMS Gateways (MSG91 / Firebase)
+• Firebase / Google (FCM push alerts, cloud services)
+• SMS Gateways (MSG91 SMS Gateway)
 • Banking & Payment Partners (settlement transfers)
 • Cloud Infrastructure (AWS, Google Cloud, Render)
 
@@ -387,6 +390,9 @@ const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (
   const [showConfirm, setShowConfirm] = useState(false);
   const [err, setErr] = useState('');
 
+  const newPwRef = React.useRef<TextInput>(null);
+  const confirmPwRef = React.useRef<TextInput>(null);
+
   const handleSave = () => {
     if (!current || !newPw || !confirm) { setErr('All fields are required.'); return; }
     if (current.trim() === newPw.trim()) { setErr('New password should be different from previous password.'); return; }
@@ -400,52 +406,104 @@ const PasswordModal: React.FC<{ visible: boolean; onClose: () => void; onSave: (
 
   return (
     <Modal transparent animationType="slide" visible={visible} onRequestClose={onClose}>
-      <View style={docStyles.overlay}>
-        <View style={docStyles.sheet}>
-          <View style={docStyles.handleBar} />
-          <View style={docStyles.header}>
-            <Text style={docStyles.title}>Password & Security</Text>
-            <TouchableOpacity style={docStyles.closeBtn} onPress={onClose}><Text style={docStyles.closeBtnText}>✕</Text></TouchableOpacity>
-          </View>
-          {err ? (
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239,68,68,0.08)', borderRadius: 10, padding: 10, marginBottom: 12 }}>
-              <AlertTriangle size={14} color="#DC2626" style={{ marginRight: 6 }} />
-              <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600', flex: 1 }}>{err}</Text>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <View style={docStyles.overlay}>
+          <View style={docStyles.sheet}>
+            <View style={docStyles.handleBar} />
+            <View style={docStyles.header}>
+              <Text style={docStyles.title}>Password & Security</Text>
+              <TouchableOpacity style={docStyles.closeBtn} onPress={onClose}><Text style={docStyles.closeBtnText}>✕</Text></TouchableOpacity>
             </View>
-          ) : null}
-          {[
-            { label: 'Current Password', val: current, set: setCurrent, show: showCur, toggle: () => setShowCur(s => !s) },
-            { label: 'New Password', val: newPw, set: setNewPw, show: showNew, toggle: () => setShowNew(s => !s) },
-            { label: 'Confirm New Password', val: confirm, set: setConfirm, show: showConfirm, toggle: () => setShowConfirm(s => !s) },
-          ].map(({ label, val, set, show, toggle }) => (
-            <View key={label} style={{ marginBottom: 14 }}>
-              <Text style={{ fontSize: 11, fontWeight: '700', color: '#78716C', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>{label}</Text>
+            {err ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(239,68,68,0.08)', borderRadius: 10, padding: 10, marginBottom: 12 }}>
+                <AlertTriangle size={14} color="#DC2626" style={{ marginRight: 6 }} />
+                <Text style={{ color: '#DC2626', fontSize: 12, fontWeight: '600', flex: 1 }}>{err}</Text>
+              </View>
+            ) : null}
+
+            {/* Current Password */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#78716C', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Current Password</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: '#E7DFD5', borderRadius: 12, paddingHorizontal: 12, height: 48, backgroundColor: '#FAF8F5' }}>
                 <Lock size={16} color="#78716C" style={{ marginRight: 10 }} />
                 <TextInput
                   style={{ flex: 1, fontSize: 14, color: '#211A19', height: '100%' }}
-                  secureTextEntry={!show}
-                  value={val}
-                  onChangeText={set}
+                  secureTextEntry={!showCur}
+                  value={current}
+                  onChangeText={setCurrent}
                   placeholder="••••••••"
                   placeholderTextColor="#78716C"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  returnKeyType="next"
+                  onSubmitEditing={() => newPwRef.current?.focus()}
                 />
-                <TouchableOpacity onPress={toggle} style={{ padding: 4 }} activeOpacity={0.7}>
-                  {show ? <Eye size={18} color="#541D26" /> : <EyeOff size={18} color="#78716C" />}
+                <TouchableOpacity onPress={() => setShowCur(s => !s)} style={{ padding: 4 }} activeOpacity={0.7}>
+                  {showCur ? <Eye size={18} color="#541D26" /> : <EyeOff size={18} color="#78716C" />}
                 </TouchableOpacity>
               </View>
             </View>
-          ))}
-          <TouchableOpacity style={docStyles.doneBtn} onPress={handleSave} activeOpacity={0.9}>
-            <Text style={docStyles.doneBtnText}>Update Password</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={{ height: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8 }} onPress={onClose}>
-            <Text style={{ color: '#78716C', fontSize: 13, fontWeight: '600' }}>Cancel</Text>
-          </TouchableOpacity>
+
+            {/* New Password */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#78716C', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>New Password</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: '#E7DFD5', borderRadius: 12, paddingHorizontal: 12, height: 48, backgroundColor: '#FAF8F5' }}>
+                <Lock size={16} color="#78716C" style={{ marginRight: 10 }} />
+                <TextInput
+                  ref={newPwRef}
+                  style={{ flex: 1, fontSize: 14, color: '#211A19', height: '100%' }}
+                  secureTextEntry={!showNew}
+                  value={newPw}
+                  onChangeText={setNewPw}
+                  placeholder="••••••••"
+                  placeholderTextColor="#78716C"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="next"
+                  onSubmitEditing={() => confirmPwRef.current?.focus()}
+                />
+                <TouchableOpacity onPress={() => setShowNew(s => !s)} style={{ padding: 4 }} activeOpacity={0.7}>
+                  {showNew ? <Eye size={18} color="#541D26" /> : <EyeOff size={18} color="#78716C" />}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Confirm New Password */}
+            <View style={{ marginBottom: 14 }}>
+              <Text style={{ fontSize: 11, fontWeight: '700', color: '#78716C', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Confirm New Password</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', borderWidth: 1.5, borderColor: '#E7DFD5', borderRadius: 12, paddingHorizontal: 12, height: 48, backgroundColor: '#FAF8F5' }}>
+                <Lock size={16} color="#78716C" style={{ marginRight: 10 }} />
+                <TextInput
+                  ref={confirmPwRef}
+                  style={{ flex: 1, fontSize: 14, color: '#211A19', height: '100%' }}
+                  secureTextEntry={!showConfirm}
+                  value={confirm}
+                  onChangeText={setConfirm}
+                  placeholder="••••••••"
+                  placeholderTextColor="#78716C"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSave}
+                />
+                <TouchableOpacity onPress={() => setShowConfirm(s => !s)} style={{ padding: 4 }} activeOpacity={0.7}>
+                  {showConfirm ? <Eye size={18} color="#541D26" /> : <EyeOff size={18} color="#78716C" />}
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <TouchableOpacity style={docStyles.doneBtn} onPress={handleSave} activeOpacity={0.9}>
+              <Text style={docStyles.doneBtnText}>Update Password</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={{ height: 44, justifyContent: 'center', alignItems: 'center', marginTop: 8 }} onPress={onClose}>
+              <Text style={{ color: '#78716C', fontSize: 13, fontWeight: '600' }}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };
@@ -916,6 +974,30 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   const [maxQtyLimit, setMaxQtyLimit] = useState(vendor.max_quantity_limit ? String(vendor.max_quantity_limit) : '');
   const [savingSettings, setSavingSettings] = useState(false);
 
+  const mainScrollRef = useRef<KeyboardAwareScrollView>(null);
+  const serviceExpRef = useRef<TextInput>(null);
+  const servicePriceRef = useRef<TextInput>(null);
+  const serviceQualRef = useRef<TextInput>(null);
+  const serviceBioRef = useRef<TextInput>(null);
+  const serviceDaysRef = useRef<TextInput>(null);
+  const serviceWaRef = useRef<TextInput>(null);
+  const productBioRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
+  const panRef = useRef<TextInput>(null);
+  const gstRef = useRef<TextInput>(null);
+  const gstPercentRef = useRef<TextInput>(null);
+  const serviceChargeRef = useRef<TextInput>(null);
+  const deliveryChargeRef = useRef<TextInput>(null);
+  const minOrderRef = useRef<TextInput>(null);
+  const maxQtyRef = useRef<TextInput>(null);
+
+  const handleInputFocus = (event: any) => {
+    const reactNode = findNodeHandle(event.target);
+    if (reactNode && mainScrollRef.current) {
+      mainScrollRef.current.scrollToFocusedInput(reactNode, 140);
+    }
+  };
+
   const handleSaveStoreConfigs = async () => {
     if (openTime.trim() === closeTime.trim()) {
       showAlert('Invalid Timings', 'Opening time and closing time cannot be the same.', 'warning');
@@ -1115,18 +1197,28 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: '#F8F6F0' }]}
-      contentContainerStyle={styles.content}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handlePullRefresh}
-          colors={['#541D26']}
-          tintColor="#541D26"
-        />
-      }
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1 }}
     >
+      <KeyboardAwareScrollView
+        ref={mainScrollRef}
+        style={[styles.container, { backgroundColor: '#F8F6F0' }]}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        enableOnAndroid={true}
+        enableAutomaticScroll={true}
+        extraScrollHeight={140}
+        extraHeight={140}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handlePullRefresh}
+            colors={['#541D26']}
+            tintColor="#541D26"
+          />
+        }
+      >
 
       {/* Store Header Card */}
       <View style={styles.card}>
@@ -1296,44 +1388,60 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               onChangeText={setProfessionCategory}
               placeholder="e.g. Physiotherapist, Electrician, Tuition Teacher, CA"
               placeholderTextColor="#78716C"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => serviceExpRef.current?.focus()}
             />
 
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>Experience (Years)</Text>
                 <TextInput
+                  ref={serviceExpRef}
                   style={[styles.configInput, { color: '#211A19' }]}
                   value={experienceYears}
                   onChangeText={setExperienceYears}
                   keyboardType="numeric"
                   placeholder="e.g. 8"
                   placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => servicePriceRef.current?.focus()}
                 />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>Starting Fee (₹)</Text>
                 <TextInput
+                  ref={servicePriceRef}
                   style={[styles.configInput, { color: '#211A19' }]}
                   value={startingPrice}
                   onChangeText={setStartingPrice}
                   keyboardType="numeric"
                   placeholder="e.g. 399"
                   placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => serviceQualRef.current?.focus()}
                 />
               </View>
             </View>
 
             <Text style={styles.configLabel}>Qualifications & Certifications</Text>
             <TextInput
+              ref={serviceQualRef}
               style={[styles.configInput, { color: '#211A19' }]}
               value={qualifications}
               onChangeText={setQualifications}
               placeholder="e.g. MBBS, MD, Certified Yoga Coach, B.Tech"
               placeholderTextColor="#78716C"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => serviceBioRef.current?.focus()}
             />
 
             <Text style={styles.configLabel}>Professional Bio / About Services</Text>
             <TextInput
+              ref={serviceBioRef}
               style={[styles.configInput, { color: '#211A19', height: 75, textAlignVertical: 'top' }]}
               value={aboutBio}
               onChangeText={setAboutBio}
@@ -1341,19 +1449,27 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               numberOfLines={3}
               placeholder="Describe your expertise, experience, and service guarantees..."
               placeholderTextColor="#78716C"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => serviceDaysRef.current?.focus()}
             />
 
             <Text style={styles.configLabel}>Working Days</Text>
             <TextInput
+              ref={serviceDaysRef}
               style={[styles.configInput, { color: '#211A19' }]}
               value={workingDays}
               onChangeText={setWorkingDays}
               placeholder="e.g. Mon – Sat (Sundays on appointment)"
               placeholderTextColor="#78716C"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => serviceWaRef.current?.focus()}
             />
 
             <Text style={styles.configLabel}>WhatsApp Business Number</Text>
             <TextInput
+              ref={serviceWaRef}
               style={[styles.configInput, { color: '#211A19' }]}
               value={whatsappNumber}
               onChangeText={setWhatsappNumber}
@@ -1361,6 +1477,9 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               maxLength={10}
               placeholder="10-digit WhatsApp number"
               placeholderTextColor="#78716C"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => phoneRef.current?.focus()}
             />
           </>
         ) : null}
@@ -1372,6 +1491,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           <>
             <Text style={styles.configLabel}>Store / Business Description</Text>
             <TextInput
+              ref={productBioRef}
               style={[styles.configInput, { color: '#211A19', height: 75, textAlignVertical: 'top' }]}
               value={aboutBio}
               onChangeText={setAboutBio}
@@ -1379,11 +1499,15 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
               numberOfLines={3}
               placeholder="Describe your store, products, specialties, and quality guarantees..."
               placeholderTextColor="#78716C"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => phoneRef.current?.focus()}
             />
           </>
         ) : null}
         <Text style={styles.configLabel}>Primary Contact Phone Number</Text>
         <TextInput
+          ref={phoneRef}
           style={[styles.configInput, { color: '#211A19' }]}
           value={phone}
           onChangeText={(t) => {
@@ -1393,10 +1517,15 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           }}
           keyboardType="number-pad"
           maxLength={10}
-          placeholder="e.g. 9876543210" placeholderTextColor="#78716C"
+          placeholder="e.g. 9876543210"
+          placeholderTextColor="#78716C"
+          onFocus={handleInputFocus}
+          returnKeyType="next"
+          onSubmitEditing={() => panRef.current?.focus()}
         />
         <Text style={styles.configLabel}>PAN Number</Text>
         <TextInput
+          ref={panRef}
           style={[styles.configInput, { color: '#211A19' }]}
           value={panNum}
           onChangeText={(t) => {
@@ -1416,11 +1545,16 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           }}
           autoCapitalize="characters"
           maxLength={10}
-          placeholder="e.g. ABCDE1234F" placeholderTextColor="#78716C"
+          placeholder="e.g. ABCDE1234F"
+          placeholderTextColor="#78716C"
+          onFocus={handleInputFocus}
+          returnKeyType="next"
+          onSubmitEditing={() => gstRef.current?.focus()}
         />
 
         <Text style={styles.configLabel}>GSTIN Number (Optional)</Text>
         <TextInput
+          ref={gstRef}
           style={[styles.configInput, { color: "#211A19", marginTop: 4 }]}
           value={gstNum}
           onChangeText={(t) => {
@@ -1432,7 +1566,17 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           }}
           autoCapitalize="characters"
           maxLength={15}
-          placeholder="e.g. 22AAAAA0000A1Z5" placeholderTextColor="#78716C"
+          placeholder="e.g. 22AAAAA0000A1Z5"
+          placeholderTextColor="#78716C"
+          onFocus={handleInputFocus}
+          returnKeyType={businessType === 'PRODUCT' ? 'next' : 'done'}
+          onSubmitEditing={() => {
+            if (businessType === 'PRODUCT') {
+              gstPercentRef.current?.focus();
+            } else {
+              handleSaveStoreConfigs();
+            }
+          }}
         />
 
         <Text style={styles.sectionHeading}>
@@ -1477,25 +1621,80 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>GST Tax (%)</Text>
-                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={gstPercent} onChangeText={setGstPercent} keyboardType="numeric" placeholder="5.0" placeholderTextColor="#78716C" />
+                <TextInput
+                  ref={gstPercentRef}
+                  style={[styles.configInput, { color: '#211A19' }]}
+                  value={gstPercent}
+                  onChangeText={setGstPercent}
+                  keyboardType="numeric"
+                  placeholder="5.0"
+                  placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => serviceChargeRef.current?.focus()}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>Service Charge (%)</Text>
-                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={serviceChargePercent} onChangeText={setServiceChargePercent} keyboardType="numeric" placeholder="0.0" placeholderTextColor="#78716C" />
+                <TextInput
+                  ref={serviceChargeRef}
+                  style={[styles.configInput, { color: '#211A19' }]}
+                  value={serviceChargePercent}
+                  onChangeText={setServiceChargePercent}
+                  keyboardType="numeric"
+                  placeholder="0.0"
+                  placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => deliveryChargeRef.current?.focus()}
+                />
               </View>
             </View>
             <Text style={styles.configLabel}>Delivery / Packaging Charge (₹)</Text>
-            <TextInput style={[styles.configInput, { color: '#211A19' }]} value={deliveryCharge} onChangeText={setDeliveryCharge} keyboardType="numeric" placeholder="0" placeholderTextColor="#78716C" />
+            <TextInput
+              ref={deliveryChargeRef}
+              style={[styles.configInput, { color: '#211A19' }]}
+              value={deliveryCharge}
+              onChangeText={setDeliveryCharge}
+              keyboardType="numeric"
+              placeholder="0"
+              placeholderTextColor="#78716C"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => minOrderRef.current?.focus()}
+            />
 
             <Text style={styles.sectionHeading}>5. Order Restrictions & Limits</Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>Min Order Value (₹)</Text>
-                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={minOrderVal} onChangeText={setMinOrderVal} keyboardType="numeric" placeholder="0" placeholderTextColor="#78716C" />
+                <TextInput
+                  ref={minOrderRef}
+                  style={[styles.configInput, { color: '#211A19' }]}
+                  value={minOrderVal}
+                  onChangeText={setMinOrderVal}
+                  keyboardType="numeric"
+                  placeholder="0"
+                  placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => maxQtyRef.current?.focus()}
+                />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.configLabel}>Max Item Qty Limit</Text>
-                <TextInput style={[styles.configInput, { color: '#211A19' }]} value={maxQtyLimit} onChangeText={setMaxQtyLimit} keyboardType="numeric" placeholder="10" placeholderTextColor="#78716C" />
+                <TextInput
+                  ref={maxQtyRef}
+                  style={[styles.configInput, { color: '#211A19' }]}
+                  value={maxQtyLimit}
+                  onChangeText={setMaxQtyLimit}
+                  keyboardType="numeric"
+                  placeholder="10"
+                  placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSaveStoreConfigs}
+                />
               </View>
             </View>
           </>
@@ -1720,7 +1919,8 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           </View>
         </Pressable>
       </Modal>
-    </ScrollView>
+    </KeyboardAwareScrollView>
+    </KeyboardAvoidingView>
   );
 });
 

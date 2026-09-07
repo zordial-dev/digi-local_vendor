@@ -16,6 +16,7 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import {
   Plus,
   Edit2 as Edit,
@@ -1026,7 +1027,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
       {/* Add / Edit Product or Service Modal */}
       <Modal visible={isModalOpen} transparent animationType="slide">
         <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={styles.modalOverlay}
         >
           <View style={[styles.modalCard, isService && styles.serviceModalCard]}>
@@ -1053,7 +1054,14 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
             {/* ─── OPTION A: DEDICATED SERVICE PROVIDER MODAL FORM ─── */}
             {/* ════════════════════════════════════════════════════════════ */}
             {isService ? (
-              <ScrollView contentContainerStyle={styles.serviceModalForm} showsVerticalScrollIndicator={false}>
+              <KeyboardAwareScrollView
+                contentContainerStyle={styles.serviceModalForm}
+                showsVerticalScrollIndicator={false}
+                enableOnAndroid={true}
+                enableAutomaticScroll={true}
+                extraScrollHeight={Platform.OS === 'ios' ? 60 : 80}
+                keyboardShouldPersistTaps="handled"
+              >
 
                 {/* 1. SERVICE PHOTO */}
                 <Text style={styles.serviceSectionLabel}>SERVICE PHOTO</Text>
@@ -1367,12 +1375,19 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                   )}
                 </TouchableOpacity>
 
-              </ScrollView>
+              </KeyboardAwareScrollView>
             ) : (
               /* ════════════════════════════════════════════════════════════ */
               /* ─── OPTION B: STANDARD PRODUCT MERCHANT MODAL FORM ─── */
               /* ════════════════════════════════════════════════════════════ */
-              <ScrollView contentContainerStyle={styles.modalForm} showsVerticalScrollIndicator={false}>
+              <KeyboardAwareScrollView
+                contentContainerStyle={styles.modalForm}
+                showsVerticalScrollIndicator={false}
+                enableOnAndroid={true}
+                enableAutomaticScroll={true}
+                extraScrollHeight={Platform.OS === 'ios' ? 60 : 80}
+                keyboardShouldPersistTaps="handled"
+              >
 
                 {/* ── PRODUCT PHOTO UPLOAD ── */}
                 <Text style={styles.label}>Product Photo Upload</Text>
@@ -1623,7 +1638,7 @@ export const MenuScreenComponent: React.FC<MenuScreenProps> = React.memo(({
                 >
                   {submitting ? <ActivityIndicator color="#ffffff" /> : <Text style={styles.saveBtnText}>SAVE ITEM</Text>}
                 </TouchableOpacity>
-              </ScrollView>
+              </KeyboardAwareScrollView>
             )}
 
           </View>

@@ -11,6 +11,8 @@ import {
   Pressable,
   Animated,
   Dimensions,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -245,23 +247,28 @@ export default function App() {
   // Load Vendor Dashboard Data with SWR (Cache Hydration + Live Server Query)
   const loadDashboardData = async (vendorId: number, forceRefresh: boolean = false) => {
     if (!vendorId) return;
-    if (isFetchingDashboardRef.current) return;
+    if (isFetchingDashboardRef.current && !forceRefresh) return;
     isFetchingDashboardRef.current = true;
+    if (forceRefresh) {
+      setLoading(true);
+    }
     try {
-      // 1. Instant Cache Hydration: immediately populate state so products and orders appear with 0ms delay!
-      const cached = await getCachedDashboard(vendorId);
-      if (cached) {
-        if (Array.isArray(cached.items) && cached.items.length > 0) {
-          setItems(prev => (prev.length === 0 ? (cached.items || []) : prev));
-        }
-        if (Array.isArray(cached.orders) && cached.orders.length > 0) {
-          setOrders(prev => (prev.length === 0 ? (cached.orders || []) : prev));
-        }
-        if (cached.subscription) {
-          setSubscription(prev => (prev === null ? (cached.subscription || null) : prev));
-        }
-        if (Array.isArray(cached.payments) && cached.payments.length > 0) {
-          setPayments(prev => (prev.length === 0 ? (cached.payments || []) : prev));
+      // 1. Instant Cache Hydration: immediately populate state if empty
+      if (!forceRefresh) {
+        const cached = await getCachedDashboard(vendorId);
+        if (cached) {
+          if (Array.isArray(cached.items) && cached.items.length > 0) {
+            setItems(prev => (prev.length === 0 ? (cached.items || []) : prev));
+          }
+          if (Array.isArray(cached.orders) && cached.orders.length > 0) {
+            setOrders(prev => (prev.length === 0 ? (cached.orders || []) : prev));
+          }
+          if (cached.subscription) {
+            setSubscription(prev => (prev === null ? (cached.subscription || null) : prev));
+          }
+          if (Array.isArray(cached.payments) && cached.payments.length > 0) {
+            setPayments(prev => (prev.length === 0 ? (cached.payments || []) : prev));
+          }
         }
       }
 
@@ -335,10 +342,11 @@ export default function App() {
       console.error('Error loading dashboard data:', err);
     } finally {
       isFetchingDashboardRef.current = false;
+      setLoading(false);
     }
   };
 
-  // Auto-restore saved API URL & Vendor user session
+  // Auto-restore saved API URL & Vendor user session immediately with 0ms delay
   useEffect(() => {
     async function restoreSession() {
       try {
@@ -354,16 +362,29 @@ export default function App() {
           setShowLogin(true);
           return;
         }
-        if (savedVendor && typeof savedVendor === 'object') {
-          const vendorData: VendorUser = savedVendor.vendor || savedVendor;
-          if (!vendorData || !vendorData.vendor_id || !vendorData.store_name) {
-            await clearSavedCredentials().catch(() => {});
-            setCurrentUser(null);
-            setShowLogin(true);
-            return;
-          }
-          // 🛡️ Single Status Guard on App Startup (Called ONLY ONCE)
-          const statusRes = await fetchVendorStatusApi(vendorData.vendor_id);
+
+        const vendorData: VendorUser = savedVendor.vendor || savedVendor;
+        if (!vendorData || !vendorData.vendor_id || !vendorData.store_name) {
+          await clearSavedCredentials().catch(() => {});
+          setCurrentUser(null);
+          setShowLogin(true);
+          return;
+        }
+
+        // 1. Instant 0ms Render: Set current user and hydrate cache immediately
+        setCurrentUser(vendorData);
+        setShowLogin(false);
+
+        const cached = await getCachedDashboard(vendorData.vendor_id);
+        if (cached) {
+          if (Array.isArray(cached.items) && cached.items.length > 0) setItems(cached.items);
+          if (Array.isArray(cached.orders) && cached.orders.length > 0) setOrders(cached.orders);
+          if (cached.subscription) setSubscription(cached.subscription);
+          if (Array.isArray(cached.payments) && cached.payments.length > 0) setPayments(cached.payments);
+        }
+
+        // 2. Fetch fresh status & dashboard in background without blocking initial screen render
+        fetchVendorStatusApi(vendorData.vendor_id).then(statusRes => {
           if (
             statusRes &&
             (statusRes.is_blocked ||
@@ -372,8 +393,8 @@ export default function App() {
               statusRes.code === 'VENDOR_BLOCKED')
           ) {
             console.warn('⚠️ Vendor account is blocked on app launch. Purging session storage and logging out...');
-            await clearSavedCredentials();
-            await clearAllAppCache();
+            clearSavedCredentials();
+            clearAllAppCache();
             setCurrentUser(null);
             setShowLogin(true);
             setBlockedAccountInfo({
@@ -402,23 +423,43 @@ export default function App() {
             }
             if (statusRes.message) setVendorMessage(statusRes.message);
           }
+        }).catch(() => {});
 
-          setCurrentUser(vendorData);
-
-          // Instant 0ms Cache Hydration
-          const cached = await getCachedDashboard(vendorData.vendor_id);
-          if (cached) {
-            if (Array.isArray(cached.items) && cached.items.length > 0) setItems(cached.items);
-            if (Array.isArray(cached.orders) && cached.orders.length > 0) setOrders(cached.orders);
-            if (cached.subscription) setSubscription(cached.subscription);
-            if (Array.isArray(cached.payments) && cached.payments.length > 0) setPayments(cached.payments);
-          }
-        }
+        loadDashboardData(vendorData.vendor_id, false);
       } catch (e) {
         console.error('[App] Failed restoring session:', e);
+        setShowLogin(true);
       }
     }
     restoreSession();
+  }, []);
+
+  // 🔄 AppState Listener: Auto-refresh data and reconnect when app returns to foreground / is clicked
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      if (nextAppState === 'active') {
+        const vId = currentUserRef.current?.vendor_id;
+        if (vId) {
+          loadDashboardData(vId, true);
+          fetchVendorStatusApi(vId).then(statusRes => {
+            if (statusRes) {
+              if (statusRes.is_accepted || statusRes.is_active || statusRes.status === 'accepted' || statusRes.status === 'active') {
+                setVendorApprovalStatus('accepted');
+              } else if (statusRes.is_rejected || statusRes.status === 'rejected') {
+                setVendorApprovalStatus('rejected');
+              } else if (statusRes.is_on_hold || statusRes.status === 'hold') {
+                setVendorApprovalStatus('hold');
+              }
+            }
+          }).catch(() => {});
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => {
+      subscription.remove();
+    };
   }, []);
 
   const currentVendorId = currentUser?.vendor_id;

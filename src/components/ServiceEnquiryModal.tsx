@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -6,12 +6,13 @@ import {
   Modal,
   TouchableOpacity,
   TextInput,
-  ScrollView,
   KeyboardAvoidingView,
   Platform,
   Linking,
   ActivityIndicator,
+  findNodeHandle,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import {
   X,
   Send,
@@ -58,6 +59,19 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
+
+  const mainScrollRef = useRef<KeyboardAwareScrollView>(null);
+  const nameRef = useRef<TextInput>(null);
+  const phoneRef = useRef<TextInput>(null);
+  const flatRef = useRef<TextInput>(null);
+  const notesRef = useRef<TextInput>(null);
+
+  const handleInputFocus = (event: any) => {
+    const reactNode = findNodeHandle(event.target);
+    if (reactNode && mainScrollRef.current) {
+      mainScrollRef.current.scrollToFocusedInput(reactNode, 140);
+    }
+  };
 
   React.useEffect(() => {
     if (selectedServiceTitle) {
@@ -186,9 +200,15 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
               </Text>
             </View>
           ) : (
-            <ScrollView
+            <KeyboardAwareScrollView
+              ref={mainScrollRef}
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.scrollContent}
+              enableOnAndroid={true}
+              enableAutomaticScroll={true}
+              extraScrollHeight={140}
+              extraHeight={140}
+              keyboardShouldPersistTaps="handled"
             >
               {/* Quick Direct Actions */}
               <View style={styles.quickContactRow}>
@@ -226,6 +246,9 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
                   placeholderTextColor={BrandTheme.mutedSageText}
                   value={serviceRequested}
                   onChangeText={setServiceRequested}
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => nameRef.current?.focus()}
                 />
               </View>
 
@@ -234,17 +257,22 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
                 <View style={[styles.inputGroup, { flex: 1 }]}>
                   <Text style={styles.inputLabel}>Your Name *</Text>
                   <TextInput
+                    ref={nameRef}
                     style={styles.textInput}
                     placeholder="Enter your name"
                     placeholderTextColor={BrandTheme.mutedSageText}
                     value={customerName}
                     onChangeText={setCustomerName}
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => phoneRef.current?.focus()}
                   />
                 </View>
 
                 <View style={[styles.inputGroup, { flex: 1 }]}>
                   <Text style={styles.inputLabel}>Phone Number *</Text>
                   <TextInput
+                    ref={phoneRef}
                     style={styles.textInput}
                     placeholder="10-digit mobile"
                     placeholderTextColor={BrandTheme.mutedSageText}
@@ -252,6 +280,9 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
                     maxLength={10}
                     value={customerPhone}
                     onChangeText={setCustomerPhone}
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => flatRef.current?.focus()}
                   />
                 </View>
               </View>
@@ -260,11 +291,15 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Flat / Villa / Address in Society</Text>
                 <TextInput
+                  ref={flatRef}
                   style={styles.textInput}
                   placeholder="e.g. Tower B - 402 / Villa 12"
                   placeholderTextColor={BrandTheme.mutedSageText}
                   value={flatNumber}
                   onChangeText={setFlatNumber}
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => notesRef.current?.focus()}
                 />
               </View>
 
@@ -300,6 +335,7 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Issue Details / Notes</Text>
                 <TextInput
+                  ref={notesRef}
                   style={[styles.textInput, styles.textArea]}
                   placeholder="Describe your issue or preferred time in detail..."
                   placeholderTextColor={BrandTheme.mutedSageText}
@@ -307,6 +343,9 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
                   numberOfLines={3}
                   value={notes}
                   onChangeText={setNotes}
+                  onFocus={handleInputFocus}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSubmitEnquiry}
                 />
               </View>
 
@@ -326,7 +365,7 @@ export const ServiceEnquiryModal: React.FC<ServiceEnquiryModalProps> = ({
                   </>
                 )}
               </TouchableOpacity>
-            </ScrollView>
+            </KeyboardAwareScrollView>
           )}
         </View>
       </KeyboardAvoidingView>
@@ -340,7 +379,11 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     backgroundColor: 'rgba(24, 40, 31, 0.65)',
   },
   modalCard: {

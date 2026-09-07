@@ -78,7 +78,10 @@
           "microphonePermission": "Allow DigiLocal Vendor to access your microphone to record speech.",
           "speechRecognitionPermission": "Allow DigiLocal Vendor to use speech recognition."
         }
-      ]
+      ],
+      "expo-image",
+      "expo-splash-screen",
+      "expo-status-bar"
     ],
     "experiments": {
       "typedRoutes": true

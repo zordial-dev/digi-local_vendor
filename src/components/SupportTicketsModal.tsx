@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -9,11 +9,13 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  SafeAreaView,
   StatusBar,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  findNodeHandle,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import * as ImagePicker from 'expo-image-picker';
 import {
   LifeBuoy,
@@ -82,6 +84,20 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
   const [subject, setSubject] = useState(initialSubject);
   const [description, setDescription] = useState(initialDescription);
   const [attachment, setAttachment] = useState<{ uri: string; name: string; type?: string } | null>(null);
+
+  const mainScrollRef = useRef<KeyboardAwareScrollView>(null);
+  const emailRef = useRef<TextInput>(null);
+  const orderIdRef = useRef<TextInput>(null);
+  const storeNameRef = useRef<TextInput>(null);
+  const subjectRef = useRef<TextInput>(null);
+  const descRef = useRef<TextInput>(null);
+
+  const handleInputFocus = (event: any) => {
+    const reactNode = findNodeHandle(event.target);
+    if (reactNode && mainScrollRef.current) {
+      mainScrollRef.current.scrollToFocusedInput(reactNode, 140);
+    }
+  };
 
   // Submission & Feedback
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -267,9 +283,14 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
         </View>
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
-          <ScrollView
+          <KeyboardAwareScrollView
+            ref={mainScrollRef}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
+            enableOnAndroid={true}
+            enableAutomaticScroll={true}
+            extraScrollHeight={140}
+            extraHeight={140}
             keyboardShouldPersistTaps="handled"
           >
           {activeTab === 'history' ? (
@@ -466,11 +487,15 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                     onChangeText={setFullName}
                     placeholder="e.g. Raj Gehlot"
                     placeholderTextColor="#78716C"
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => emailRef.current?.focus()}
                   />
                 </View>
                 <View style={styles.col}>
                   <Text style={styles.fieldLabel}>Email Address *</Text>
                   <TextInput
+                    ref={emailRef}
                     style={styles.input}
                     value={email}
                     onChangeText={setEmail}
@@ -478,6 +503,9 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                     autoCapitalize="none"
                     placeholder="name@mail.com"
                     placeholderTextColor="#78716C"
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => orderIdRef.current?.focus()}
                   />
                 </View>
               </View>
@@ -500,11 +528,15 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                 <View style={styles.col}>
                   <Text style={styles.fieldLabel}>Order ID (Optional)</Text>
                   <TextInput
+                    ref={orderIdRef}
                     style={styles.input}
                     value={orderId}
                     onChangeText={setOrderId}
                     placeholder="ORD-9842"
                     placeholderTextColor="#78716C"
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => storeNameRef.current?.focus()}
                   />
                 </View>
               </View>
@@ -513,11 +545,15 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
               <View style={styles.singleRow}>
                 <Text style={styles.fieldLabel}>Merchant / Store Name (Optional)</Text>
                 <TextInput
+                  ref={storeNameRef}
                   style={styles.input}
                   value={reportedStoreName}
                   onChangeText={setReportedStoreName}
                   placeholder="e.g. Fresh Grocery Store"
                   placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => subjectRef.current?.focus()}
                 />
               </View>
 
@@ -525,11 +561,15 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
               <View style={styles.singleRow}>
                 <Text style={styles.fieldLabel}>Subject / Summary *</Text>
                 <TextInput
+                  ref={subjectRef}
                   style={styles.input}
                   value={subject}
                   onChangeText={setSubject}
                   placeholder="e.g. Settlement issue for recent orders"
                   placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => descRef.current?.focus()}
                 />
               </View>
 
@@ -537,6 +577,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
               <View style={styles.singleRow}>
                 <Text style={styles.fieldLabel}>Detailed Description of Complaint *</Text>
                 <TextInput
+                  ref={descRef}
                   style={[styles.input, styles.textArea]}
                   value={description}
                   onChangeText={setDescription}
@@ -545,6 +586,9 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
                   textAlignVertical="top"
                   placeholder="Provide complete details including transaction info, timeline, or relevant dispute details..."
                   placeholderTextColor="#78716C"
+                  onFocus={handleInputFocus}
+                  returnKeyType="done"
+                  onSubmitEditing={handleSubmitTicket}
                 />
               </View>
 
@@ -597,7 +641,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
               </TouchableOpacity>
             </View>
           )}
-        </ScrollView>
+        </KeyboardAwareScrollView>
         </KeyboardAvoidingView>
       </SafeAreaView>
 

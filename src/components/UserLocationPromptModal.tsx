@@ -9,6 +9,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {
   MapPin,
@@ -146,8 +147,12 @@ export const UserLocationPromptModal: React.FC<UserLocationPromptModalProps> = (
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={styles.overlay}>
-        <View style={styles.card}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <View style={styles.overlay}>
+          <View style={styles.card}>
           
           {/* Header */}
           <View style={styles.header}>
@@ -262,6 +267,7 @@ export const UserLocationPromptModal: React.FC<UserLocationPromptModalProps> = (
 
         </View>
       </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 };

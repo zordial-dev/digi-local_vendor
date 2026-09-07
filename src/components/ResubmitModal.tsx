@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Modal,
   View,
@@ -9,15 +9,15 @@ import {
   Platform,
   ActivityIndicator,
   KeyboardAvoidingView,
-  ScrollView,
   Image,
+  findNodeHandle,
 } from 'react-native';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import { X, Upload, Send, CheckCircle2 } from 'lucide-react-native';
 import { VendorUser } from '../services/api/types';
 import { resubmitVendorApplicationApi } from '../services/api/authApi';
 import { DigiLocalColors } from '../constants/theme';
 import * as ImagePicker from 'expo-image-picker';
-
 
 interface ResubmitModalProps {
   visible: boolean;
@@ -37,6 +37,19 @@ export const ResubmitModal: React.FC<ResubmitModalProps> = ({ visible, onClose, 
   const [message, setMessage] = useState('');
   const [shopImage, setShopImage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const mainScrollRef = useRef<KeyboardAwareScrollView>(null);
+  const shopNumberRef = useRef<TextInput>(null);
+  const addressRef = useRef<TextInput>(null);
+  const taxIdRef = useRef<TextInput>(null);
+  const messageRef = useRef<TextInput>(null);
+
+  const handleInputFocus = (event: any) => {
+    const reactNode = findNodeHandle(event.target);
+    if (reactNode && mainScrollRef.current) {
+      mainScrollRef.current.scrollToFocusedInput(reactNode, 140);
+    }
+  };
 
   useEffect(() => {
     if (visible && vendor) {
@@ -127,17 +140,53 @@ export const ResubmitModal: React.FC<ResubmitModalProps> = ({ visible, onClose, 
             </TouchableOpacity>
           </View>
           
-          <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+          <KeyboardAwareScrollView
+            ref={mainScrollRef}
+            style={styles.content}
+            showsVerticalScrollIndicator={false}
+            enableOnAndroid={true}
+            enableAutomaticScroll={true}
+            extraScrollHeight={140}
+            extraHeight={140}
+            keyboardShouldPersistTaps="handled"
+          >
             <Text style={styles.description}>Update your details and resubmit for admin review.</Text>
             
             <Text style={styles.label}>Store Name</Text>
-            <TextInput style={styles.input} value={storeName} onChangeText={setStoreName} placeholder="Enter Store Name" />
+            <TextInput
+              style={styles.input}
+              value={storeName}
+              onChangeText={setStoreName}
+              placeholder="Enter Store Name"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => shopNumberRef.current?.focus()}
+            />
 
             <Text style={styles.label}>Shop Number</Text>
-            <TextInput style={styles.input} value={shopNumber} onChangeText={setShopNumber} placeholder="Enter Shop Number" />
+            <TextInput
+              ref={shopNumberRef}
+              style={styles.input}
+              value={shopNumber}
+              onChangeText={setShopNumber}
+              placeholder="Enter Shop Number"
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => addressRef.current?.focus()}
+            />
 
             <Text style={styles.label}>Address</Text>
-            <TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="Enter Full Address" multiline />
+            <TextInput
+              ref={addressRef}
+              style={styles.input}
+              value={address}
+              onChangeText={setAddress}
+              placeholder="Enter Full Address"
+              multiline
+              onFocus={handleInputFocus}
+              returnKeyType="next"
+              onSubmitEditing={() => taxIdRef.current?.focus()}
+            />
 
             <Text style={styles.label}>Tax Identifier</Text>
             <View style={styles.radioGroup}>
@@ -152,13 +201,45 @@ export const ResubmitModal: React.FC<ResubmitModalProps> = ({ visible, onClose, 
             </View>
 
             {taxIdType === 'GSTIN' ? (
-              <TextInput style={styles.input} value={gstin} onChangeText={setGstin} placeholder="Enter 15-digit GSTIN" autoCapitalize="characters" maxLength={15} />
+              <TextInput
+                ref={taxIdRef}
+                style={styles.input}
+                value={gstin}
+                onChangeText={setGstin}
+                placeholder="Enter 15-digit GSTIN"
+                autoCapitalize="characters"
+                maxLength={15}
+                onFocus={handleInputFocus}
+                returnKeyType="next"
+                onSubmitEditing={() => messageRef.current?.focus()}
+              />
             ) : (
-              <TextInput style={styles.input} value={pan} onChangeText={setPan} placeholder="Enter 10-digit PAN" autoCapitalize="characters" maxLength={10} />
+              <TextInput
+                ref={taxIdRef}
+                style={styles.input}
+                value={pan}
+                onChangeText={setPan}
+                placeholder="Enter 10-digit PAN"
+                autoCapitalize="characters"
+                maxLength={10}
+                onFocus={handleInputFocus}
+                returnKeyType="next"
+                onSubmitEditing={() => messageRef.current?.focus()}
+              />
             )}
 
             <Text style={styles.label}>Message to Admin (Optional)</Text>
-            <TextInput style={[styles.input, styles.textArea]} value={message} onChangeText={setMessage} placeholder="Explain what you have updated" multiline />
+            <TextInput
+              ref={messageRef}
+              style={[styles.input, styles.textArea]}
+              value={message}
+              onChangeText={setMessage}
+              placeholder="Explain what you have updated"
+              multiline
+              onFocus={handleInputFocus}
+              returnKeyType="done"
+              onSubmitEditing={handleSubmit}
+            />
 
             <Text style={styles.label}>Shop Image</Text>
             <TouchableOpacity style={styles.uploadBtn} onPress={handlePickImage}>
@@ -174,7 +255,7 @@ export const ResubmitModal: React.FC<ResubmitModalProps> = ({ visible, onClose, 
                 </View>
               </View>
             ) : null}
-          </ScrollView>
+          </KeyboardAwareScrollView>
 
           <View style={styles.footer}>
             <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={isSubmitting}>

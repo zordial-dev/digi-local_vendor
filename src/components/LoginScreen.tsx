@@ -17,9 +17,11 @@ import {
   Linking,
   NativeModules,
   TurboModuleRegistry,
+  findNodeHandle,
 } from 'react-native';
 import Constants, { ExecutionEnvironment } from 'expo-constants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 import {
   Lock,
   Mail,
@@ -265,6 +267,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const rawInsets = useSafeAreaInsets();
   const insets = rawInsets || { top: 0, bottom: 0, left: 0, right: 0 };
   const theme = isDarkMode ? Colors.dark : Colors.light;
+  const mainScrollRef = useRef<any>(null);
+
+  const loginPasswordRef = useRef<any>(null);
+
+  const regPincodeRef = useRef<any>(null);
+  const regCityRef = useRef<any>(null);
+  const regStateRef = useRef<any>(null);
+
+  const regPhoneRef = useRef<any>(null);
+  const regEmailRef = useRef<any>(null);
+  const regStoreNameRef = useRef<any>(null);
+  const regShopNumberRef = useRef<any>(null);
+  const regTaxIdRef = useRef<any>(null);
+
+  const regConfirmPasswordRef = useRef<any>(null);
+  const setPassConfirmRef = useRef<any>(null);
+  const forgotConfirmPassRef = useRef<any>(null);
+
+  const handleInputFocus = (e: any) => {
+    if (mainScrollRef.current && e?.target) {
+      try {
+        const node = findNodeHandle(e.target);
+        if (node) {
+          mainScrollRef.current.scrollToFocusedInput(node, 140);
+        }
+      } catch (_) {}
+    }
+  };
 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [regStep, setRegStep] = useState<1 | 2 | 3>(1);
@@ -352,22 +382,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [touchedStep1, setTouchedStep1] = useState(false);
   const [touchedStep2, setTouchedStep2] = useState(false);
   const [touchedStep3, setTouchedStep3] = useState(false);
-  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      () => setIsKeyboardVisible(true)
-    );
-    const hideSub = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      () => setIsKeyboardVisible(false)
-    );
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
 
   // Already Registered Modal States
   const [showAlreadyRegisteredModal, setShowAlreadyRegisteredModal] = useState(false);
@@ -378,6 +392,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const checkingPhoneRef = useRef<string>('');
   const [emailAlreadyRegisteredError, setEmailAlreadyRegisteredError] = useState('');
   const checkingEmailRef = useRef<string>('');
+  const emailDebounceRef = useRef<any>(null);
 
   const triggerAlreadyRegisteredModal = (type: 'mobile' | 'email' | 'both', value?: string, customMsg?: string) => {
     setAlreadyRegisteredType(type);
@@ -388,7 +403,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     } else if (type === 'mobile') {
       setAlreadyRegisteredMsg(`The mobile number +91 ${val} is already registered with an existing vendor account. Please use another mobile number or sign in to your account.`);
     } else if (type === 'email') {
-      setAlreadyRegisteredMsg(`The email address "${val}" is already registered with an existing vendor account. Please use another email ID or sign in to your account.`);
+      setAlreadyRegisteredMsg('Email already used. Please use a different email address.');
     } else {
       setAlreadyRegisteredMsg('This mobile number or email ID is already registered with an existing vendor account. Please use another email or mobile number.');
     }
@@ -419,11 +434,26 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       try {
         const emailCheck = await checkVendorEmailApi(clean);
         if (checkingEmailRef.current === clean && emailCheck && emailCheck.exists) {
-          setEmailAlreadyRegisteredError(`Email "${clean}" is already registered. Please use another email ID or sign in.`);
+          setEmailAlreadyRegisteredError('Email already used. Please use a different email address.');
         } else if (checkingEmailRef.current === clean) {
           setEmailAlreadyRegisteredError('');
         }
       } catch (_) {}
+    } else {
+      setEmailAlreadyRegisteredError('');
+    }
+  };
+
+  const handleRegEmailChange = (text: string) => {
+    const clean = text.trim();
+    setEmail(clean);
+    if (emailDebounceRef.current) {
+      clearTimeout(emailDebounceRef.current);
+    }
+    if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean)) {
+      emailDebounceRef.current = setTimeout(() => {
+        checkEmailOnInput(clean);
+      }, 250);
     } else {
       setEmailAlreadyRegisteredError('');
     }
@@ -844,8 +874,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setLoading(true);
     try {
-      // Pre-check phone duplicate
-      const phoneCheck = await checkVendorPhoneApi(cleanPhone);
+      // Pre-check phone & email duplicates concurrently for faster response
+      const [phoneCheck, emailCheck] = await Promise.all([
+        checkVendorPhoneApi(cleanPhone),
+        checkVendorEmailApi(cleanEmail)
+      ]);
+
       if (phoneCheck && phoneCheck.exists) {
         setPhoneAlreadyRegisteredError(`Mobile number +91 ${cleanPhone} is already registered. Please use another mobile number or log in.`);
         return;
@@ -853,8 +887,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         setPhoneAlreadyRegisteredError('');
       }
 
-      // Pre-check email duplicate
-      const emailCheck = await checkVendorEmailApi(cleanEmail);
       if (emailCheck && emailCheck.exists) {
         setEmailAlreadyRegisteredError(`Email "${cleanEmail}" is already registered. Please use another email ID or sign in.`);
         return;
@@ -881,8 +913,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     const hasNumber = /[0-9]/.test(cleanPassword);
     const hasSpecial = /[^a-zA-Z0-9]/.test(cleanPassword);
 
-    if (!cleanPassword || cleanPassword.length < 8 || !hasUpperCase || !hasNumber || !hasSpecial) return;
-    if (!cleanConfirm || cleanPassword !== cleanConfirm) return;
+    if (!cleanPassword) {
+      setError('Please enter a password.');
+      return;
+    }
+    if (cleanPassword.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+    if (!hasUpperCase) {
+      setError('Password must contain at least 1 uppercase letter (A-Z).');
+      return;
+    }
+    if (!hasNumber) {
+      setError('Password must contain at least 1 number (0-9).');
+      return;
+    }
+    if (!hasSpecial) {
+      setError('Password must contain at least 1 special symbol (e.g. @, #, $, !).');
+      return;
+    }
+    if (!cleanConfirm || cleanPassword !== cleanConfirm) {
+      setError('Passwords do not match. Please re-enter your password.');
+      return;
+    }
     if (!agreedToTerms) {
       setError('Please accept the Terms & Conditions and Privacy Policy to proceed.');
       return;
@@ -1039,8 +1093,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   const handleTriggerRegOtp = async () => {
+    setError('');
+    setSuccessMsg('');
+    setTouchedStep3(true);
+
+    const cleanPassword = password.trim();
+    const cleanConfirm = confirmPassword.trim();
+    const hasUpperCase = /[A-Z]/.test(cleanPassword);
+    const hasNumber = /[0-9]/.test(cleanPassword);
+    const hasSpecial = /[^a-zA-Z0-9]/.test(cleanPassword);
+
+    if (!cleanPassword) {
+      setError('Please create a password for your account.');
+      return;
+    }
+    if (cleanPassword.length < 8 || !hasUpperCase || !hasNumber || !hasSpecial) {
+      setError('Password must be at least 8 characters, include 1 uppercase letter, 1 number, and 1 special character.');
+      return;
+    }
+    if (!cleanConfirm || cleanPassword !== cleanConfirm) {
+      setError('Passwords do not match. Please re-enter your password.');
+      return;
+    }
     if (!agreedToTerms) {
-      setTouchedStep3(true);
       setError('Please accept the Terms & Conditions and Privacy Policy to proceed.');
       return;
     }
@@ -1062,16 +1137,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
     setLoading(true);
     try {
-      // 1. Pre-check if phone is already registered
-      try {
-        const phoneCheck = await checkVendorPhoneApi(cleanPhone);
-        if (phoneCheck && phoneCheck.exists) {
-          setLoading(false);
-          triggerAlreadyRegisteredModal('mobile', cleanPhone);
-          return;
-        }
-      } catch (_) {}
-
       const res = await sendOtpApi(cleanPhone, 'register');
       setRegOtp('');
       setRegOtpTimer(60);
@@ -1369,23 +1434,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const isPasswordInvalid = mode === 'register' && regStep === 3 && password.length > 0 && (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password));
 
   return (
-    <KeyboardAvoidingView
+    <View
       style={{ flex: 1, backgroundColor: '#F8F6F0' }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 20 : 0}
     >
-      <StatusBar barStyle="dark-content" backgroundColor="#F8F6F0" />
-      <ScrollView
+      <StatusBar barStyle="dark-content" backgroundColor="#F8F6F0" translucent={false} />
+      {/* Top Status Bar Protector to prevent any scrolling inputs from overlapping status bar */}
+      <View
+        style={{
+          height: Math.max(insets.top, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) : 0),
+          backgroundColor: '#F8F6F0',
+          width: '100%',
+          zIndex: 9999,
+        }}
+      />
+      <KeyboardAwareScrollView
+        ref={mainScrollRef}
+        style={{ flex: 1 }}
         contentContainerStyle={[
           styles.scrollContainer,
           {
-            paddingTop: mode === 'login'
-              ? Math.max(insets.top + 8, Platform.OS === 'android' ? (StatusBar.currentHeight || 24) + 12 : 24)
-              : Math.max(insets.top + 10, Platform.OS === 'android' ? (StatusBar.currentHeight || 20) + 8 : 16),
-            paddingBottom: isKeyboardVisible ? 320 : Math.max(insets.bottom + 48, 64)
+            paddingTop: mode === 'login' ? 12 : 8,
+            paddingBottom: Math.max(insets.bottom + 64, 80)
           }
         ]}
-        automaticallyAdjustKeyboardInsets={Platform.OS === 'ios' ? false : true}
+        enableOnAndroid={true}
+        enableAutomaticScroll={true}
+        extraScrollHeight={140}
+        extraHeight={140}
+        keyboardOpeningTime={250}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={true}
@@ -1549,6 +1625,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   editable={!loginOtpSent}
                   value={email}
                   onChangeText={handleLoginContactChange}
+                  onFocus={handleInputFocus}
+                  returnKeyType="next"
+                  onSubmitEditing={() => loginPasswordRef.current?.focus()}
                 />
               </View>
               {/^\d+$/.test(email) && email.length > 0 && !/^[6-9]/.test(email) ? (
@@ -1564,6 +1643,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <View style={[styles.inputWrapper, (error && password.length === 0) ? styles.inputWrapperError : undefined]}>
                 <Lock color="#541D26" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
                 <TextInput
+                  ref={loginPasswordRef}
                   style={[styles.input, { paddingVertical: 0 }]}
                   placeholder="Enter your password"
                   placeholderTextColor="#78716C"
@@ -1573,6 +1653,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   textContentType={showPassword ? 'none' : 'password'}
                   value={password}
                   onChangeText={setPassword}
+                  onFocus={handleInputFocus}
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon} activeOpacity={0.7}>
                   {showPassword ? <Eye color="#1F2937" size={20} /> : <EyeOff color="#1F2937" size={20} />}
@@ -1626,10 +1709,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       placeholderTextColor="#78716C"
                       value={areaName}
                       onChangeText={handleAreaChange}
-                      onFocus={() => {
+                      onFocus={(e) => {
+                        handleInputFocus(e);
                         fetchLocationByAreaName(areaName);
                         setShowAreaDropdown(true);
                       }}
+                      returnKeyType="next"
+                      onSubmitEditing={() => regPincodeRef.current?.focus()}
                     />
                     {isFetchingArea ? (
                       <ActivityIndicator size="small" color="#541D26" style={{ marginRight: 6 }} />
@@ -1697,8 +1783,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <View style={[styles.gridRow, { marginTop: 12 }]}>
                     <View style={[styles.gridCol, { marginRight: 8 }]}>
                       <Text style={styles.inputLabel}>Pincode *</Text>
-                      <View style={[styles.inputWrapper, (touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim()))) ? styles.inputWrapperError : undefined]}>
+                      <View style={[styles.inputWrapper, (isPincodeInvalid || (touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())))) ? styles.inputWrapperError : undefined]}>
                         <TextInput
+                          ref={regPincodeRef}
                           style={styles.input}
                           placeholder="Pincode"
                           placeholderTextColor="#78716C"
@@ -1707,26 +1794,37 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                           value={pincode}
                           onChangeText={handlePincodeChange}
                           editable={areaName.trim().length >= 2}
+                          onFocus={handleInputFocus}
+                          returnKeyType="next"
+                          onSubmitEditing={() => regCityRef.current?.focus()}
                         />
                       </View>
-                      {touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())) ? (
+                      {isPincodeInvalid ? (
+                        <Text style={styles.inputErrorText}>Pincode must be 6 numeric digits.</Text>
+                      ) : touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())) ? (
                         <Text style={styles.inputErrorText}>Pincode is mandatory *.</Text>
                       ) : null}
                     </View>
 
                     <View style={[styles.gridCol, { marginLeft: 8 }]}>
                       <Text style={styles.inputLabel}>City *</Text>
-                      <View style={[styles.inputWrapper, (touchedStep1 && (!city.trim() || city.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
+                      <View style={[styles.inputWrapper, (isCityInvalid || (touchedStep1 && (!city.trim() || city.trim().length < 2))) ? styles.inputWrapperError : undefined]}>
                         <TextInput
+                          ref={regCityRef}
                           style={styles.input}
                           placeholder="City"
                           placeholderTextColor="#78716C"
                           value={city}
                           onChangeText={setCity}
                           editable={areaName.trim().length >= 2}
+                          onFocus={handleInputFocus}
+                          returnKeyType="next"
+                          onSubmitEditing={() => regStateRef.current?.focus()}
                         />
                       </View>
-                      {touchedStep1 && (!city.trim() || city.trim().length < 2) ? (
+                      {isCityInvalid ? (
+                        <Text style={styles.inputErrorText}>City must contain letters only (min 2 chars).</Text>
+                      ) : touchedStep1 && (!city.trim() || city.trim().length < 2) ? (
                         <Text style={styles.inputErrorText}>City is mandatory *.</Text>
                       ) : null}
                     </View>
@@ -1734,17 +1832,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                   {/* State */}
                   <Text style={[styles.inputLabel, { marginTop: 14 }]}>State *</Text>
-                  <View style={[styles.inputWrapper, (touchedStep1 && (!stateName.trim() || stateName.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
+                  <View style={[styles.inputWrapper, (isStateInvalid || (touchedStep1 && (!stateName.trim() || stateName.trim().length < 2))) ? styles.inputWrapperError : undefined]}>
                     <TextInput
+                      ref={regStateRef}
                       style={styles.input}
                       placeholder="State"
                       placeholderTextColor="#78716C"
                       value={stateName}
                       onChangeText={setStateName}
                       editable={areaName.trim().length >= 2}
+                      onFocus={handleInputFocus}
+                      returnKeyType="done"
+                      onSubmitEditing={handleNextStep1}
                     />
                   </View>
-                  {touchedStep1 && (!stateName.trim() || stateName.trim().length < 2) ? (
+                  {isStateInvalid ? (
+                    <Text style={styles.inputErrorText}>State must contain letters only (min 2 chars).</Text>
+                  ) : touchedStep1 && (!stateName.trim() || stateName.trim().length < 2) ? (
                     <Text style={styles.inputErrorText}>State is mandatory *.</Text>
                   ) : null}
 
@@ -1829,7 +1933,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                   {/* Next Button */}
                   <TouchableOpacity
-                    style={[styles.submitButton, { marginTop: 20 }]}
+                    style={[styles.submitButton, { marginTop: 20, marginBottom: Math.max(insets.bottom, 24) + 16 }]}
                     onPress={handleNextStep1}
                     disabled={loading || areaName.trim().length < 2}
                     activeOpacity={0.9}
@@ -1854,6 +1958,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     placeholderTextColor="#78716C"
                     value={vendorName}
                     onChangeText={(text) => setVendorName(text.replace(/[^a-zA-Z\s]/g, ''))}
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => regPhoneRef.current?.focus()}
                   />
                 </View>
                 {touchedStep2 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim())) ? (
@@ -1894,6 +2001,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   </TouchableOpacity>
                   <View style={styles.countryCodeDivider} />
                   <TextInput
+                    ref={regPhoneRef}
                     style={styles.input}
                     placeholder={selectedCountryCode.dialCode === '+91' ? 'Enter 10-digit mobile number' : 'Enter mobile number'}
                     placeholderTextColor="#78716C"
@@ -1916,6 +2024,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         checkPhoneOnInput(phone);
                       }
                     }}
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => regEmailRef.current?.focus()}
                   />
                 </View>
                 {phoneAlreadyRegisteredError ? (
@@ -1953,33 +2064,32 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Email Address *</Text>
                 <View style={[styles.inputWrapper, emailAlreadyRegisteredError ? styles.inputWrapperError : (touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim()))) ? styles.inputWrapperError : isEmailInvalid ? styles.inputWrapperError : undefined]}>
                   <TextInput
+                    ref={regEmailRef}
                     style={styles.input}
                     placeholder="Enter email address"
                     placeholderTextColor="#78716C"
                     keyboardType="email-address"
                     autoCapitalize="none"
                     value={email}
-                    onChangeText={(text) => {
-                      const clean = text.trim();
-                      setEmail(clean);
-                      if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean)) {
-                        checkEmailOnInput(clean);
-                      } else {
-                        setEmailAlreadyRegisteredError('');
-                      }
-                    }}
+                    onChangeText={handleRegEmailChange}
                     onBlur={() => {
                       if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) {
                         checkEmailOnInput(email.trim());
                       }
                     }}
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => regStoreNameRef.current?.focus()}
                   />
                 </View>
                 {emailAlreadyRegisteredError ? (
                   <View style={{ marginTop: 4, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={[styles.inputErrorText, { color: '#DC2626', fontWeight: '700', flex: 1 }]}>
-                      {emailAlreadyRegisteredError}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <AlertTriangle color="#DC2626" size={14} style={{ marginRight: 6 }} />
+                      <Text style={[styles.inputErrorText, { color: '#DC2626', fontWeight: '700', flex: 1, marginTop: 0 }]}>
+                        {emailAlreadyRegisteredError}
+                      </Text>
+                    </View>
                     <TouchableOpacity
                       onPress={() => {
                         setMode('login');
@@ -1990,21 +2100,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       <Text style={{ color: '#541D26', fontWeight: '800', fontSize: 12, textDecorationLine: 'underline' }}>Sign In</Text>
                     </TouchableOpacity>
                   </View>
-                ) : touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) ? (
-                  <Text style={styles.inputErrorText}>Email Address is mandatory * (e.g. vendor@domain.com).</Text>
                 ) : isEmailInvalid ? (
                   <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
+                ) : touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) ? (
+                  <Text style={styles.inputErrorText}>Email Address is mandatory * (e.g. vendor@domain.com).</Text>
                 ) : null}
 
                 {/* Shop / Business Name */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop / Business Name *</Text>
                 <View style={[styles.inputWrapper, (touchedStep2 && (!storeName.trim() || storeName.trim().length < 2)) ? styles.inputWrapperError : isStoreInvalid ? styles.inputWrapperError : undefined]}>
                   <TextInput
+                    ref={regStoreNameRef}
                     style={styles.input}
                     placeholder="Enter shop / business name"
                     placeholderTextColor="#78716C"
                     value={storeName}
                     onChangeText={(text) => setStoreName(text.replace(/[^a-zA-Z\s]/g, ''))}
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => regShopNumberRef.current?.focus()}
                   />
                 </View>
                 {touchedStep2 && (!storeName.trim() || storeName.trim().length < 2) ? (
@@ -2017,11 +2131,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop Number *</Text>
                 <View style={[styles.inputWrapper, (touchedStep2 && (!shopNumber.trim() || shopNumber.trim().length < 1)) ? styles.inputWrapperError : undefined]}>
                   <TextInput
+                    ref={regShopNumberRef}
                     style={styles.input}
                     placeholder="e.g. Shop No. 12, Ground Floor"
                     placeholderTextColor="#78716C"
                     value={shopNumber}
                     onChangeText={setShopNumber}
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => regTaxIdRef.current?.focus()}
                   />
                 </View>
                 {touchedStep2 && (!shopNumber.trim() || shopNumber.trim().length < 1) ? (
@@ -2100,6 +2218,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   ]}>
                     {taxIdentifierType === 'GSTIN' ? (
                       <TextInput
+                        ref={regTaxIdRef}
                         key="input_field_gstin"
                         style={styles.input}
                         placeholder="ENTER 15–DIGIT GSTIN (E.G. 08ABCDE1234F1Z5)"
@@ -2110,9 +2229,13 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         onChangeText={(text) => {
                           setGstinNumber(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15));
                         }}
+                        onFocus={handleInputFocus}
+                        returnKeyType="done"
+                        onSubmitEditing={handleNextStep2}
                       />
                     ) : (
                       <TextInput
+                        ref={regTaxIdRef}
                         key="input_field_pan"
                         style={styles.input}
                         placeholder="ENTER 10–DIGIT PAN (E.G. ABCDE1234F)"
@@ -2123,6 +2246,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         onChangeText={(text) => {
                           setPanNumber(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10));
                         }}
+                        onFocus={handleInputFocus}
+                        returnKeyType="done"
+                        onSubmitEditing={handleNextStep2}
                       />
                     )}
                   </View>
@@ -2184,7 +2310,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                 {/* Next Button */}
                 <TouchableOpacity
-                  style={[styles.submitButton, { marginTop: 20 }, (Boolean(phoneAlreadyRegisteredError) || Boolean(emailAlreadyRegisteredError)) && { opacity: 0.5 }]}
+                  style={[
+                    styles.submitButton,
+                    {
+                      marginTop: 20,
+                      marginBottom: Math.max(insets.bottom, 24) + 16,
+                    },
+                    (Boolean(phoneAlreadyRegisteredError) || Boolean(emailAlreadyRegisteredError)) && { opacity: 0.5 }
+                  ]}
                   onPress={handleNextStep2}
                   disabled={loading || Boolean(phoneAlreadyRegisteredError) || Boolean(emailAlreadyRegisteredError)}
                   activeOpacity={0.9}
@@ -2201,7 +2334,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <View style={{ display: regStep === 3 ? 'flex' : 'none', width: '100%' }}>
                 {/* Create Password */}
                 <Text style={styles.inputLabel}>Create Password *</Text>
-                <View style={[styles.inputWrapper, (touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim()))) ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, (isPasswordInvalid || (touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim())))) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Min. 8 chars, 1 uppercase, 1 num, 1 sym"
@@ -2209,6 +2342,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     secureTextEntry={!showPassword}
                     value={password}
                     onChangeText={setPassword}
+                    onFocus={handleInputFocus}
+                    returnKeyType="next"
+                    onSubmitEditing={() => regConfirmPasswordRef.current?.focus()}
                   />
                   <TouchableOpacity
                     onPress={() => setShowPassword(!showPassword)}
@@ -2222,22 +2358,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     )}
                   </TouchableOpacity>
                 </View>
-                {touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim())) ? (
+                {password.length > 0 && password.length < 8 ? (
+                  <Text style={styles.inputErrorText}>Password must be at least 8 characters (currently {password.length}/8).</Text>
+                ) : password.length >= 8 && (!/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) ? (
+                  <Text style={styles.inputErrorText}>Password must contain at least 1 uppercase letter, 1 number, and 1 special symbol.</Text>
+                ) : touchedStep3 && (!password.trim() || password.trim().length < 8) ? (
                   <Text style={styles.inputErrorText}>Password must be at least 8 characters, include 1 uppercase, 1 number, and 1 special character.</Text>
-                ) : isPasswordInvalid ? (
-                  <Text style={styles.inputErrorText}>Password must contain uppercase, number & special character</Text>
                 ) : null}
 
                 {/* Confirm Password */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Confirm Password *</Text>
-                <View style={[styles.inputWrapper, (touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim())) ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, ((confirmPassword.length > 0 && confirmPassword !== password) || (touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim()))) ? styles.inputWrapperError : undefined]}>
                   <TextInput
+                    ref={regConfirmPasswordRef}
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Re-enter password"
                     placeholderTextColor="#78716C"
                     secureTextEntry={!showConfirmPassword}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
+                    onFocus={handleInputFocus}
+                    returnKeyType="done"
+                    onSubmitEditing={handleRegister}
                   />
                   <TouchableOpacity
                     onPress={() => setShowConfirmPassword(!showConfirmPassword)}
@@ -2251,8 +2393,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     )}
                   </TouchableOpacity>
                 </View>
-                {touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim()) ? (
+                {confirmPassword.length > 0 && confirmPassword !== password ? (
                   <Text style={styles.inputErrorText}>Passwords do not match.</Text>
+                ) : touchedStep3 && !confirmPassword.trim() ? (
+                  <Text style={styles.inputErrorText}>Please confirm your password.</Text>
                 ) : null}
 
                 {/* Review Registration Details Card */}
@@ -2387,14 +2531,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     I have read and agree to the{' '}
                     <Text
                       style={styles.termsCheckLink}
-                      onPress={() => setShowPolicyModal(true)}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setShowPolicyModal(true);
+                      }}
                     >
                       Terms & Conditions
                     </Text>
                     {' '}and{' '}
                     <Text
                       style={styles.termsCheckLink}
-                      onPress={() => setShowPolicyModal(true)}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setShowPolicyModal(true);
+                      }}
                     >
                       Privacy Policy
                     </Text>
@@ -2411,7 +2561,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                 {/* Submit Button */}
                 <TouchableOpacity
-                  style={[styles.submitButton, { marginTop: 20 }]}
+                  style={[styles.submitButton, { marginTop: 20, marginBottom: Math.max(insets.bottom, 24) + 16 }]}
                   onPress={handleTriggerRegOtp}
                   disabled={loading}
                   activeOpacity={0.9}
@@ -2458,7 +2608,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </TouchableOpacity>
           </View>
         ) : null}
-      </ScrollView>
+      </KeyboardAwareScrollView>
 
       {/* ─── Already Registered Alert Modal ─── */}
       <Modal
@@ -2805,7 +2955,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         onRequestClose={() => setShowCountryPicker(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { maxHeight: '80%', paddingBottom: 20 }]}>
+          <View style={[styles.modalSheet, { maxHeight: '80%', paddingBottom: Math.max(insets.bottom + 16, 28) }]}>
             <View style={styles.modalHandleBar} />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Select Country Code</Text>
@@ -2869,7 +3019,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         setShowPrivacyModal(false);
       }}>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { maxHeight: '90%', paddingBottom: 20 }]}>
+          <View style={[styles.modalSheet, { maxHeight: '88%', paddingBottom: Math.max(insets.bottom, 24) + 16 }]}>
             <View style={styles.modalHandleBar} />
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Terms & Privacy Policy</Text>
@@ -2924,265 +3074,48 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
       {/* Registration OTP Modal */}
       <Modal transparent animationType="slide" visible={showRegOtpModal} onRequestClose={() => setShowRegOtpModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandleBar} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Verify Mobile / Email</Text>
-              <TouchableOpacity onPress={() => setShowRegOtpModal(false)}>
-                <X color="#6B7280" size={20} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.successBox}>
-              <Mail color="#16A34A" size={16} style={{ marginRight: 8 }} />
-              <Text style={styles.successText}>Registration OTP sent successfully!</Text>
-            </View>
-
-            <Text style={styles.forgotDesc}>
-              Please enter the 6-digit OTP code sent to your registered email or mobile to verify your identity. (Use Dummy OTP: 123456)
-            </Text>
-
-            <Text style={styles.inputLabel}>Enter OTP *</Text>
-            <View style={[styles.inputWrapper, { justifyContent: 'center' }]}>
-              <TextInput
-                style={[styles.input, { letterSpacing: 8, fontSize: 20, textAlign: 'center', fontWeight: '700' }]}
-                placeholder="------"
-                placeholderTextColor="#78716C"
-                keyboardType="number-pad"
-                maxLength={6}
-                value={regOtp}
-                onChangeText={setRegOtp}
-              />
-            </View>
-
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
             <TouchableOpacity
-              style={[styles.modalDoneBtn, { marginTop: 20 }]}
-              onPress={handleVerifyAndRegister}
-            >
-              <Text style={styles.modalDoneBtnText}>Verify & Complete Registration</Text>
-            </TouchableOpacity>
-
-            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16 }}>
-              {regOtpTimer > 0 ? (
-                <Text style={{ color: '#6B7280', fontSize: 13 }}>Resend in {regOtpTimer}s</Text>
-              ) : (
-                <TouchableOpacity onPress={handleTriggerRegOtp}>
-                  <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '700' }}>Resend OTP</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ─── Set Account Password Modal (Image 1) ─── */}
-      <Modal
-        transparent
-        animationType="fade"
-        visible={showSetPasswordModal}
-        onRequestClose={handleSkipPasswordAfterOtp}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { padding: 24, borderRadius: 24, maxWidth: 400, width: '92%', alignItems: 'center' }]}>
-            {/* Header Circle Icon */}
-            <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: '#F5EBE6', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
-              <KeyRound size={32} color="#541D26" />
-            </View>
-
-            {/* Title & Subtitle */}
-            <Text style={{ fontSize: 20, fontWeight: '700', color: '#1F2937', textAlign: 'center', marginBottom: 8 }}>
-              Set Account Password?
-            </Text>
-            <Text style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', lineHeight: 18, marginBottom: 20, paddingHorizontal: 4 }}>
-              You logged in successfully via OTP. Would you like to set a password now so you can login faster next time?
-            </Text>
-
-            {setPasswordError ? (
-              <View style={[styles.errorBox, { width: '100%', marginBottom: 12 }]}>
-                <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
-                <Text style={styles.errorText}>{setPasswordError}</Text>
-              </View>
-            ) : null}
-
-            {/* New Password Field */}
-            <View style={{ width: '100%', marginBottom: 14 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937', marginBottom: 6 }}>New Password</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: '#F5EBE6', borderColor: '#EADCD5' }]}>
-                <Lock color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Enter new password (min 6 chars)"
-                  placeholderTextColor="#78716C"
-                  secureTextEntry={!showSetPass1}
-                  value={setPasswordNew}
-                  onChangeText={setSetPasswordNew}
-                />
-                <TouchableOpacity onPress={() => setShowSetPass1(!showSetPass1)} style={{ padding: 4 }}>
-                  {showSetPass1 ? <Eye color="#6B7280" size={18} /> : <EyeOff color="#6B7280" size={18} />}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Confirm Password Field */}
-            <View style={{ width: '100%', marginBottom: 24 }}>
-              <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937', marginBottom: 6 }}>Confirm Password</Text>
-              <View style={[styles.inputWrapper, { backgroundColor: '#F5EBE6', borderColor: '#EADCD5' }]}>
-                <Lock color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Re-enter new password"
-                  placeholderTextColor="#78716C"
-                  secureTextEntry={!showSetPass2}
-                  value={setPasswordConfirm}
-                  onChangeText={setSetPasswordConfirm}
-                />
-                <TouchableOpacity onPress={() => setShowSetPass2(!showSetPass2)} style={{ padding: 4 }}>
-                  {showSetPass2 ? <Eye color="#6B7280" size={18} /> : <EyeOff color="#6B7280" size={18} />}
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Buttons (Skip for Now vs Save Password ->) */}
-            <View style={{ flexDirection: 'row', width: '100%', gap: 12 }}>
-              <TouchableOpacity
-                style={{
-                  flex: 1,
-                  paddingVertical: 14,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: '#D1D5DB',
-                  backgroundColor: '#FFFFFF',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-                onPress={handleSkipPasswordAfterOtp}
-                disabled={setPasswordLoading}
-                activeOpacity={0.8}
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => Keyboard.dismiss()}
+            />
+            <View style={styles.modalSheet}>
+              <KeyboardAwareScrollView
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                enableOnAndroid={true}
+                enableAutomaticScroll={true}
+                extraScrollHeight={60}
+                contentContainerStyle={{ flexGrow: 1, paddingBottom: 16 }}
               >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: '#374151' }}>Skip for Now</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={{
-                  flex: 1.2,
-                  paddingVertical: 14,
-                  borderRadius: 14,
-                  backgroundColor: '#541D26',
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                }}
-                onPress={handleSaveNewPasswordAfterOtp}
-                disabled={setPasswordLoading}
-                activeOpacity={0.9}
-              >
-                {setPasswordLoading ? (
-                  <ActivityIndicator color="#FFFFFF" size="small" />
-                ) : (
-                  <>
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Save Password</Text>
-                    <ArrowRight size={16} color="#FFFFFF" />
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Forgot Password Modal */}
-      <Modal transparent animationType="slide" visible={showForgotModal} onRequestClose={() => setShowForgotModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalSheet}>
-            <View style={styles.modalHandleBar} />
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>
-                {forgotStep === 4 ? 'Password Updated' : 'Reset Password'}
-              </Text>
-              <TouchableOpacity onPress={() => setShowForgotModal(false)}>
-                <X color="#6B7280" size={20} />
-              </TouchableOpacity>
-            </View>
-
-            {forgotError ? (
-              <View style={styles.errorBox}>
-                <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
-                <Text style={styles.errorText}>{forgotError}</Text>
-              </View>
-            ) : null}
-
-            {/* Step 1: Enter Mobile / Email & Send OTP */}
-            {forgotStep === 1 ? (
-              <View>
-                <Text style={styles.forgotDesc}>
-                  Enter your registered mobile number or email ID. We'll send a secure OTP code to verify your identity and reset your password.
-                </Text>
-
-                <Text style={styles.inputLabel}>Email Address or Phone Number *</Text>
-                <View style={[styles.inputWrapper, (forgotError && !forgotEmail) ? styles.inputWrapperError : undefined]}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter mobile number or email id"
-                    placeholderTextColor="#78716C"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType={/^\d+$/.test(forgotEmail) ? 'number-pad' : 'email-address'}
-                    value={forgotEmail}
-                    onChangeText={(text) => {
-                      const val = text.trim();
-                      if (/^\d*$/.test(val)) {
-                        if (val.length <= 10) {
-                          setForgotEmail(val);
-                          setForgotError('');
-                        }
-                      } else {
-                        setForgotEmail(val);
-                        setForgotError('');
-                      }
-                    }}
-                  />
+                <View style={styles.modalHandleBar} />
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Verify Mobile / Email</Text>
+                  <TouchableOpacity onPress={() => setShowRegOtpModal(false)}>
+                    <X color="#6B7280" size={20} />
+                  </TouchableOpacity>
                 </View>
-                {/^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && !/^[6-9]/.test(forgotEmail) ? (
-                  <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
-                ) : /^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && forgotEmail.length < 10 ? (
-                  <Text style={[styles.inputErrorText, { color: '#78716C' }]}>
-                    Mobile number ({forgotEmail.length}/10 digits)
-                  </Text>
-                ) : (!/^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && (!forgotEmail.includes('@') || !forgotEmail.includes('.'))) ? (
-                  <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
+
+                <View style={styles.successBox}>
+                  <Mail color="#16A34A" size={16} style={{ marginRight: 8 }} />
+                  <Text style={styles.successText}>Registration OTP sent successfully!</Text>
+                </View>
+
+                {error ? (
+                  <View style={[styles.errorBox, { marginBottom: 14 }]}>
+                    <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
+                    <Text style={styles.errorText}>{error}</Text>
+                  </View>
                 ) : null}
 
-                <TouchableOpacity
-                  style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
-                  onPress={handleSendOtp}
-                  disabled={forgotLoading}
-                >
-                  {forgotLoading ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.modalDoneBtnText}>Send Reset OTP</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            ) : forgotStep === 2 ? (
-              /* Step 2: Enter OTP */
-              <View>
-                <View style={styles.successBox}>
-                  {forgotEmail.includes('@') ? (
-                    <Mail color="#16A34A" size={16} style={{ marginRight: 8 }} />
-                  ) : (
-                    <Phone color="#16A34A" size={16} style={{ marginRight: 8 }} />
-                  )}
-                  <Text style={styles.successText}>
-                    OTP sent to {forgotEmail.includes('@') ? forgotEmail : `+91 ${forgotEmail}`}
-                  </Text>
-                </View>
-
                 <Text style={styles.forgotDesc}>
-                  Enter the 6-digit OTP code sent to your {forgotEmail.includes('@') ? 'email address' : 'mobile number'} to verify your identity.
+                  Please enter the 6-digit OTP code sent to your registered email or mobile to verify your identity. (Use Dummy OTP: 123456)
                 </Text>
 
                 <Text style={styles.inputLabel}>Enter OTP *</Text>
@@ -3193,246 +3126,554 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     placeholderTextColor="#78716C"
                     keyboardType="number-pad"
                     maxLength={6}
-                    value={forgotOtp}
-                    onChangeText={setForgotOtp}
+                    value={regOtp}
+                    onChangeText={setRegOtp}
                   />
                 </View>
 
-                {/* Resend Link / Timer */}
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 14 }}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setForgotStep(1);
-                      setForgotOtp('');
-                      setForgotError('');
-                    }}
-                  >
-                    <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '600' }}>← Change Email/Mobile</Text>
-                  </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalDoneBtn, { marginTop: 20 }]}
+                  onPress={handleVerifyAndRegister}
+                >
+                  <Text style={styles.modalDoneBtnText}>Verify & Complete Registration</Text>
+                </TouchableOpacity>
 
-                  {forgotOtpResendTimer > 0 ? (
-                    <Text style={{ color: '#6B7280', fontSize: 13 }}>Resend in {forgotOtpResendTimer}s</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 16 }}>
+                  {regOtpTimer > 0 ? (
+                    <Text style={{ color: '#6B7280', fontSize: 13 }}>Resend in {regOtpTimer}s</Text>
                   ) : (
-                    <TouchableOpacity onPress={handleSendOtp}>
+                    <TouchableOpacity onPress={handleTriggerRegOtp}>
                       <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '700' }}>Resend OTP</Text>
                     </TouchableOpacity>
                   )}
                 </View>
+              </KeyboardAwareScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
 
-                <TouchableOpacity
-                  style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
-                  onPress={handleVerifyOtp}
-                  disabled={forgotLoading}
-                >
-                  {forgotLoading ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.modalDoneBtnText}>Verify OTP</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-
-            ) : forgotStep === 3 ? (
-              /* Step 3: New Password */
-              <View>
-                <View style={styles.successBox}>
-                  <UserCheck color="#16A34A" size={16} style={{ marginRight: 8 }} />
-                  <Text style={styles.successText}>OTP verified! Enter your new password below.</Text>
+      {/* ─── Set Account Password Modal (Image 1) ─── */}
+      <Modal
+        transparent
+        animationType="fade"
+        visible={showSetPasswordModal}
+        onRequestClose={handleSkipPasswordAfterOtp}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalSheet, { padding: 24, borderRadius: 24, maxWidth: 400, width: '92%', alignItems: 'center' }]}>
+              <KeyboardAwareScrollView
+                contentContainerStyle={{ alignItems: 'center', width: '100%' }}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                enableOnAndroid={true}
+                enableAutomaticScroll={true}
+                extraScrollHeight={50}
+              >
+                {/* Header Circle Icon */}
+                <View style={{ width: 68, height: 68, borderRadius: 34, backgroundColor: '#F5EBE6', justifyContent: 'center', alignItems: 'center', marginBottom: 16 }}>
+                  <KeyRound size={32} color="#541D26" />
                 </View>
 
-                <Text style={styles.inputLabel}>New Password *</Text>
-                <View style={styles.inputWrapper}>
-                  <Lock color="#9CA3AF" size={18} style={styles.inputIcon} />
-                  <TextInput
-                    style={[styles.input, { paddingVertical: 0 }]}
-                    placeholder="Enter new password"
-                    placeholderTextColor="#78716C"
-                    secureTextEntry={!forgotShowPass}
-                    autoCapitalize="none"
-                    value={forgotNewPass}
-                    onChangeText={setForgotNewPass}
-                  />
-                  <TouchableOpacity onPress={() => setForgotShowPass(!forgotShowPass)} style={styles.eyeIcon}>
-                    {forgotShowPass ? <Eye color="#9CA3AF" size={18} /> : <EyeOff color="#9CA3AF" size={18} />}
+                {/* Title & Subtitle */}
+                <Text style={{ fontSize: 20, fontWeight: '700', color: '#1F2937', textAlign: 'center', marginBottom: 8 }}>
+                  Set Account Password?
+                </Text>
+                <Text style={{ fontSize: 13, color: '#6B7280', textAlign: 'center', lineHeight: 18, marginBottom: 20, paddingHorizontal: 4 }}>
+                  You logged in successfully via OTP. Would you like to set a password now so you can login faster next time?
+                </Text>
+
+                {setPasswordError ? (
+                  <View style={[styles.errorBox, { width: '100%', marginBottom: 12 }]}>
+                    <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
+                    <Text style={styles.errorText}>{setPasswordError}</Text>
+                  </View>
+                ) : null}
+
+                {/* New Password Field */}
+                <View style={{ width: '100%', marginBottom: 14 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937', marginBottom: 6 }}>New Password</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: '#F5EBE6', borderColor: '#EADCD5' }]}>
+                    <Lock color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Enter new password (min 6 chars)"
+                      placeholderTextColor="#78716C"
+                      secureTextEntry={!showSetPass1}
+                      value={setPasswordNew}
+                      onChangeText={setSetPasswordNew}
+                      returnKeyType="next"
+                      onSubmitEditing={() => setPassConfirmRef.current?.focus()}
+                    />
+                    <TouchableOpacity onPress={() => setShowSetPass1(!showSetPass1)} style={{ padding: 4 }}>
+                      {showSetPass1 ? <Eye color="#6B7280" size={18} /> : <EyeOff color="#6B7280" size={18} />}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Confirm Password Field */}
+                <View style={{ width: '100%', marginBottom: 24 }}>
+                  <Text style={{ fontSize: 13, fontWeight: '600', color: '#1F2937', marginBottom: 6 }}>Confirm Password</Text>
+                  <View style={[styles.inputWrapper, { backgroundColor: '#F5EBE6', borderColor: '#EADCD5' }]}>
+                    <Lock color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
+                    <TextInput
+                      ref={setPassConfirmRef}
+                      style={styles.input}
+                      placeholder="Re-enter new password"
+                      placeholderTextColor="#78716C"
+                      secureTextEntry={!showSetPass2}
+                      value={setPasswordConfirm}
+                      onChangeText={setSetPasswordConfirm}
+                      returnKeyType="done"
+                      onSubmitEditing={handleSaveNewPasswordAfterOtp}
+                    />
+                    <TouchableOpacity onPress={() => setShowSetPass2(!showSetPass2)} style={{ padding: 4 }}>
+                      {showSetPass2 ? <Eye color="#6B7280" size={18} /> : <EyeOff color="#6B7280" size={18} />}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* Buttons (Skip for Now vs Save Password ->) */}
+                <View style={{ flexDirection: 'row', width: '100%', gap: 12 }}>
+                  <TouchableOpacity
+                    style={{
+                      flex: 1,
+                      paddingVertical: 14,
+                      borderRadius: 14,
+                      borderWidth: 1,
+                      borderColor: '#D1D5DB',
+                      backgroundColor: '#FFFFFF',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    onPress={handleSkipPasswordAfterOtp}
+                    disabled={setPasswordLoading}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#374151' }}>Skip for Now</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={{
+                      flex: 1.2,
+                      paddingVertical: 14,
+                      borderRadius: 14,
+                      backgroundColor: '#541D26',
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 6,
+                    }}
+                    onPress={handleSaveNewPasswordAfterOtp}
+                    disabled={setPasswordLoading}
+                    activeOpacity={0.9}
+                  >
+                    {setPasswordLoading ? (
+                      <ActivityIndicator color="#FFFFFF" size="small" />
+                    ) : (
+                      <>
+                        <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFFFF' }}>Save Password</Text>
+                        <ArrowRight size={16} color="#FFFFFF" />
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </KeyboardAwareScrollView>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Forgot Password Modal */}
+      <Modal transparent animationType="slide" visible={showForgotModal} onRequestClose={() => setShowForgotModal(false)}>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
+            <TouchableOpacity
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => Keyboard.dismiss()}
+            />
+            <View style={styles.modalSheet}>
+              <KeyboardAwareScrollView
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                enableOnAndroid={true}
+                enableAutomaticScroll={true}
+                extraScrollHeight={60}
+                contentContainerStyle={{ flexGrow: 1, paddingBottom: 16 }}
+              >
+                <View style={styles.modalHandleBar} />
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>
+                    {forgotStep === 4 ? 'Password Updated' : 'Reset Password'}
+                  </Text>
+                  <TouchableOpacity onPress={() => setShowForgotModal(false)}>
+                    <X color="#6B7280" size={20} />
                   </TouchableOpacity>
                 </View>
 
-                <Text style={styles.inputLabel}>Confirm New Password *</Text>
-                <View style={styles.inputWrapper}>
-                  <Lock color="#9CA3AF" size={18} style={styles.inputIcon} />
-                  <TextInput
-                    style={[styles.input, { paddingVertical: 0 }]}
-                    placeholder="Confirm new password"
-                    placeholderTextColor="#78716C"
-                    secureTextEntry={!forgotShowPass}
-                    autoCapitalize="none"
-                    value={forgotConfirmPass}
-                    onChangeText={setForgotConfirmPass}
-                  />
-                </View>
+                {forgotError ? (
+                  <View style={styles.errorBox}>
+                    <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
+                    <Text style={styles.errorText}>{forgotError}</Text>
+                  </View>
+                ) : null}
 
-                <TouchableOpacity
-                  style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
-                  onPress={handleResetPasswordSubmit}
-                  disabled={forgotLoading}
-                >
-                  {forgotLoading ? (
-                    <ActivityIndicator color="#FFFFFF" size="small" />
-                  ) : (
-                    <Text style={styles.modalDoneBtnText}>Update & Reset Password</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
+                {/* Step 1: Enter Mobile / Email & Send OTP */}
+                {forgotStep === 1 ? (
+                  <View>
+                    <Text style={styles.forgotDesc}>
+                      Enter your registered mobile number or email ID. We'll send a secure OTP code to verify your identity and reset your password.
+                    </Text>
 
-            ) : (
-              /* Step 4: Success */
-              <View style={{ alignItems: 'center', paddingVertical: 12 }}>
-                <View style={styles.forgotSuccessBadge}>
-                  <UserCheck size={28} color="#541D26" />
-                </View>
-                <Text style={styles.forgotSuccessTitle}>Password Updated!</Text>
-                <Text style={styles.forgotSuccessDesc}>{forgotSuccess}</Text>
+                    <Text style={styles.inputLabel}>Email Address or Phone Number *</Text>
+                    <View style={[styles.inputWrapper, (forgotError && !forgotEmail) ? styles.inputWrapperError : undefined]}>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Enter mobile number or email id"
+                        placeholderTextColor="#78716C"
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType={/^\d+$/.test(forgotEmail) ? 'number-pad' : 'email-address'}
+                        value={forgotEmail}
+                        onChangeText={(text) => {
+                          const val = text.trim();
+                          if (/^\d*$/.test(val)) {
+                            if (val.length <= 10) {
+                              setForgotEmail(val);
+                              setForgotError('');
+                            }
+                          } else {
+                            setForgotEmail(val);
+                            setForgotError('');
+                          }
+                        }}
+                      />
+                    </View>
+                    {/^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && !/^[6-9]/.test(forgotEmail) ? (
+                      <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
+                    ) : /^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && forgotEmail.length < 10 ? (
+                      <Text style={[styles.inputErrorText, { color: '#78716C' }]}>
+                        Mobile number ({forgotEmail.length}/10 digits)
+                      </Text>
+                    ) : (!/^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && (!forgotEmail.includes('@') || !forgotEmail.includes('.'))) ? (
+                      <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
+                    ) : null}
 
-                <TouchableOpacity
-                  style={[styles.modalDoneBtn, { width: '100%', marginTop: 20 }]}
-                  onPress={() => {
-                    setEmail(forgotEmail);
-                    setPassword(forgotNewPass);
-                    setShowForgotModal(false);
-                  }}
-                >
-                  <Text style={styles.modalDoneBtnText}>Back to Sign In</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+                    <TouchableOpacity
+                      style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
+                      onPress={handleSendOtp}
+                      disabled={forgotLoading}
+                    >
+                      {forgotLoading ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text style={styles.modalDoneBtnText}>Send Reset OTP</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                ) : forgotStep === 2 ? (
+                  /* Step 2: Enter OTP */
+                  <View>
+                    <View style={styles.successBox}>
+                      {forgotEmail.includes('@') ? (
+                        <Mail color="#16A34A" size={16} style={{ marginRight: 8 }} />
+                      ) : (
+                        <Phone color="#16A34A" size={16} style={{ marginRight: 8 }} />
+                      )}
+                      <Text style={styles.successText}>
+                        OTP sent to {forgotEmail.includes('@') ? forgotEmail : `+91 ${forgotEmail}`}
+                      </Text>
+                    </View>
+
+                    <Text style={styles.forgotDesc}>
+                      Enter the 6-digit OTP code sent to your {forgotEmail.includes('@') ? 'email address' : 'mobile number'} to verify your identity.
+                    </Text>
+
+                    <Text style={styles.inputLabel}>Enter OTP *</Text>
+                    <View style={[styles.inputWrapper, { justifyContent: 'center' }]}>
+                      <TextInput
+                        style={[styles.input, { letterSpacing: 8, fontSize: 20, textAlign: 'center', fontWeight: '700' }]}
+                        placeholder="------"
+                        placeholderTextColor="#78716C"
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        value={forgotOtp}
+                        onChangeText={setForgotOtp}
+                      />
+                    </View>
+
+                    {/* Resend Link / Timer */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10, marginBottom: 14 }}>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setForgotStep(1);
+                          setForgotOtp('');
+                          setForgotError('');
+                        }}
+                      >
+                        <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '600' }}>← Change Email/Mobile</Text>
+                      </TouchableOpacity>
+
+                      {forgotOtpResendTimer > 0 ? (
+                        <Text style={{ color: '#6B7280', fontSize: 13 }}>Resend in {forgotOtpResendTimer}s</Text>
+                      ) : (
+                        <TouchableOpacity onPress={handleSendOtp}>
+                          <Text style={{ color: '#541D26', fontSize: 13, fontWeight: '700' }}>Resend OTP</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
+                      onPress={handleVerifyOtp}
+                      disabled={forgotLoading}
+                    >
+                      {forgotLoading ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text style={styles.modalDoneBtnText}>Verify OTP</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                ) : forgotStep === 3 ? (
+                  /* Step 3: New Password */
+                  <View>
+                    <View style={styles.successBox}>
+                      <UserCheck color="#16A34A" size={16} style={{ marginRight: 8 }} />
+                      <Text style={styles.successText}>OTP verified! Enter your new password below.</Text>
+                    </View>
+
+                    <Text style={styles.inputLabel}>New Password *</Text>
+                    <View style={styles.inputWrapper}>
+                      <Lock color="#9CA3AF" size={18} style={styles.inputIcon} />
+                      <TextInput
+                        style={[styles.input, { paddingVertical: 0 }]}
+                        placeholder="Enter new password"
+                        placeholderTextColor="#78716C"
+                        secureTextEntry={!forgotShowPass}
+                        autoCapitalize="none"
+                        value={forgotNewPass}
+                        onChangeText={setForgotNewPass}
+                        returnKeyType="next"
+                        onSubmitEditing={() => forgotConfirmPassRef.current?.focus()}
+                      />
+                      <TouchableOpacity onPress={() => setForgotShowPass(!forgotShowPass)} style={styles.eyeIcon}>
+                        {forgotShowPass ? <Eye color="#9CA3AF" size={18} /> : <EyeOff color="#9CA3AF" size={18} />}
+                      </TouchableOpacity>
+                    </View>
+
+                    <Text style={styles.inputLabel}>Confirm New Password *</Text>
+                    <View style={styles.inputWrapper}>
+                      <Lock color="#9CA3AF" size={18} style={styles.inputIcon} />
+                      <TextInput
+                        ref={forgotConfirmPassRef}
+                        style={[styles.input, { paddingVertical: 0 }]}
+                        placeholder="Confirm new password"
+                        placeholderTextColor="#78716C"
+                        secureTextEntry={!forgotShowPass}
+                        autoCapitalize="none"
+                        value={forgotConfirmPass}
+                        onChangeText={setForgotConfirmPass}
+                        returnKeyType="done"
+                        onSubmitEditing={handleResetPasswordSubmit}
+                      />
+                    </View>
+
+                    <TouchableOpacity
+                      style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
+                      onPress={handleResetPasswordSubmit}
+                      disabled={forgotLoading}
+                    >
+                      {forgotLoading ? (
+                        <ActivityIndicator color="#FFFFFF" size="small" />
+                      ) : (
+                        <Text style={styles.modalDoneBtnText}>Update & Reset Password</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+
+                ) : (
+                  /* Step 4: Success */
+                  <View style={{ alignItems: 'center', paddingVertical: 12 }}>
+                    <View style={styles.forgotSuccessBadge}>
+                      <UserCheck size={28} color="#541D26" />
+                    </View>
+                    <Text style={styles.forgotSuccessTitle}>Password Updated!</Text>
+                    <Text style={styles.forgotSuccessDesc}>{forgotSuccess}</Text>
+
+                    <TouchableOpacity
+                      style={[styles.modalDoneBtn, { width: '100%', marginTop: 20 }]}
+                      onPress={() => {
+                        setEmail(forgotEmail);
+                        setPassword(forgotNewPass);
+                        setShowForgotModal(false);
+                      }}
+                    >
+                      <Text style={styles.modalDoneBtnText}>Back to Sign In</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </KeyboardAwareScrollView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ─── Login with OTP Modal ─── */}
       <Modal transparent animationType="slide" visible={showLoginOtpModal} onRequestClose={() => setShowLoginOtpModal(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalSheet, { paddingBottom: 28 }]}>
-            <View style={styles.modalHandleBar} />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 }}>
-              <TouchableOpacity onPress={() => setShowLoginOtpModal(false)} style={styles.modalCloseBtn}>
-                <X color="#6B7280" size={20} />
-              </TouchableOpacity>
-            </View>
-
-            {loginOtpModalError ? (
-              <View style={[styles.errorBox, { marginBottom: 14 }]}>
-                <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
-                <Text style={styles.errorText}>{loginOtpModalError}</Text>
-              </View>
-            ) : null}
-
-            {/* Email Address or Phone Number Header */}
-            <Text style={styles.inputLabel}>Email Address or Phone Number *</Text>
-            <View style={[styles.inputWrapper, { marginBottom: 14 }]}>
-              {/^\d+$/.test(loginOtpModalPhone.trim()) && loginOtpModalPhone.trim().length > 0 ? (
-                <Phone color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
-              ) : loginOtpModalPhone.trim().includes('@') || /[a-zA-Z]/.test(loginOtpModalPhone.trim()) ? (
-                <Mail color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
-              ) : (
-                <User color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
-              )}
-              <TextInput
-                style={styles.input}
-                placeholder="Enter mobile number or email id"
-                placeholderTextColor="#78716C"
-                autoCapitalize="none"
-                autoCorrect={false}
-                keyboardType={/^\d+$/.test(loginOtpModalPhone) ? 'number-pad' : 'email-address'}
-                value={loginOtpModalPhone}
-                onChangeText={(text) => {
-                  setLoginOtpModalPhone(text);
-                  setLoginOtpModalError('');
-                }}
-              />
-            </View>
-
-            {/* 6-Digit Verification Code Label + Use Password Instead link */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
-              <Text style={[styles.inputLabel, { marginBottom: 0, paddingLeft: 0, fontSize: 13, fontWeight: '700' }]}>
-                6–Digit Verification Code *
-              </Text>
-              <TouchableOpacity onPress={() => setShowLoginOtpModal(false)} activeOpacity={0.7}>
-                <Text style={{ fontSize: 13, fontWeight: '700', color: '#541D26', textDecorationLine: 'underline' }}>
-                  Use Password Instead
-                </Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* 6 OTP Boxes */}
-            <View style={{ position: 'relative', marginVertical: 8 }}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                {[0, 1, 2, 3, 4, 5].map((index) => {
-                  const digit = loginOtpModalCode[index] || '';
-                  return (
-                    <View
-                      key={index}
-                      style={{
-                        width: 44,
-                        height: 48,
-                        borderRadius: 14,
-                        borderWidth: 1,
-                        borderColor: digit ? '#541D26' : '#E5E7EB',
-                        backgroundColor: digit ? '#FFF7F8' : '#FAF9F6',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <Text style={{ fontSize: 20, fontWeight: '700', color: '#541D26' }}>{digit}</Text>
-                    </View>
-                  );
-                })}
-              </View>
-
-              <TextInput
-                style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0 }}
-                keyboardType="number-pad"
-                maxLength={6}
-                value={loginOtpModalCode}
-                onChangeText={(val) => setLoginOtpModalCode(val.replace(/[^0-9]/g, ''))}
-              />
-            </View>
-
-            {/* Resend Link / Timer */}
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4, marginBottom: 8 }}>
-              {loginOtpModalTimer > 0 ? (
-                <Text style={{ fontSize: 12, fontWeight: '600', color: '#78716C' }}>Resend in {loginOtpModalTimer}s</Text>
-              ) : (
-                <TouchableOpacity onPress={handleLoginOtpModalSend}>
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: '#541D26' }}>Resend OTP</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-
-            {/* Button: VERIFY OTP & LOG IN -> */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+        >
+          <View style={styles.modalOverlay}>
             <TouchableOpacity
-              style={[
-                styles.submitButton,
-                { marginTop: 12, backgroundColor: '#541D26', borderRadius: 28, paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
-                loginOtpModalLoading && { opacity: 0.7 }
-              ]}
-              onPress={handleLoginOtpModalVerify}
-              disabled={loginOtpModalLoading}
-              activeOpacity={0.9}
-            >
-              {loginOtpModalLoading ? (
-                <ActivityIndicator color="#FFFFFF" size="small" />
-              ) : (
-                <>
-                  <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.8, textTransform: 'uppercase' }}>
-                    VERIFY OTP & LOG IN
+              style={StyleSheet.absoluteFill}
+              activeOpacity={1}
+              onPress={() => Keyboard.dismiss()}
+            />
+            <View style={[styles.modalSheet, { paddingBottom: 28 }]}>
+              <KeyboardAwareScrollView
+                bounces={false}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                enableOnAndroid={true}
+                enableAutomaticScroll={true}
+                extraScrollHeight={60}
+                contentContainerStyle={{ flexGrow: 1, paddingBottom: 16 }}
+              >
+                <View style={styles.modalHandleBar} />
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 4 }}>
+                  <TouchableOpacity onPress={() => setShowLoginOtpModal(false)} style={styles.modalCloseBtn}>
+                    <X color="#6B7280" size={20} />
+                  </TouchableOpacity>
+                </View>
+
+                {loginOtpModalError ? (
+                  <View style={[styles.errorBox, { marginBottom: 14 }]}>
+                    <AlertTriangle color="#EF4444" size={16} style={{ marginRight: 8 }} />
+                    <Text style={styles.errorText}>{loginOtpModalError}</Text>
+                  </View>
+                ) : null}
+
+                {/* Email Address or Phone Number Header */}
+                <Text style={styles.inputLabel}>Email Address or Phone Number *</Text>
+                <View style={[styles.inputWrapper, { marginBottom: 14 }]}>
+                  {/^\d+$/.test(loginOtpModalPhone.trim()) && loginOtpModalPhone.trim().length > 0 ? (
+                    <Phone color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
+                  ) : loginOtpModalPhone.trim().includes('@') || /[a-zA-Z]/.test(loginOtpModalPhone.trim()) ? (
+                    <Mail color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
+                  ) : (
+                    <User color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
+                  )}
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Enter mobile number or email id"
+                    placeholderTextColor="#78716C"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType={/^\d+$/.test(loginOtpModalPhone) ? 'number-pad' : 'email-address'}
+                    value={loginOtpModalPhone}
+                    onChangeText={(text) => {
+                      setLoginOtpModalPhone(text);
+                      setLoginOtpModalError('');
+                    }}
+                  />
+                </View>
+
+                {/* 6-Digit Verification Code Label + Use Password Instead link */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, marginTop: 4 }}>
+                  <Text style={[styles.inputLabel, { marginBottom: 0, paddingLeft: 0, fontSize: 13, fontWeight: '700' }]}>
+                    6–Digit Verification Code *
                   </Text>
-                  <ArrowRight size={18} color="#FFFFFF" />
-                </>
-              )}
-            </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setShowLoginOtpModal(false)} activeOpacity={0.7}>
+                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#541D26', textDecorationLine: 'underline' }}>
+                      Use Password Instead
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+
+                {/* 6 OTP Boxes */}
+                <View style={{ position: 'relative', marginVertical: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    {[0, 1, 2, 3, 4, 5].map((index) => {
+                      const digit = loginOtpModalCode[index] || '';
+                      return (
+                        <View
+                          key={index}
+                          style={{
+                            width: 44,
+                            height: 48,
+                            borderRadius: 14,
+                            borderWidth: 1,
+                            borderColor: digit ? '#541D26' : '#E5E7EB',
+                            backgroundColor: digit ? '#FFF7F8' : '#FAF9F6',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <Text style={{ fontSize: 20, fontWeight: '700', color: '#541D26' }}>{digit}</Text>
+                        </View>
+                      );
+                    })}
+                  </View>
+
+                  <TextInput
+                    style={{ position: 'absolute', width: '100%', height: '100%', opacity: 0 }}
+                    keyboardType="number-pad"
+                    maxLength={6}
+                    value={loginOtpModalCode}
+                    onChangeText={(val) => setLoginOtpModalCode(val.replace(/[^0-9]/g, ''))}
+                  />
+                </View>
+
+                {/* Resend Link / Timer */}
+                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 4, marginBottom: 8 }}>
+                  {loginOtpModalTimer > 0 ? (
+                    <Text style={{ fontSize: 12, fontWeight: '600', color: '#78716C' }}>Resend in {loginOtpModalTimer}s</Text>
+                  ) : (
+                    <TouchableOpacity onPress={handleLoginOtpModalSend}>
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: '#541D26' }}>Resend OTP</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {/* Button: VERIFY OTP & LOG IN -> */}
+                <TouchableOpacity
+                  style={[
+                    styles.submitButton,
+                    { marginTop: 12, backgroundColor: '#541D26', borderRadius: 28, paddingVertical: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8 },
+                    loginOtpModalLoading && { opacity: 0.7 }
+                  ]}
+                  onPress={handleLoginOtpModalVerify}
+                  disabled={loginOtpModalLoading}
+                  activeOpacity={0.9}
+                >
+                  {loginOtpModalLoading ? (
+                    <ActivityIndicator color="#FFFFFF" size="small" />
+                  ) : (
+                    <>
+                      <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.8, textTransform: 'uppercase' }}>
+                        VERIFY OTP & LOG IN
+                      </Text>
+                      <ArrowRight size={18} color="#FFFFFF" />
+                    </>
+                  )}
+                </TouchableOpacity>
+              </KeyboardAwareScrollView>
+            </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
       {/* ─── Blocked Account Alert Modal ─── */}
       <Modal
@@ -3502,7 +3743,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           </View>
         </View>
       </Modal>
-    </KeyboardAvoidingView>
+    </View>
   );
 };
 
@@ -4113,17 +4354,19 @@ const styles = StyleSheet.create({
   /* Forgot Modal Styles */
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(40, 13, 18, 0.75)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
     justifyContent: 'flex-end',
+    margin: 0,
+    padding: 0,
   },
   modalSheet: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingBottom: Platform.OS === 'ios' ? 44 : 28,
     paddingTop: 12,
-    maxHeight: '80%',
+    maxHeight: '85%',
   },
   modalHandleBar: {
     width: 40,
