@@ -380,8 +380,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAF8F5',
     borderWidth: 1.5,
     borderColor: '#E7DFD5',
-    borderRadius: 14,
-    paddingHorizontal: 14,
+    borderRadius: 24,
+    paddingHorizontal: 16,
     height: 48,
   },
   input: {

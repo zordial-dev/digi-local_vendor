@@ -57,43 +57,72 @@ import {
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromDevice, captureImageFromDevice } from '../utils/imagePickerHelper';
-import Svg, { Path } from 'react-native-svg';
 import { Colors, APP_LOGO_URL } from '../constants/theme';
 import { loginVendorApi, registerVendorApi, VendorUser, sendOtpApi, verifyOtpApi, loginVendorWithOtpApi, forgotPasswordOtpApi, resetPasswordWithOtpApi, checkVendorPhoneApi, checkVendorEmailApi, fetchLocationSuggestionsApi, fetchSocietiesApi } from '../services/apiService';
-import { getSavedCredentials, saveCredentials } from '../services/authStorage';
+import { getSavedIdentifier, saveSavedIdentifier, clearSavedIdentifier, saveVendorUser } from '../services/authStorage';
 import { isServiceCategory } from '../utils/translations';
+import { PRODUCT_CATEGORIES, SERVICE_CATEGORIES, BUSINESS_CATEGORIES } from '../constants/categories';
 
 // Clean user-facing error message formatter for production
 const formatUserFacingError = (err: any, fallbackMessage: string): string => {
-  const message = String(err?.message || err || '');
+  const raw = String(err?.message || err || '').trim();
 
-  if (message.includes('auth/too-many-requests')) {
+  // If HTML response or Express default error
+  if (
+    raw.includes('<!DOCTYPE') ||
+    raw.includes('<html') ||
+    raw.includes('<pre>') ||
+    raw.includes('Cannot POST') ||
+    raw.includes('Cannot GET') ||
+    raw.includes('Cannot PUT')
+  ) {
+    return 'Wrong email ID or mobile number. Please enter correct details.';
+  }
+
+  const lower = raw.toLowerCase();
+
+  // Account / credential issues
+  if (
+    lower.includes('not found') ||
+    lower.includes('no vendor') ||
+    lower.includes('not registered') ||
+    lower.includes('does not exist') ||
+    lower.includes('no account')
+  ) {
+    return 'Wrong email ID or mobile number. Please enter correct details.';
+  }
+
+  if (lower.includes('incorrect password') || lower.includes('wrong password') || lower.includes('invalid password')) {
+    return 'Incorrect password. Please check your password and try again.';
+  }
+
+  if (lower.includes('auth/too-many-requests')) {
     return 'Too many OTP requests. Please wait a moment and try again.';
   }
-  if (message.includes('auth/invalid-phone-number')) {
+  if (lower.includes('auth/invalid-phone-number')) {
     return 'Invalid mobile number. Please check your 10-digit number and try again.';
   }
-  if (message.includes('auth/quota-exceeded')) {
+  if (lower.includes('auth/quota-exceeded')) {
     return 'SMS service is temporarily busy. Please try again later or use password login.';
   }
-  if (message.includes('auth/invalid-verification-code') || message.includes('invalid-otp')) {
+  if (lower.includes('auth/invalid-verification-code') || lower.includes('invalid-otp') || lower.includes('invalid otp')) {
     return 'Invalid verification code. Please check the code and try again.';
   }
-  if (message.includes('auth/session-expired') || message.includes('code-expired')) {
+  if (lower.includes('auth/session-expired') || lower.includes('code-expired')) {
     return 'OTP code has expired. Please request a new code.';
   }
-  if (message.includes('auth/app-not-authorized') || message.includes('play_integrity') || message.includes('Native module')) {
+  if (lower.includes('auth/app-not-authorized') || lower.includes('play_integrity') || lower.includes('native module')) {
     return 'OTP service is initializing. Please try again or use password login.';
   }
-  if (message.includes('network-request-failed') || message.includes('fetch')) {
+  if (lower.includes('network-request-failed') || lower.includes('network request timed out') || lower.includes('fetch')) {
     return 'Network connection issue. Please check your internet connection.';
   }
 
-  if (message.startsWith('Error:') || message.includes('[auth/') || message.includes('[TypeError')) {
+  if (raw.startsWith('Error:') || raw.includes('[auth/') || raw.includes('[TypeError') || raw.includes('JSON Parse error')) {
     return fallbackMessage;
   }
 
-  return message || fallbackMessage;
+  return raw || fallbackMessage;
 };
 
 
@@ -165,38 +194,6 @@ Your information is strictly used to connect your store with nearby residential 
 
 3. Data Protection
 All account credentials are protected using industry-standard encryption protocols. We do not sell or rent vendor personal data to third parties.`;
-
-
-const PRODUCT_CATEGORIES = [
-  'Grocery & Supermarket',
-  'Fruits & Vegetables',
-  'Dairy & Sweets',
-  'Bakery & Snacks',
-  'General Store',
-  'Pharmacy & Healthcare',
-  'Electronics & Repairs',
-  'Hardware & Utilities',
-  'Resin Art & Handicrafts',
-  'Laundry & Dry Cleaning',
-  'Other Goods & Products',
-];
-
-const SERVICE_CATEGORIES = [
-  'Electrician & Repairs',
-  'AC & Appliance Service',
-  'Plumbing & Sanitary Works',
-  'Housekeeping & Deep Cleaning',
-  'Tuition & Coaching',
-  'Doctor / Clinic & Healthcare',
-  'CA, Tax & Accounting',
-  'Carpentry & Interior',
-  'Beauty, Salon & Spa',
-  'Driver & Vehicle Services',
-  'Event Services & Catering',
-  'Other Home Services',
-];
-
-const BUSINESS_CATEGORIES = PRODUCT_CATEGORIES;
 
 const DEFAULT_SOCIETIES_DATA: Array<{ name: string; pincode: string; city: string; state: string; type: 'society' | 'area' }> = [
   { name: 'Mansarovar', pincode: '302020', city: 'Jaipur', state: 'Rajasthan', type: 'area' },
@@ -285,7 +282,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const setPassConfirmRef = useRef<any>(null);
   const forgotConfirmPassRef = useRef<any>(null);
 
-  const handleInputFocus = (e: any) => {
+  const [activeInputName, setActiveInputName] = useState<string | null>(null);
+
+  const handleInputFocus = (nameOrEvent?: any, eventObj?: any) => {
+    if (typeof nameOrEvent === 'string') {
+      setActiveInputName(nameOrEvent);
+      setBlurredFields(prev => ({ ...prev, [nameOrEvent]: false }));
+    }
+    const e = (nameOrEvent && typeof nameOrEvent === 'object' && nameOrEvent.target) ? nameOrEvent : eventObj;
     if (mainScrollRef.current && e?.target) {
       try {
         const node = findNodeHandle(e.target);
@@ -382,6 +386,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [touchedStep1, setTouchedStep1] = useState(false);
   const [touchedStep2, setTouchedStep2] = useState(false);
   const [touchedStep3, setTouchedStep3] = useState(false);
+  const [blurredFields, setBlurredFields] = useState<Record<string, boolean>>({});
+  const markFieldBlurred = (fieldName: string) => {
+    setBlurredFields(prev => ({ ...prev, [fieldName]: true }));
+  };
 
   // Already Registered Modal States
   const [showAlreadyRegisteredModal, setShowAlreadyRegisteredModal] = useState(false);
@@ -389,8 +397,10 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [alreadyRegisteredMsg, setAlreadyRegisteredMsg] = useState('');
   const [alreadyRegisteredValue, setAlreadyRegisteredValue] = useState('');
   const [phoneAlreadyRegisteredError, setPhoneAlreadyRegisteredError] = useState('');
+  const [isCheckingPhone, setIsCheckingPhone] = useState(false);
   const checkingPhoneRef = useRef<string>('');
   const [emailAlreadyRegisteredError, setEmailAlreadyRegisteredError] = useState('');
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const checkingEmailRef = useRef<string>('');
   const emailDebounceRef = useRef<any>(null);
 
@@ -403,7 +413,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     } else if (type === 'mobile') {
       setAlreadyRegisteredMsg(`The mobile number +91 ${val} is already registered with an existing vendor account. Please use another mobile number or sign in to your account.`);
     } else if (type === 'email') {
-      setAlreadyRegisteredMsg('Email already used. Please use a different email address.');
+      setAlreadyRegisteredMsg('This email is already registered. Please use a different email address.');
     } else {
       setAlreadyRegisteredMsg('This mobile number or email ID is already registered with an existing vendor account. Please use another email or mobile number.');
     }
@@ -414,6 +424,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     const clean = inputPhone.trim();
     if (clean.length === 10 && /^[6-9]\d{9}$/.test(clean)) {
       checkingPhoneRef.current = clean;
+      setIsCheckingPhone(true);
       try {
         const phoneCheck = await checkVendorPhoneApi(clean);
         if (checkingPhoneRef.current === clean && phoneCheck && phoneCheck.exists) {
@@ -421,7 +432,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         } else if (checkingPhoneRef.current === clean) {
           setPhoneAlreadyRegisteredError('');
         }
-      } catch (_) {}
+      } catch (_) {
+        if (checkingPhoneRef.current === clean) {
+          setPhoneAlreadyRegisteredError('');
+        }
+      } finally {
+        if (checkingPhoneRef.current === clean) {
+          setIsCheckingPhone(false);
+        }
+      }
     } else {
       setPhoneAlreadyRegisteredError('');
     }
@@ -431,14 +450,23 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     const clean = inputEmail.trim().toLowerCase();
     if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean)) {
       checkingEmailRef.current = clean;
+      setIsCheckingEmail(true);
       try {
         const emailCheck = await checkVendorEmailApi(clean);
         if (checkingEmailRef.current === clean && emailCheck && emailCheck.exists) {
-          setEmailAlreadyRegisteredError('Email already used. Please use a different email address.');
+          setEmailAlreadyRegisteredError('This email is already registered. Please use a different email address.');
         } else if (checkingEmailRef.current === clean) {
           setEmailAlreadyRegisteredError('');
         }
-      } catch (_) {}
+      } catch (_) {
+        if (checkingEmailRef.current === clean) {
+          setEmailAlreadyRegisteredError('');
+        }
+      } finally {
+        if (checkingEmailRef.current === clean) {
+          setIsCheckingEmail(false);
+        }
+      }
     } else {
       setEmailAlreadyRegisteredError('');
     }
@@ -450,11 +478,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     if (emailDebounceRef.current) {
       clearTimeout(emailDebounceRef.current);
     }
-    if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean)) {
-      emailDebounceRef.current = setTimeout(() => {
-        checkEmailOnInput(clean);
-      }, 250);
-    } else {
+    if (emailAlreadyRegisteredError) {
       setEmailAlreadyRegisteredError('');
     }
   };
@@ -623,12 +647,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     try {
       const res = await loginVendorApi(cleanInput.toLowerCase(), cleanPassword);
       if (rememberMe) {
-        await saveCredentials(cleanInput, cleanPassword, res.vendor.vendor_id);
+        await saveSavedIdentifier(cleanInput);
+      } else {
+        await clearSavedIdentifier();
       }
       const finalVendor: VendorUser = {
         ...res.vendor,
         business_type: res.vendor.business_type || (isServiceCategory(res.vendor.category) ? 'SERVICE' : 'PRODUCT'),
       };
+      await saveVendorUser(finalVendor);
       onLoginSuccess(finalVendor);
     } catch (err: any) {
       const errMsg = (err.message || '').toLowerCase();
@@ -642,7 +669,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       } else if (errMsg.includes('not found') || errMsg.includes('no account') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('does not exist')) {
         triggerNotRegisteredModal(cleanInput);
       } else {
-        setError(err.message || 'Login failed. Please check your credentials.');
+        const userFacing = formatUserFacingError(err, 'Wrong email ID or mobile number. Please enter correct details.');
+        setError(userFacing);
       }
     } finally {
       setLoading(false);
@@ -888,7 +916,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       }
 
       if (emailCheck && emailCheck.exists) {
-        setEmailAlreadyRegisteredError(`Email "${cleanEmail}" is already registered. Please use another email ID or sign in.`);
+        setEmailAlreadyRegisteredError('This email is already registered. Please use a different email address.');
         return;
       } else {
         setEmailAlreadyRegisteredError('');
@@ -980,7 +1008,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       });
 
       if (rememberMe) {
-        await saveCredentials(email.trim().toLowerCase(), cleanPassword, res.vendor_id);
+        await saveSavedIdentifier(email.trim().toLowerCase());
+      } else {
+        await clearSavedIdentifier();
       }
       const regVendor: VendorUser = {
         ...res.vendor,
@@ -1002,12 +1032,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       const isEmailDuplicate =
         errMsg.includes('email already registered') ||
         errMsg.includes('email address already') ||
-        errMsg.includes('email is already');
+        errMsg.includes('email is already') ||
+        errMsg.includes('email already in use') ||
+        errMsg.includes('email already used') ||
+        errMsg.includes('email exists');
 
-      if (isMobileDuplicate) {
-        triggerAlreadyRegisteredModal('mobile', phone.trim());
-      } else if (isEmailDuplicate) {
-        triggerAlreadyRegisteredModal('email', email.trim().toLowerCase());
+      if (isEmailDuplicate) {
+        setEmailAlreadyRegisteredError('This email is already registered. Please use a different email address.');
+        setRegStep(2);
+        return;
+      } else if (isMobileDuplicate) {
+        setPhoneAlreadyRegisteredError(`Mobile number +91 ${phone.trim()} is already registered. Please use another mobile number or log in.`);
+        setRegStep(2);
+        return;
       } else {
         setError(err.message || 'Registration failed. Please check your input details and try again.');
       }
@@ -1223,7 +1260,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       setLoginOtpModalCode('');
       setLoginOtpModalStep(2);
       setLoginOtpModalTimer(60);
-      const testOtp = res?.simulationOtp || res?.otp || res?.code || '123456';
+      const testOtp = res?.simulationOtp || res?.otp || res?.code || '999999';
       setLoginOtpModalError('');
     } catch (err: any) {
       const errMsg = (err.message || '').toLowerCase();
@@ -1231,7 +1268,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         setShowLoginOtpModal(false);
         triggerNotRegisteredModal(cleanContact);
       } else {
-        setLoginOtpModalError(err.message || 'Failed to send OTP. Please try again.');
+        const userFacing = formatUserFacingError(err, 'Wrong email ID or mobile number. Please enter correct details.');
+        setLoginOtpModalError(userFacing);
       }
     } finally {
       setLoginOtpModalLoading(false);
@@ -1255,20 +1293,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         ...res.vendor,
         business_type: res.vendor.business_type || (isServiceCategory(res.vendor.category) ? 'SERVICE' : 'PRODUCT'),
       };
-      // Close OTP Modal (Image 2) and open Set Account Password Modal (Image 1)
+      // Close OTP Modal and successfully log in
       setShowLoginOtpModal(false);
-      setPendingVendorAfterOtp(finalVendor);
-      setSetPasswordNew('');
-      setSetPasswordConfirm('');
-      setSetPasswordError('');
-      setShowSetPasswordModal(true);
+      onLoginSuccess(finalVendor);
     } catch (err: any) {
       const errMsg = (err.message || '').toLowerCase();
       if (errMsg.includes('not found') || errMsg.includes('no vendor') || errMsg.includes('not registered') || errMsg.includes('no account') || errMsg.includes('does not exist')) {
         setShowLoginOtpModal(false);
         triggerNotRegisteredModal(loginOtpModalPhone.trim());
       } else {
-        setLoginOtpModalError(err.message || 'Invalid or expired OTP. Please try again.');
+        const userFacing = formatUserFacingError(err, 'Invalid or expired OTP. Please try again.');
+        setLoginOtpModalError(userFacing);
       }
     } finally {
       setLoginOtpModalLoading(false);
@@ -1291,7 +1326,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
       if (pendingVendorAfterOtp) {
         const contact = pendingVendorAfterOtp.phone_number || pendingVendorAfterOtp.email || loginOtpModalPhone;
         try {
-          await resetPasswordWithOtpApi(contact, '123456', setPasswordNew);
+          await resetPasswordWithOtpApi(contact, '999999', setPasswordNew);
         } catch (_) {}
       }
       setShowSetPasswordModal(false);
@@ -1415,23 +1450,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     }
   };
 
-  // Real-time invalid field checks
-  const isPincodeInvalid = mode === 'register' && regStep === 1 && pincode.length > 0 && !/^\d{6}$/.test(pincode.trim());
-  const isCityInvalid = mode === 'register' && regStep === 1 && city.length > 0 && (city.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(city));
-  const isStateInvalid = mode === 'register' && regStep === 1 && stateName.length > 0 && (stateName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(stateName));
+  // Validation checks: Only active AFTER user has entered data and blurred away (or submitted the step)
+  const isPincodeBlurredInvalid = mode === 'register' && regStep === 1 && activeInputName !== 'pincode' && (blurredFields['pincode'] || touchedStep1) && pincode.trim().length > 0 && !/^\d{6}$/.test(pincode.trim());
+  const isCityBlurredInvalid = mode === 'register' && regStep === 1 && activeInputName !== 'city' && (blurredFields['city'] || touchedStep1) && city.trim().length > 0 && (city.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(city.trim()));
+  const isStateBlurredInvalid = mode === 'register' && regStep === 1 && activeInputName !== 'state' && (blurredFields['state'] || touchedStep1) && stateName.trim().length > 0 && (stateName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(stateName.trim()));
 
-  const isVendorInvalid = mode === 'register' && regStep === 2 && vendorName.length > 0 && (vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName));
-  const isPhoneInvalid = mode === 'register' && regStep === 2 && phone.length > 0 && (phone.length < 10 || !/^[6-9]\d{9}$/.test(phone));
-  const isEmailInvalid = mode === 'register' && regStep === 2 && email.length > 0 && !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim());
-  const isStoreInvalid = mode === 'register' && regStep === 2 && storeName.length > 0 && storeName.trim().length < 2;
-  const isGstInvalid =
+  const isVendorBlurredInvalid = mode === 'register' && regStep === 2 && activeInputName !== 'owner_name' && (blurredFields['owner_name'] || touchedStep2) && vendorName.trim().length > 0 && (vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim()));
+  const isPhoneBlurredInvalid = mode === 'register' && regStep === 2 && activeInputName !== 'phone' && (blurredFields['phone'] || touchedStep2) && phone.trim().length > 0 && (
+    selectedCountryCode.dialCode === '+91'
+      ? (phone.trim().length !== 10 || !/^[6-9]\d{9}$/.test(phone.trim()))
+      : (phone.trim().length < 7 || phone.trim().length > 15)
+  );
+  const isEmailBlurredInvalid = mode === 'register' && regStep === 2 && activeInputName !== 'email' && (blurredFields['email'] || touchedStep2) && email.trim().length > 0 && !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim());
+  const isStoreBlurredInvalid = mode === 'register' && regStep === 2 && activeInputName !== 'store_name' && (blurredFields['store_name'] || touchedStep2) && storeName.trim().length > 0 && storeName.trim().length < 2;
+  const isGstBlurredInvalid =
     mode === 'register' &&
     regStep === 2 &&
+    activeInputName !== 'tax_id' &&
+    (blurredFields['tax_id'] || touchedStep2) &&
     (taxIdentifierType === 'GSTIN'
-      ? (gstinNumber.length > 0 && (gstinNumber.length !== 15 || !gstCheckRegex.test(gstinNumber.toUpperCase().trim())))
-      : (panNumber.length > 0 && (panNumber.length !== 10 || !panCheckRegex.test(panNumber.toUpperCase().trim()))));
+      ? (gstinNumber.trim().length > 0 && (gstinNumber.trim().length !== 15 || !gstCheckRegex.test(gstinNumber.toUpperCase().trim())))
+      : (panNumber.trim().length > 0 && (panNumber.trim().length !== 10 || !panCheckRegex.test(panNumber.toUpperCase().trim()))));
 
-  const isPasswordInvalid = mode === 'register' && regStep === 3 && password.length > 0 && (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password));
+  const isPasswordBlurredInvalid = mode === 'register' && regStep === 3 && activeInputName !== 'reg_password' && (blurredFields['reg_password'] || touchedStep3) && password.length > 0 && (password.length < 8 || !/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password));
+  const isConfirmPasswordBlurredInvalid = mode === 'register' && regStep === 3 && activeInputName !== 'reg_confirm_password' && (blurredFields['reg_confirm_password'] || touchedStep3) && confirmPassword.length > 0 && confirmPassword !== password;
 
   return (
     <View
@@ -1522,7 +1564,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   textAlign: 'center',
                   fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_800Bold',
                   letterSpacing: -0.5,
-                  marginBottom: 12,
+                  marginBottom: 3,
                 }}>
                   Vendor Login
                 </Text>
@@ -1607,7 +1649,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             <>
               {/* Email Address or Phone Number */}
               <Text style={styles.inputLabel}>Email Address or Phone Number *</Text>
-              <View style={[styles.inputWrapper, (error && !password) ? styles.inputWrapperError : undefined]}>
+              <View style={[styles.inputWrapper, activeInputName === 'login_identifier' && styles.inputWrapperActive, (error && !password) ? styles.inputWrapperError : undefined]}>
                 {/^\d+$/.test(email.trim()) && email.trim().length > 0 ? (
                   <Phone color="#541D26" size={18} style={{ marginLeft: 4, marginRight: 8 }} />
                 ) : email.trim().includes('@') || /[a-zA-Z]/.test(email.trim()) ? (
@@ -1621,26 +1663,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   placeholderTextColor="#78716C"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  autoComplete="off"
+                  textContentType="none"
+                  importantForAutofill="no"
                   keyboardType={/^\d+$/.test(email) ? "number-pad" : "email-address"}
                   editable={!loginOtpSent}
                   value={email}
                   onChangeText={handleLoginContactChange}
-                  onFocus={handleInputFocus}
+                  onFocus={(e) => handleInputFocus('login_identifier', e)}
+                  onBlur={() => setActiveInputName(null)}
+                  selectionColor="#541D26"
                   returnKeyType="next"
                   onSubmitEditing={() => loginPasswordRef.current?.focus()}
                 />
               </View>
-              {/^\d+$/.test(email) && email.length > 0 && !/^[6-9]/.test(email) ? (
-                <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9</Text>
-              ) : /^\d+$/.test(email) && email.length > 0 && email.length < 10 ? (
-                <Text style={[styles.inputErrorText, { color: '#78716C' }]}>Mobile number ({email.length}/10 digits)</Text>
-              ) : (!/^\d+$/.test(email) && email.length > 0 && (!email.includes('@') || !email.includes('.'))) ? (
-                <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
-              ) : null}
 
               {/* Password */}
               <Text style={[styles.inputLabel, { marginTop: 20, marginBottom: 8 }]}>Password *</Text>
-              <View style={[styles.inputWrapper, (error && password.length === 0) ? styles.inputWrapperError : undefined]}>
+              <View style={[styles.inputWrapper, activeInputName === 'login_password' && styles.inputWrapperActive, (error && password.length === 0) ? styles.inputWrapperError : undefined]}>
                 <Lock color="#541D26" size={20} style={{ marginLeft: 4, marginRight: 8 }} />
                 <TextInput
                   ref={loginPasswordRef}
@@ -1650,10 +1690,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   secureTextEntry={!showPassword}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  textContentType={showPassword ? 'none' : 'password'}
+                  autoComplete="off"
+                  textContentType="none"
+                  importantForAutofill="no"
                   value={password}
                   onChangeText={setPassword}
-                  onFocus={handleInputFocus}
+                  onFocus={(e) => handleInputFocus('login_password', e)}
+                  onBlur={() => setActiveInputName(null)}
+                  selectionColor="#541D26"
                   returnKeyType="done"
                   onSubmitEditing={handleLogin}
                 />
@@ -1661,9 +1705,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   {showPassword ? <Eye color="#1F2937" size={20} /> : <EyeOff color="#1F2937" size={20} />}
                 </TouchableOpacity>
               </View>
-              {isPasswordInvalid ? (
-                <Text style={styles.inputErrorText}>Password must be 8+ chars with uppercase, number & special symbol (@, #, $, !)</Text>
-              ) : null}
 
               {/* Try another method (Right Corner with Key icon) */}
               <View style={{ flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center', marginTop: 10 }}>
@@ -1701,7 +1742,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 <Text style={[styles.inputLabel, { marginTop: 8 }]}>Add Your Complete Address (Society / Area / Sector) *</Text>
 
                 <View style={{ position: 'relative', zIndex: 30, marginBottom: 4 }}>
-                  <View style={[styles.inputWrapper, (touchedStep1 && (!areaName.trim() || areaName.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
+                  <View style={[styles.inputWrapper, activeInputName === 'area_name' && styles.inputWrapperActive, (touchedStep1 && (!areaName.trim() || areaName.trim().length < 2)) ? styles.inputWrapperError : undefined]}>
                     <Building2 size={18} color="#541D26" style={{ marginRight: 10 }} />
                     <TextInput
                       style={styles.input}
@@ -1710,10 +1751,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       value={areaName}
                       onChangeText={handleAreaChange}
                       onFocus={(e) => {
-                        handleInputFocus(e);
+                        handleInputFocus('area_name', e);
                         fetchLocationByAreaName(areaName);
                         setShowAreaDropdown(true);
                       }}
+                      onBlur={() => setActiveInputName(null)}
+                      selectionColor="#541D26"
                       returnKeyType="next"
                       onSubmitEditing={() => regPincodeRef.current?.focus()}
                     />
@@ -1783,7 +1826,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   <View style={[styles.gridRow, { marginTop: 12 }]}>
                     <View style={[styles.gridCol, { marginRight: 8 }]}>
                       <Text style={styles.inputLabel}>Pincode *</Text>
-                      <View style={[styles.inputWrapper, (isPincodeInvalid || (touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())))) ? styles.inputWrapperError : undefined]}>
+                      <View style={[styles.inputWrapper, activeInputName === 'pincode' && styles.inputWrapperActive, (isPincodeBlurredInvalid || (touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())))) ? styles.inputWrapperError : undefined]}>
                         <TextInput
                           ref={regPincodeRef}
                           style={styles.input}
@@ -1794,12 +1837,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                           value={pincode}
                           onChangeText={handlePincodeChange}
                           editable={areaName.trim().length >= 2}
-                          onFocus={handleInputFocus}
+                          onFocus={(e) => handleInputFocus('pincode', e)}
+                          onBlur={() => {
+                            setActiveInputName(null);
+                            markFieldBlurred('pincode');
+                          }}
+                          selectionColor="#541D26"
                           returnKeyType="next"
                           onSubmitEditing={() => regCityRef.current?.focus()}
                         />
                       </View>
-                      {isPincodeInvalid ? (
+                      {isPincodeBlurredInvalid ? (
                         <Text style={styles.inputErrorText}>Pincode must be 6 numeric digits.</Text>
                       ) : touchedStep1 && (!pincode.trim() || !/^\d{6}$/.test(pincode.trim())) ? (
                         <Text style={styles.inputErrorText}>Pincode is mandatory *.</Text>
@@ -1808,7 +1856,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                     <View style={[styles.gridCol, { marginLeft: 8 }]}>
                       <Text style={styles.inputLabel}>City *</Text>
-                      <View style={[styles.inputWrapper, (isCityInvalid || (touchedStep1 && (!city.trim() || city.trim().length < 2))) ? styles.inputWrapperError : undefined]}>
+                      <View style={[styles.inputWrapper, activeInputName === 'city' && styles.inputWrapperActive, (isCityBlurredInvalid || (touchedStep1 && (!city.trim() || city.trim().length < 2))) ? styles.inputWrapperError : undefined]}>
                         <TextInput
                           ref={regCityRef}
                           style={styles.input}
@@ -1817,12 +1865,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                           value={city}
                           onChangeText={setCity}
                           editable={areaName.trim().length >= 2}
-                          onFocus={handleInputFocus}
+                          onFocus={(e) => handleInputFocus('city', e)}
+                          onBlur={() => {
+                            setActiveInputName(null);
+                            markFieldBlurred('city');
+                          }}
+                          selectionColor="#541D26"
                           returnKeyType="next"
                           onSubmitEditing={() => regStateRef.current?.focus()}
                         />
                       </View>
-                      {isCityInvalid ? (
+                      {isCityBlurredInvalid ? (
                         <Text style={styles.inputErrorText}>City must contain letters only (min 2 chars).</Text>
                       ) : touchedStep1 && (!city.trim() || city.trim().length < 2) ? (
                         <Text style={styles.inputErrorText}>City is mandatory *.</Text>
@@ -1832,7 +1885,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                   {/* State */}
                   <Text style={[styles.inputLabel, { marginTop: 14 }]}>State *</Text>
-                  <View style={[styles.inputWrapper, (isStateInvalid || (touchedStep1 && (!stateName.trim() || stateName.trim().length < 2))) ? styles.inputWrapperError : undefined]}>
+                  <View style={[styles.inputWrapper, activeInputName === 'state' && styles.inputWrapperActive, (isStateBlurredInvalid || (touchedStep1 && (!stateName.trim() || stateName.trim().length < 2))) ? styles.inputWrapperError : undefined]}>
                     <TextInput
                       ref={regStateRef}
                       style={styles.input}
@@ -1841,12 +1894,17 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       value={stateName}
                       onChangeText={setStateName}
                       editable={areaName.trim().length >= 2}
-                      onFocus={handleInputFocus}
+                      onFocus={(e) => handleInputFocus('state', e)}
+                      onBlur={() => {
+                        setActiveInputName(null);
+                        markFieldBlurred('state');
+                      }}
+                      selectionColor="#541D26"
                       returnKeyType="done"
                       onSubmitEditing={handleNextStep1}
                     />
                   </View>
-                  {isStateInvalid ? (
+                  {isStateBlurredInvalid ? (
                     <Text style={styles.inputErrorText}>State must contain letters only (min 2 chars).</Text>
                   ) : touchedStep1 && (!stateName.trim() || stateName.trim().length < 2) ? (
                     <Text style={styles.inputErrorText}>State is mandatory *.</Text>
@@ -1951,28 +2009,38 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <View style={{ display: regStep === 2 ? 'flex' : 'none', width: '100%' }}>
                 {/* Owner Name */}
                 <Text style={[styles.inputLabel, { marginTop: 8 }]}>Owner Name *</Text>
-                <View style={[styles.inputWrapper, (touchedStep2 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim()))) ? styles.inputWrapperError : isVendorInvalid ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, activeInputName === 'owner_name' && styles.inputWrapperActive, (touchedStep2 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim()))) ? styles.inputWrapperError : isVendorBlurredInvalid ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={styles.input}
                     placeholder="Enter owner name"
                     placeholderTextColor="#78716C"
                     value={vendorName}
                     onChangeText={(text) => setVendorName(text.replace(/[^a-zA-Z\s]/g, ''))}
-                    onFocus={handleInputFocus}
+                    onFocus={(e) => handleInputFocus('owner_name', e)}
+                    onBlur={() => {
+                      setActiveInputName(null);
+                      markFieldBlurred('owner_name');
+                    }}
+                    selectionColor="#541D26"
                     returnKeyType="next"
                     onSubmitEditing={() => regPhoneRef.current?.focus()}
                   />
                 </View>
                 {touchedStep2 && (!vendorName.trim() || vendorName.trim().length < 2 || !/^[a-zA-Z\s]+$/.test(vendorName.trim())) ? (
                   <Text style={styles.inputErrorText}>Owner Name is mandatory * (alphabets only, at least 2 characters).</Text>
-                ) : isVendorInvalid ? (
-                  <Text style={styles.inputErrorText}>Owner name must contain only alphabets</Text>
+                ) : isVendorBlurredInvalid ? (
+                  <Text style={styles.inputErrorText}>Owner name must contain only alphabets (at least 2 characters)</Text>
                 ) : null}
 
                 {/* Mobile Number */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
                   <Text style={styles.inputLabel}>Mobile Number *</Text>
-                  {isMobileVerified ? (
+                  {isCheckingPhone ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <ActivityIndicator size="small" color="#541D26" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 11, color: '#78716C', fontWeight: '500' }}>Checking...</Text>
+                    </View>
+                  ) : isMobileVerified ? (
                     <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#D1FAE5', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }}>
                       <Check size={12} color="#16A34A" style={{ marginRight: 4 }} />
                       <Text style={{ fontSize: 11, fontWeight: '700', color: '#16A34A' }}>Verified</Text>
@@ -1987,7 +2055,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     ) : null
                   )}
                 </View>
-                <View style={[styles.inputWrapper, (isPhoneInvalid || (touchedStep2 && (!phone.trim() || !isMobileVerified))) ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, activeInputName === 'phone' && styles.inputWrapperActive, (phoneAlreadyRegisteredError || isPhoneBlurredInvalid || (touchedStep2 && (!phone.trim() || !isMobileVerified))) ? styles.inputWrapperError : undefined]}>
                   <TouchableOpacity
                     style={styles.countryCodeBadge}
                     onPress={() => {
@@ -2013,27 +2081,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       const digitsOnly = text.replace(/[^0-9]/g, '').slice(0, maxLen);
                       setPhone(digitsOnly);
                       if (isMobileVerified) setIsMobileVerified(false);
-                      if (selectedCountryCode.dialCode === '+91' && digitsOnly.length === 10) {
-                        checkPhoneOnInput(digitsOnly);
-                      } else {
-                        setPhoneAlreadyRegisteredError('');
-                      }
+                      if (phoneAlreadyRegisteredError) setPhoneAlreadyRegisteredError('');
                     }}
                     onBlur={() => {
-                      if (selectedCountryCode.dialCode === '+91' && phone.length === 10) {
+                      setActiveInputName(null);
+                      markFieldBlurred('phone');
+                      if (selectedCountryCode.dialCode === '+91' && phone.length === 10 && /^[6-9]\d{9}$/.test(phone)) {
                         checkPhoneOnInput(phone);
                       }
                     }}
-                    onFocus={handleInputFocus}
+                    onFocus={(e) => handleInputFocus('phone', e)}
+                    selectionColor="#541D26"
                     returnKeyType="next"
                     onSubmitEditing={() => regEmailRef.current?.focus()}
                   />
                 </View>
                 {phoneAlreadyRegisteredError ? (
                   <View style={{ marginTop: 4, paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={[styles.inputErrorText, { color: '#DC2626', fontWeight: '700', flex: 1 }]}>
-                      {phoneAlreadyRegisteredError}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                      <AlertTriangle color="#DC2626" size={14} style={{ marginRight: 6 }} />
+                      <Text style={[styles.inputErrorText, { color: '#DC2626', fontWeight: '700', flex: 1, marginTop: 0 }]}>
+                        {phoneAlreadyRegisteredError}
+                      </Text>
+                    </View>
                     <TouchableOpacity
                       onPress={() => {
                         setMode('login');
@@ -2044,12 +2114,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       <Text style={{ color: '#541D26', fontWeight: '800', fontSize: 12, textDecorationLine: 'underline' }}>Sign In</Text>
                     </TouchableOpacity>
                   </View>
-                ) : selectedCountryCode.dialCode === '+91' && phone.length > 0 && !/^[6-9]/.test(phone) ? (
-                  <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
-                ) : selectedCountryCode.dialCode === '+91' && phone.length > 0 && phone.length < 10 ? (
-                  <Text style={styles.inputErrorText}>Mobile number must be 10 digits (currently {phone.length}/10).</Text>
-                ) : selectedCountryCode.dialCode !== '+91' && phone.length > 0 && phone.length < 7 ? (
-                  <Text style={styles.inputErrorText}>Phone number must be at least 7 digits (currently {phone.length}).</Text>
+                ) : isPhoneBlurredInvalid ? (
+                  <Text style={styles.inputErrorText}>
+                    {selectedCountryCode.dialCode === '+91'
+                      ? 'Mobile number must be a valid 10-digit number starting with 6, 7, 8, or 9.'
+                      : 'Phone number must be between 7 and 15 digits.'}
+                  </Text>
                 ) : touchedStep2 && (!phone.trim() || (selectedCountryCode.dialCode === '+91' ? !/^[6-9]\d{9}$/.test(phone.trim()) : phone.trim().length < 7)) ? (
                   <Text style={styles.inputErrorText}>
                     {selectedCountryCode.dialCode === '+91'
@@ -2061,8 +2131,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 ) : null}
 
                 {/* Email Address */}
-                <Text style={[styles.inputLabel, { marginTop: 16 }]}>Email Address *</Text>
-                <View style={[styles.inputWrapper, emailAlreadyRegisteredError ? styles.inputWrapperError : (touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim()))) ? styles.inputWrapperError : isEmailInvalid ? styles.inputWrapperError : undefined]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 16 }}>
+                  <Text style={styles.inputLabel}>Email Address *</Text>
+                  {isCheckingEmail ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <ActivityIndicator size="small" color="#541D26" style={{ marginRight: 4 }} />
+                      <Text style={{ fontSize: 11, color: '#78716C', fontWeight: '500' }}>Checking...</Text>
+                    </View>
+                  ) : null}
+                </View>
+                <View style={[styles.inputWrapper, activeInputName === 'email' && styles.inputWrapperActive, emailAlreadyRegisteredError ? styles.inputWrapperError : (touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim()))) ? styles.inputWrapperError : isEmailBlurredInvalid ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     ref={regEmailRef}
                     style={styles.input}
@@ -2073,11 +2151,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     value={email}
                     onChangeText={handleRegEmailChange}
                     onBlur={() => {
-                      if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) {
-                        checkEmailOnInput(email.trim());
+                      setActiveInputName(null);
+                      markFieldBlurred('email');
+                      const clean = email.trim();
+                      if (/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean)) {
+                        checkEmailOnInput(clean);
                       }
                     }}
-                    onFocus={handleInputFocus}
+                    onFocus={(e) => handleInputFocus('email', e)}
+                    selectionColor="#541D26"
                     returnKeyType="next"
                     onSubmitEditing={() => regStoreNameRef.current?.focus()}
                   />
@@ -2100,7 +2182,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                       <Text style={{ color: '#541D26', fontWeight: '800', fontSize: 12, textDecorationLine: 'underline' }}>Sign In</Text>
                     </TouchableOpacity>
                   </View>
-                ) : isEmailInvalid ? (
+                ) : isEmailBlurredInvalid ? (
                   <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
                 ) : touchedStep2 && (!email.trim() || !/^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(email.trim())) ? (
                   <Text style={styles.inputErrorText}>Email Address is mandatory * (e.g. vendor@domain.com).</Text>
@@ -2108,7 +2190,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
                 {/* Shop / Business Name */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop / Business Name *</Text>
-                <View style={[styles.inputWrapper, (touchedStep2 && (!storeName.trim() || storeName.trim().length < 2)) ? styles.inputWrapperError : isStoreInvalid ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, activeInputName === 'store_name' && styles.inputWrapperActive, (touchedStep2 && (!storeName.trim() || storeName.trim().length < 2)) ? styles.inputWrapperError : isStoreBlurredInvalid ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     ref={regStoreNameRef}
                     style={styles.input}
@@ -2116,20 +2198,25 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     placeholderTextColor="#78716C"
                     value={storeName}
                     onChangeText={(text) => setStoreName(text.replace(/[^a-zA-Z\s]/g, ''))}
-                    onFocus={handleInputFocus}
+                    onFocus={(e) => handleInputFocus('store_name', e)}
+                    onBlur={() => {
+                      setActiveInputName(null);
+                      markFieldBlurred('store_name');
+                    }}
+                    selectionColor="#541D26"
                     returnKeyType="next"
                     onSubmitEditing={() => regShopNumberRef.current?.focus()}
                   />
                 </View>
                 {touchedStep2 && (!storeName.trim() || storeName.trim().length < 2) ? (
                   <Text style={styles.inputErrorText}>Shop / Business Name is mandatory * (at least 2 characters).</Text>
-                ) : isStoreInvalid ? (
+                ) : isStoreBlurredInvalid ? (
                   <Text style={styles.inputErrorText}>Business name must be at least 2 characters</Text>
                 ) : null}
 
                 {/* Shop Number */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Shop Number *</Text>
-                <View style={[styles.inputWrapper, (touchedStep2 && (!shopNumber.trim() || shopNumber.trim().length < 1)) ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, activeInputName === 'shop_number' && styles.inputWrapperActive, (touchedStep2 && (!shopNumber.trim() || shopNumber.trim().length < 1)) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     ref={regShopNumberRef}
                     style={styles.input}
@@ -2137,7 +2224,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     placeholderTextColor="#78716C"
                     value={shopNumber}
                     onChangeText={setShopNumber}
-                    onFocus={handleInputFocus}
+                    onFocus={(e) => handleInputFocus('shop_number', e)}
+                    onBlur={() => {
+                      setActiveInputName(null);
+                      markFieldBlurred('shop_number');
+                    }}
+                    selectionColor="#541D26"
                     returnKeyType="next"
                     onSubmitEditing={() => regTaxIdRef.current?.focus()}
                   />
@@ -2210,11 +2302,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   {/* Input Wrapper */}
                   <View style={[
                     styles.inputWrapper,
+                    activeInputName === 'tax_id' && styles.inputWrapperActive,
                     (touchedStep2 && (
                       taxIdentifierType === 'GSTIN'
                         ? (!gstinNumber.trim() || gstinNumber.trim().length !== 15 || !gstCheckRegex.test(gstinNumber.toUpperCase().trim()))
                         : (!panNumber.trim() || panNumber.trim().length !== 10 || !panCheckRegex.test(panNumber.toUpperCase().trim()))
-                    )) ? styles.inputWrapperError : isGstInvalid ? styles.inputWrapperError : undefined
+                    )) ? styles.inputWrapperError : isGstBlurredInvalid ? styles.inputWrapperError : undefined
                   ]}>
                     {taxIdentifierType === 'GSTIN' ? (
                       <TextInput
@@ -2229,7 +2322,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         onChangeText={(text) => {
                           setGstinNumber(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15));
                         }}
-                        onFocus={handleInputFocus}
+                        onFocus={(e) => handleInputFocus('tax_id', e)}
+                        onBlur={() => {
+                          setActiveInputName(null);
+                          markFieldBlurred('tax_id');
+                        }}
+                        selectionColor="#541D26"
                         returnKeyType="done"
                         onSubmitEditing={handleNextStep2}
                       />
@@ -2246,7 +2344,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         onChangeText={(text) => {
                           setPanNumber(text.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10));
                         }}
-                        onFocus={handleInputFocus}
+                        onFocus={(e) => handleInputFocus('tax_id', e)}
+                        onBlur={() => {
+                          setActiveInputName(null);
+                          markFieldBlurred('tax_id');
+                        }}
+                        selectionColor="#541D26"
                         returnKeyType="done"
                         onSubmitEditing={handleNextStep2}
                       />
@@ -2263,7 +2366,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         ? 'GSTIN Number is mandatory * (15-digit valid GSTIN e.g. 08ABCDE1234F1Z5).'
                         : 'PAN Number is mandatory * (10-digit valid PAN e.g. ABCDE1234F).'}
                     </Text>
-                  ) : isGstInvalid ? (
+                  ) : isGstBlurredInvalid ? (
                     <Text style={styles.inputErrorText}>
                       {taxIdentifierType === 'GSTIN'
                         ? 'Invalid GSTIN format. Must be 15 alphanumeric characters (e.g. 08ABCDE1234F1Z5)'
@@ -2334,7 +2437,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               <View style={{ display: regStep === 3 ? 'flex' : 'none', width: '100%' }}>
                 {/* Create Password */}
                 <Text style={styles.inputLabel}>Create Password *</Text>
-                <View style={[styles.inputWrapper, (isPasswordInvalid || (touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim())))) ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, activeInputName === 'reg_password' && styles.inputWrapperActive, (isPasswordBlurredInvalid || (touchedStep3 && (!password.trim() || password.trim().length < 8 || !/[A-Z]/.test(password.trim()) || !/[0-9]/.test(password.trim()) || !/[^a-zA-Z0-9]/.test(password.trim())))) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     style={[styles.input, { paddingVertical: 0 }]}
                     placeholder="Min. 8 chars, 1 uppercase, 1 num, 1 sym"
@@ -2342,7 +2445,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     secureTextEntry={!showPassword}
                     value={password}
                     onChangeText={setPassword}
-                    onFocus={handleInputFocus}
+                    onFocus={(e) => handleInputFocus('reg_password', e)}
+                    onBlur={() => {
+                      setActiveInputName(null);
+                      markFieldBlurred('reg_password');
+                    }}
+                    selectionColor="#541D26"
                     returnKeyType="next"
                     onSubmitEditing={() => regConfirmPasswordRef.current?.focus()}
                   />
@@ -2358,17 +2466,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     )}
                   </TouchableOpacity>
                 </View>
-                {password.length > 0 && password.length < 8 ? (
-                  <Text style={styles.inputErrorText}>Password must be at least 8 characters (currently {password.length}/8).</Text>
-                ) : password.length >= 8 && (!/[A-Z]/.test(password) || !/[0-9]/.test(password) || !/[^a-zA-Z0-9]/.test(password)) ? (
-                  <Text style={styles.inputErrorText}>Password must contain at least 1 uppercase letter, 1 number, and 1 special symbol.</Text>
+                {isPasswordBlurredInvalid ? (
+                  <Text style={styles.inputErrorText}>Password must be at least 8 characters, include 1 uppercase, 1 number, and 1 special character.</Text>
                 ) : touchedStep3 && (!password.trim() || password.trim().length < 8) ? (
                   <Text style={styles.inputErrorText}>Password must be at least 8 characters, include 1 uppercase, 1 number, and 1 special character.</Text>
                 ) : null}
 
                 {/* Confirm Password */}
                 <Text style={[styles.inputLabel, { marginTop: 16 }]}>Confirm Password *</Text>
-                <View style={[styles.inputWrapper, ((confirmPassword.length > 0 && confirmPassword !== password) || (touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim()))) ? styles.inputWrapperError : undefined]}>
+                <View style={[styles.inputWrapper, activeInputName === 'reg_confirm_password' && styles.inputWrapperActive, (isConfirmPasswordBlurredInvalid || (touchedStep3 && (!confirmPassword.trim() || confirmPassword.trim() !== password.trim()))) ? styles.inputWrapperError : undefined]}>
                   <TextInput
                     ref={regConfirmPasswordRef}
                     style={[styles.input, { paddingVertical: 0 }]}
@@ -2377,7 +2483,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     secureTextEntry={!showConfirmPassword}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
-                    onFocus={handleInputFocus}
+                    onFocus={(e) => handleInputFocus('reg_confirm_password', e)}
+                    onBlur={() => {
+                      setActiveInputName(null);
+                      markFieldBlurred('reg_confirm_password');
+                    }}
+                    selectionColor="#541D26"
                     returnKeyType="done"
                     onSubmitEditing={handleRegister}
                   />
@@ -2393,7 +2504,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                     )}
                   </TouchableOpacity>
                 </View>
-                {confirmPassword.length > 0 && confirmPassword !== password ? (
+                {isConfirmPasswordBlurredInvalid ? (
                   <Text style={styles.inputErrorText}>Passwords do not match.</Text>
                 ) : touchedStep3 && !confirmPassword.trim() ? (
                   <Text style={styles.inputErrorText}>Please confirm your password.</Text>
@@ -3115,7 +3226,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                 ) : null}
 
                 <Text style={styles.forgotDesc}>
-                  Please enter the 6-digit OTP code sent to your registered email or mobile to verify your identity. (Use Dummy OTP: 123456)
+                  Please enter the 6-digit OTP code sent to your registered email or mobile to verify your identity. (Use Dummy OTP: 999999)
                 </Text>
 
                 <Text style={styles.inputLabel}>Enter OTP *</Text>
@@ -3358,15 +3469,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                         }}
                       />
                     </View>
-                    {/^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && !/^[6-9]/.test(forgotEmail) ? (
-                      <Text style={styles.inputErrorText}>Mobile number must start with 6, 7, 8, or 9.</Text>
-                    ) : /^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && forgotEmail.length < 10 ? (
-                      <Text style={[styles.inputErrorText, { color: '#78716C' }]}>
-                        Mobile number ({forgotEmail.length}/10 digits)
-                      </Text>
-                    ) : (!/^\d+$/.test(forgotEmail) && forgotEmail.length > 0 && (!forgotEmail.includes('@') || !forgotEmail.includes('.'))) ? (
-                      <Text style={styles.inputErrorText}>Please enter a valid email address (e.g. vendor@domain.com)</Text>
-                    ) : null}
 
                     <TouchableOpacity
                       style={[styles.modalDoneBtn, forgotLoading && { opacity: 0.7 }]}
@@ -3975,10 +4077,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: '#E7DFD5',
-    borderRadius: 14,
-    paddingHorizontal: 16,
+    borderRadius: 25,
+    paddingHorizontal: 18,
     height: 50,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#FAF8F5',
     marginBottom: 2,
   },
   inputWrapperError: {
@@ -3995,7 +4097,8 @@ const styles = StyleSheet.create({
   },
   inputWrapperActive: {
     borderColor: '#541D26',
-    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    backgroundColor: '#FAF8F5',
   },
   inputIcon: {
     marginRight: 10,
@@ -4026,6 +4129,8 @@ const styles = StyleSheet.create({
     fontFamily: Platform.OS === 'ios' ? 'Poppins' : 'Poppins_400Regular',
     textAlign: 'left',
     textAlignVertical: 'center',
+    borderWidth: 0,
+    backgroundColor: 'transparent',
   },
   categoryText: {
     flex: 1,

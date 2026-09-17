@@ -194,7 +194,7 @@ async function fallbackExpoPicker(options?: {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: options?.allowsEditing ?? false,
       aspect: options?.aspect ?? [4, 3],
       quality: 0.5,
@@ -229,7 +229,7 @@ async function fallbackExpoCamera(options?: {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: options?.allowsEditing ?? false,
       aspect: options?.aspect ?? [4, 3],
       quality: 0.5,

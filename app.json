@@ -6,15 +6,9 @@
     "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "splash": {
-      "image": "./assets/images/splash-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#F8F6F0"
-    },
     "android": {
       "package": "com.digilocal.vendor",
       "versionCode": 3,
-      "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "backgroundColor": "#F8F6F0",
@@ -27,10 +21,7 @@
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.VIBRATE",
         "android.permission.WAKE_LOCK",
-        "android.permission.USE_FULL_SCREEN_INTENT",
         "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.SCHEDULE_EXACT_ALARM",
-        "android.permission.RECORD_AUDIO",
         "android.permission.CAMERA",
         "android.permission.READ_MEDIA_IMAGES"
       ]
@@ -39,11 +30,8 @@
       "output": "single"
     },
     "plugins": [
-      "@react-native-firebase/app",
       "expo-router",
       "expo-font",
-      "expo-web-browser",
-      "expo-av",
       "expo-secure-store",
       [
         "expo-notifications",
@@ -74,15 +62,13 @@
         }
       ],
       [
-        "expo-speech-recognition",
+        "expo-splash-screen",
         {
-          "microphonePermission": "Allow DigiLocal Vendor to access your microphone to record speech.",
-          "speechRecognitionPermission": "Allow DigiLocal Vendor to use speech recognition."
+          "image": "./assets/images/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F8F6F0"
         }
-      ],
-      "expo-image",
-      "expo-splash-screen",
-      "expo-status-bar"
+      ]
     ],
     "experiments": {
       "typedRoutes": true
@@ -97,8 +83,6 @@
     "ios": {
       "bundleIdentifier": "com.digilocal.vendor",
       "infoPlist": {
-        "NSSpeechRecognitionUsageDescription": "This app uses speech recognition to convert your voice to text.",
-        "NSMicrophoneUsageDescription": "This app needs access to the microphone to capture your speech.",
         "NSCameraUsageDescription": "This app needs access to your camera to take photos of your store and products.",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select and upload store logo and product images."
       }

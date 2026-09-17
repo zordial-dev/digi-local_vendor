@@ -57,7 +57,10 @@ import {
   Smartphone,
   Key,
   ChevronRight,
-  User
+  User,
+  Star,
+  Award,
+  MessageSquare,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromDevice, captureImageFromDevice, PickedImageResult } from '../utils/imagePickerHelper';
@@ -72,12 +75,15 @@ import {
   getApiBaseUrl,
   uploadMediaApi,
   updateVendorProfileApi,
-  uploadVendorLogoApi
+  uploadVendorLogoApi,
+  formatMediaUrl,
 } from '../services/apiService';
 import { playAlarmSound } from '../services/notificationService';
+import { saveVendorUser } from '../services/authStorage';
 import { CustomAlertModal, CustomAlertState, AlertType } from './CustomAlertModal';
 import { StoreDigitalCardModal } from './StoreDigitalCardModal';
 import { SupportTicketsModal } from './SupportTicketsModal';
+import { ReviewsModal } from './ReviewsModal';
 
 interface SettingsScreenProps {
   vendor: VendorUser;
@@ -242,7 +248,7 @@ DigiLocal Vendor is a merchant platform that enables local shops and suppliers o
 
 1. INFORMATION WE COLLECT
 1.1 Vendor Personal Information: Full name, mobile number, email address, account credentials, OTP authentication information, profile information, and account verification records.
-1.2 Business Information: Store name, shop address, business category, society name, society ID, store logo, product catalogue, product images, and operating information.
+1.2 Business Information: Store name, shop address, business category, society name, society ID, shop image, product catalogue, product images, and operating information.
 1.3 Government and Tax Information: GSTIN, PAN, and tax compliance information where applicable.
 1.4 Banking and Payout Information: Account holder name, bank account number, IFSC code, UPI ID, payout records, and transaction references (used solely for processing T+1 vendor disbursements).
 
@@ -255,7 +261,7 @@ Customer data is strictly for order fulfilment. Vendors must NOT copy, permanent
 • Notifications: New order alerts, order updates, payment notifications.
 • Alarms / Background Alerts: High-priority audio chimes & full-screen alerts for incoming orders.
 • Microphone: Voice-based search and speech-to-text processing (not stored permanently).
-• Camera & Photos: Uploading store logos, product pictures, and banners.
+• Camera & Photos: Uploading shop images, product pictures, and banners.
 • Technical: IP address, device ID, app version, FCM push tokens, and network diagnostic logs.
 
 4. HOW WE USE INFORMATION
@@ -719,7 +725,7 @@ const HelpModal: React.FC<{ visible: boolean; onClose: () => void; onOpenTickets
           />
           <FAQItem
             question="2. Store & Profile"
-            answer="• Updating store information & description&#10;• Changing store category or society details&#10;• Uploading or changing your store logo&#10;• Updating business or GST information"
+            answer="• Updating store information & description&#10;• Changing store category or society details&#10;• Uploading or changing your shop image&#10;• Updating business or GST information"
           />
           <FAQItem
             question="3. Products & Catalogue"
@@ -937,6 +943,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   const [showPassword, setShowPassword] = useState(false);
   const [showAccountSecurityModal, setShowAccountSecurityModal] = useState(false);
   const [showLogoPickerModal, setShowLogoPickerModal] = useState(false);
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
 
   const showAlert = (title: string, message: string, type: AlertType = 'info', onConfirm?: () => void, onCancel?: () => void, confirmText?: string, cancelText?: string, showCancel?: boolean) => {
     setAlertState({ visible: true, title, message, type, onConfirm, onCancel, confirmText, cancelText, showCancel });
@@ -1120,23 +1127,35 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
   const processAndUploadLogo = async (picked: PickedImageResult) => {
     if (!picked.uri) return;
     try {
-      showAlert('Uploading Logo', 'Uploading and saving your store logo...', 'info');
-      const fileName = picked.fileName || `store_logo_${Date.now()}.jpg`;
+      showAlert('Uploading Image', 'Uploading and saving your shop image...', 'info');
+      const fileName = picked.fileName || `shop_image_${Date.now()}.jpg`;
       const mimeType = picked.mimeType || 'image/jpeg';
+      const base64DataUri = picked.base64 ? `data:${mimeType};base64,${picked.base64}` : '';
 
       const uploadResult = await uploadVendorLogoApi(
         vendor.vendor_id,
-        picked.base64 ? `data:${mimeType};base64,${picked.base64}` : picked.uri,
+        picked.uri,
         fileName,
-        mimeType
+        mimeType,
+        picked.base64
       );
 
-      if (uploadResult.logo_url) {
+      const newLogo = uploadResult.logo_url || base64DataUri || picked.uri;
+      if (newLogo) {
+        const updatedVendor: VendorUser = {
+          ...vendor,
+          logo_url: newLogo,
+          logo: newLogo,
+          store_logo: newLogo,
+          shop_image: newLogo,
+          image_url: newLogo,
+        };
+        await saveVendorUser(updatedVendor);
         await onRefresh();
-        showAlert('Logo Updated', 'Your custom store logo has been updated successfully!', 'success');
+        showAlert('Shop Image Updated', 'Your shop image has been updated successfully!', 'success');
       }
     } catch (err: any) {
-      showAlert('Upload Failed', err.message || 'Failed to upload store logo', 'error');
+      showAlert('Upload Failed', err.message || 'Failed to upload shop image', 'error');
     }
   };
 
@@ -1224,12 +1243,18 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       <View style={styles.card}>
         <View style={styles.storeHeader}>
           {(() => {
-            const storeLogoUri = (
-              vendor.logo_url && vendor.logo_url !== vendor.shop_image && vendor.logo_url !== vendor.image_url ? vendor.logo_url :
-              vendor.logo && vendor.logo !== vendor.shop_image && vendor.logo !== vendor.image_url ? vendor.logo :
-              vendor.store_logo && vendor.store_logo !== vendor.shop_image && vendor.store_logo !== vendor.image_url ? vendor.store_logo :
-              ''
+            const isPlaceholder = (u?: string) => {
+              if (!u) return true;
+              return u.includes('unsplash.com') || u.includes('placeholder') || u.includes('default');
+            };
+            const rawLogoUri = (
+              (vendor.logo_url && !isPlaceholder(vendor.logo_url) ? vendor.logo_url : '') ||
+              (vendor.store_logo && !isPlaceholder(vendor.store_logo) ? vendor.store_logo : '') ||
+              (vendor.logo && !isPlaceholder(vendor.logo) ? vendor.logo : '') ||
+              (vendor.shop_image && !isPlaceholder(vendor.shop_image) ? vendor.shop_image : '') ||
+              (vendor.image_url && !isPlaceholder(vendor.image_url) ? vendor.image_url : '')
             );
+            const storeLogoUri = rawLogoUri ? formatMediaUrl(rawLogoUri) : '';
             return (
               <>
                 <TouchableOpacity
@@ -1254,7 +1279,7 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
                   <Text style={styles.vendorName}>Owner: {vendor.vendor_name}</Text>
                   <TouchableOpacity onPress={handleUploadStoreLogo} style={{ marginTop: 3 }}>
                     <Text style={{ fontSize: 11.5, color: '#541D26', fontWeight: '700' }}>
-                      {storeLogoUri ? 'Change Store Logo' : '+ Add Store Logo'}
+                      {storeLogoUri ? 'Change Shop Image' : '+ Add Shop Image'}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -1774,6 +1799,32 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
         </TouchableOpacity>
       </View>
 
+      {/* Customer Feedback & Ratings Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Star size={17} color="#F59E0B" fill="#F59E0B" style={{ marginRight: 8 }} />
+          <Text style={styles.cardTitle}>Customer Feedback & Ratings</Text>
+          <View style={{ marginLeft: 'auto', backgroundColor: '#FEF3C7', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: '#FDE68A' }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: '#B45309', letterSpacing: 0.3 }}>LIVE FEEDBACK</Text>
+          </View>
+        </View>
+
+        <TouchableOpacity 
+          style={styles.settingsRowItem} 
+          onPress={() => setShowReviewsModal(true)} 
+          activeOpacity={0.85}
+        >
+          <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: '#FEF3C7', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+            <Star size={18} color="#D97706" fill="#D97706" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.settingsRowLabel}>Customer Reviews & Ratings</Text>
+            <Text style={styles.settingsRowSub}>View star ratings, rating metrics breakdown & reply to reviews</Text>
+          </View>
+          <ChevronDown size={15} color="#9CA3AF" style={{ transform: [{ rotate: '-90deg' }] }} />
+        </TouchableOpacity>
+      </View>
+
       {/* Support & Legal — 2x2 Grid */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -1825,6 +1876,11 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
       </View>
 
       {/* ── Modals ── */}
+      <ReviewsModal
+        visible={showReviewsModal}
+        onClose={() => setShowReviewsModal(false)}
+        vendor={vendor}
+      />
       <StoreDigitalCardModal
         visible={showQR}
         vendor={vendor}
@@ -1888,8 +1944,8 @@ export const SettingsScreenComponent: React.FC<SettingsScreenProps> = React.memo
           onPress={() => setShowLogoPickerModal(false)}
         >
           <View style={styles.logoModalCard}>
-            <Text style={styles.logoModalTitle}>Select Store Logo</Text>
-            <Text style={styles.logoModalSubtitle}>Choose how you want to add or update your shop logo</Text>
+            <Text style={styles.logoModalTitle}>Select Shop Image</Text>
+            <Text style={styles.logoModalSubtitle}>Choose how you want to add or update your shop image</Text>
 
             <TouchableOpacity
               style={styles.logoModalOptionBtn}

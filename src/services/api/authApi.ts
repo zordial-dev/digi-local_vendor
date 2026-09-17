@@ -1,6 +1,6 @@
 import { getApiBaseUrl, safeFetch } from './config';
 import { VendorUser, RegisterVendorPayload } from './types';
-import { saveTokens } from '../authStorage';
+import { saveTokens, getSavedVendorUser } from '../authStorage';
 
 // ── Vendor Authentication APIs ────────────────────────────────
 
@@ -98,19 +98,39 @@ export async function checkVendorEmailApi(email: string): Promise<{ exists: bool
     });
 
     if (res.status === 409) {
-      return { exists: true, email: clean, message: 'Vendor account found with this email' };
+      return { exists: true, email: clean, message: 'This email is already registered. Please use a different email address.' };
     }
 
-    if (res.ok && data) {
+    if (res.ok && data && typeof data === 'object') {
+      const msg = String(data.message || data.error || '').toLowerCase();
       const existsVal =
         data.exists === true ||
         data.is_registered === true ||
         data.registered === true ||
-        data.data?.exists === true;
+        data.available === false ||
+        data.isAvailable === false ||
+        data.data?.exists === true ||
+        data.data?.is_registered === true ||
+        data.data?.registered === true ||
+        data.data?.available === false ||
+        msg.includes('already registered') ||
+        msg.includes('already exists') ||
+        msg.includes('already in use') ||
+        msg.includes('already taken') ||
+        msg.includes('account found');
+
+      if (existsVal) {
+        return {
+          exists: true,
+          email: clean,
+          message: data.message || 'This email is already registered. Please use a different email address.'
+        };
+      }
+
       return {
-        exists: Boolean(existsVal),
+        exists: false,
         email: clean,
-        message: data.message || (existsVal ? 'Vendor account found with this email' : 'Email available')
+        message: data.message || 'Email is available'
       };
     }
   } catch (err: any) {
@@ -133,13 +153,16 @@ export async function loginVendorApi(emailOrMobile: string, pass: string): Promi
     
     // v2.5.0 schema: accepts email, phone, mobile, identifier, and password
     const body: Record<string, any> = {
-      email: isEmail ? clean.toLowerCase() : clean,
-      phone: clean,
-      mobile: clean,
-      phone_number: clean,
       identifier: isEmail ? clean.toLowerCase() : clean,
       password: pass.trim()
     };
+    if (isEmail) {
+      body.email = clean.toLowerCase();
+    } else {
+      body.phone = clean;
+      body.mobile = clean;
+      body.phone_number = clean;
+    }
 
     const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/login`, {
       method: 'POST',
@@ -147,7 +170,7 @@ export async function loginVendorApi(emailOrMobile: string, pass: string): Promi
     });
 
     if (!res.ok) {
-      const errMsg = (data?.error || data?.message || '').toLowerCase();
+      const errMsg = (typeof data?.error === 'string' ? data.error : typeof data?.message === 'string' ? data.message : '').toLowerCase();
 
       // 🔴 HTTP 403 Forbidden — Blocked Vendor Account Handling (code: VENDOR_BLOCKED)
       if (
@@ -175,29 +198,28 @@ export async function loginVendorApi(emailOrMobile: string, pass: string): Promi
         errMsg.includes('incorrect') ||
         errMsg.includes('wrong')
       ) {
-        throw new Error(data?.error || 'Incorrect password. Please check your password and try again.');
+        throw new Error(data?.error || data?.message || 'Incorrect password. Please check your password and try again.');
       }
 
       // 🔵 HTTP 404 Not Found — Account Not Found
-      if (res.status === 404 || errMsg.includes('not found') || errMsg.includes('no vendor') || errMsg.includes('no account') || errMsg.includes('does not exist')) {
-        // Double check if account actually exists via check-email or check-phone
-        try {
-          const check = isEmail
-            ? await checkVendorEmailApi(clean)
-            : await checkVendorPhoneApi(clean);
-          if (check.exists) {
-            throw new Error('Incorrect password. Please check your password and try again.');
-          }
-        } catch (_) {}
-        throw new Error(data?.error || 'No account found with this credential.');
+      if (
+        res.status === 404 ||
+        errMsg.includes('not found') ||
+        errMsg.includes('no vendor') ||
+        errMsg.includes('no account') ||
+        errMsg.includes('does not exist') ||
+        errMsg.includes('cannot post') ||
+        errMsg.includes('cannot get')
+      ) {
+        throw new Error('Wrong email ID or mobile number. Please enter correct details.');
       }
 
       // 🟠 HTTP 400 Bad Request — Missing Credentials
       if (res.status === 400) {
-        throw new Error(data?.error || 'Identifier and password are required.');
+        throw new Error(data?.error || data?.message || 'Please enter both your Mobile / Email ID and password.');
       }
       
-      let rawError = data?.error || data?.message || 'Login failed. Please check your credentials.';
+      let rawError = data?.error || data?.message || 'Wrong email ID or mobile number. Please enter correct details.';
       if (isEmail && typeof rawError === 'string') {
         rawError = rawError.replace(/mobile(\s+number)?/gi, 'email address').replace(/phone(\s+number)?/gi, 'email address');
       }
@@ -208,6 +230,19 @@ export async function loginVendorApi(emailOrMobile: string, pass: string): Promi
     if (tokenToSave) {
       await saveTokens(tokenToSave, data.refreshToken);
     }
+
+    let savedLogo = '';
+    try {
+      const savedUser = await getSavedVendorUser();
+      const targetId = data.vendor?.vendor_id || data.vendor?.id || data.vendor_id;
+      if (savedUser && (savedUser.vendor_id === targetId || !savedUser.vendor_id)) {
+        savedLogo = savedUser.logo_url || savedUser.store_logo || savedUser.logo || savedUser.shop_image || savedUser.image_url || '';
+      }
+    } catch (_) {}
+
+    const resolvedRawLogo = data.vendor
+      ? (data.vendor.logo_url || data.vendor.store_logo || data.vendor.logo || data.vendor.image_url || data.vendor.shop_image || savedLogo)
+      : (data.logo_url || data.store_logo || data.logo || data.image_url || data.shop_image || savedLogo);
 
     return {
       ...data,
@@ -221,6 +256,11 @@ export async function loginVendorApi(emailOrMobile: string, pass: string): Promi
         address: data.vendor.address || data.address || (data.vendor.shop_number ? `${data.vendor.shop_number}, ${data.vendor.area || ''}` : ''),
         public_id: data.vendor.public_id || data.public_id,
         has_resubmitted: data.vendor.has_resubmitted ?? data.has_resubmitted,
+        logo_url: resolvedRawLogo,
+        logo: resolvedRawLogo,
+        store_logo: resolvedRawLogo,
+        shop_image: resolvedRawLogo,
+        image_url: resolvedRawLogo,
         created_at: data.vendor.created_at || data.created_at,
         created_at_ist: data.vendor.created_at_ist || data.created_at_ist,
         created_at_readable: data.vendor.created_at_readable || data.created_at_readable,
@@ -237,14 +277,25 @@ export async function loginVendorApi(emailOrMobile: string, pass: string): Promi
         public_id: data.public_id,
         has_resubmitted: data.has_resubmitted,
         status: data.status || 'active',
+        logo_url: resolvedRawLogo,
+        logo: resolvedRawLogo,
+        store_logo: resolvedRawLogo,
+        shop_image: resolvedRawLogo,
+        image_url: resolvedRawLogo,
         created_at: data.created_at,
         created_at_ist: data.created_at_ist,
         created_at_readable: data.created_at_readable,
       }
     };
   } catch (err: any) {
-    if (err.name === 'TypeError' || err.message?.includes('fetch')) {
-      throw new Error(`Server connection failed (${getApiBaseUrl()}). Ensure backend server is active.`);
+    if (err.isBlocked) {
+      throw err;
+    }
+    if (err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('timed out') || err.message?.includes('timeout')) {
+      throw new Error('Server took too long to respond. The server may be waking up, please try again.');
+    }
+    if (err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+      throw new Error(`Server connection failed (${getApiBaseUrl()}). Please check your internet connection.`);
     }
     throw err;
   }
@@ -433,20 +484,23 @@ export async function registerVendorApi(payload: RegisterVendorPayload): Promise
       data: data.data || data
     };
   } catch (err: any) {
-    if (err.name === 'TypeError' || err.message?.includes('fetch')) {
-      throw new Error(`Server connection failed (${getApiBaseUrl()}). Ensure backend server is active.`);
+    if (err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('timed out') || err.message?.includes('timeout')) {
+      throw new Error('Server took too long to respond. The server may be waking up, please try again.');
+    }
+    if (err.message?.includes('Network request failed') || err.message?.includes('Failed to fetch') || err.message?.includes('NetworkError')) {
+      throw new Error(`Server connection failed (${getApiBaseUrl()}). Please check your internet connection.`);
     }
     throw err;
   }
 }
 
-export const DUMMY_OTPS = ['123456', '1234', '000000', '0000', '111111', '1111', '999999', '9999', '12345'];
-export const DEFAULT_DUMMY_OTP = '123456';
+export const DUMMY_OTPS = ['999999', '123456', '1234', '000000', '0000', '111111', '1111', '9999', '12345'];
+export const DEFAULT_DUMMY_OTP = '999999';
 
 export function isDummyOtp(otp?: string): boolean {
   if (!otp) return false;
   const clean = otp.trim();
-  return DUMMY_OTPS.includes(clean) || /^\d{4,6}$/.test(clean);
+  return clean === '999999' || DUMMY_OTPS.includes(clean);
 }
 
 export async function loginVendorWithOtpApi(identifier: string, otp?: string): Promise<{
@@ -457,7 +511,7 @@ export async function loginVendorWithOtpApi(identifier: string, otp?: string): P
   message?: string;
 }> {
   const clean = identifier.trim();
-  const cleanOtp = otp?.trim();
+  const cleanOtp = otp?.trim() || DEFAULT_DUMMY_OTP;
   const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean);
   const body = isEmail
     ? { email: clean.toLowerCase(), identifier: clean.toLowerCase(), otp: cleanOtp }
@@ -470,18 +524,18 @@ export async function loginVendorWithOtpApi(identifier: string, otp?: string): P
         otp: cleanOtp
       };
 
-  // 1. Try specialized login-with-otp endpoint
+  // 1. Primary endpoint: POST /vendors/login-with-otp
   try {
     const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/login-with-otp`, {
       method: 'POST',
       body: JSON.stringify(body)
     });
     if (res.ok && data && (data.vendor || data.vendor_id)) {
-      const tokenToSave = data.accessToken || data.token || 'jwt-token-' + Date.now();
+      const tokenToSave = data.accessToken || data.token;
       if (tokenToSave) await saveTokens(tokenToSave, data.refreshToken);
       return {
         ...data,
-        accessToken: tokenToSave,
+        accessToken: tokenToSave || '',
         vendor: data.vendor ? {
           ...data.vendor,
           country_code: data.vendor.country_code || '+91',
@@ -496,20 +550,27 @@ export async function loginVendorWithOtpApi(identifier: string, otp?: string): P
         }
       };
     }
-  } catch (_) {}
+    if (!res.ok && data?.message && !res.status.toString().startsWith('404')) {
+      throw new Error(data.message || data.error || 'Invalid OTP code.');
+    }
+  } catch (err: any) {
+    if (err.message && !err.message.includes('404') && !err.message.includes('not found') && !err.message.includes('cannot post')) {
+      throw err;
+    }
+  }
 
-  // 2. Try fallback endpoint: POST /vendors/otp-login
+  // 2. Fallback endpoint: POST /vendors/otp-login
   try {
     const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/otp-login`, {
       method: 'POST',
       body: JSON.stringify(body)
     });
     if (res.ok && data && (data.vendor || data.vendor_id)) {
-      const tokenToSave = data.accessToken || data.token || 'jwt-token-' + Date.now();
+      const tokenToSave = data.accessToken || data.token;
       if (tokenToSave) await saveTokens(tokenToSave, data.refreshToken);
       return {
         ...data,
-        accessToken: tokenToSave,
+        accessToken: tokenToSave || '',
         vendor: data.vendor ? {
           ...data.vendor,
           country_code: data.vendor.country_code || '+91',
@@ -524,47 +585,44 @@ export async function loginVendorWithOtpApi(identifier: string, otp?: string): P
         }
       };
     }
-  } catch (_) {}
-
-  // 3. Try checking existing vendor via checkVendorPhoneApi or checkVendorEmailApi
-  try {
-    const checkRes: any = isEmail ? await checkVendorEmailApi(clean) : await checkVendorPhoneApi(clean);
-    if (checkRes && checkRes.vendor) {
-      const tokenToSave = 'simulated-jwt-token-' + Date.now();
-      await saveTokens(tokenToSave);
-      return {
-        accessToken: tokenToSave,
-        vendor: {
-          ...checkRes.vendor,
-          country_code: checkRes.vendor.country_code || '+91',
-          phone_number: checkRes.vendor.phone_number || checkRes.vendor.phone || clean,
-        }
-      };
+    if (!res.ok && !res.status.toString().startsWith('404')) {
+      throw new Error(data?.message || data?.error || 'Invalid OTP code.');
     }
-  } catch (_) {}
+  } catch (err: any) {
+    if (err.message && !err.message.includes('404') && !err.message.includes('not found') && !err.message.includes('cannot post')) {
+      throw err;
+    }
+  }
 
-  // 4. Default fallback for testing or dummy OTP mode
-  if (isDummyOtp(cleanOtp) || cleanOtp === '999999' || cleanOtp === '123456' || !cleanOtp) {
-    const mockVendor: VendorUser = {
-      vendor_id: 101,
-      store_name: 'DigiLocal Store',
-      vendor_name: 'Vendor Partner',
-      email: isEmail ? clean : `vendor_${clean}@digilocal.com`,
-      phone_number: clean,
+  // 3. Bypass fallback for dummy OTP 999999
+  if (cleanOtp === '999999' || isDummyOtp(cleanOtp)) {
+    let vendorUser: any = null;
+    try {
+      const savedUser = await getSavedVendorUser();
+      if (savedUser) vendorUser = savedUser;
+    } catch (_) {}
+
+    const dummyVendor: VendorUser = {
+      vendor_id: vendorUser?.vendor_id || 1315,
+      store_name: vendorUser?.store_name || (isEmail ? clean.split('@')[0] : 'Vendor Store'),
+      email: isEmail ? clean.toLowerCase() : (vendorUser?.email || `${clean}@mobile.digilocal.com`),
+      phone_number: isEmail ? (vendorUser?.phone_number || '') : clean,
       country_code: '+91',
-      category: 'Grocery & Essentials',
-      business_type: 'PRODUCT',
       status: 'active',
+      ...(vendorUser || {})
     };
-    const tokenToSave = 'simulated-jwt-token-' + Date.now();
-    await saveTokens(tokenToSave);
+
+    const token = `dummy_token_${Date.now()}`;
+    await saveTokens(token, token);
     return {
-      accessToken: tokenToSave,
-      vendor: mockVendor
+      vendor: dummyVendor,
+      accessToken: token,
+      token,
+      message: 'OTP verified successfully (Simulation mode)'
     };
   }
 
-  throw new Error('Invalid OTP code. Please check your verification code and try again.');
+  throw new Error('Wrong email ID or mobile number, or invalid OTP code. Please enter correct details.');
 }
 
 export async function refreshAccessTokenApi(refreshToken: string): Promise<string | null> {
@@ -650,11 +708,12 @@ export async function sendOtpApi(
 
     const backendMsg = (data?.message || data?.error || '').toLowerCase();
     if (
-      backendMsg.includes('already registered') ||
-      backendMsg.includes('already exists') ||
-      backendMsg.includes('already in use') ||
-      backendMsg.includes('account with this mobile') ||
-      backendMsg.includes('duplicate')
+      purpose === 'register' &&
+      (backendMsg.includes('already registered') ||
+        backendMsg.includes('already exists') ||
+        backendMsg.includes('already in use') ||
+        backendMsg.includes('account with this mobile') ||
+        backendMsg.includes('duplicate'))
     ) {
       throw new Error(data?.message || data?.error || 'This mobile number is already registered.');
     }
@@ -678,7 +737,10 @@ export async function sendOtpApi(
     }
   } catch (err: any) {
     const msg = (err.message || '').toLowerCase();
-    if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('not found') || msg.includes('no vendor')) {
+    if (purpose === 'register' && (msg.includes('already registered') || msg.includes('already exists'))) {
+      throw err;
+    }
+    if (msg.includes('not found') || msg.includes('no vendor')) {
       throw err;
     }
   }
@@ -692,10 +754,11 @@ export async function sendOtpApi(
 
     const backendMsg = (data?.message || data?.error || '').toLowerCase();
     if (
-      backendMsg.includes('already registered') ||
-      backendMsg.includes('already exists') ||
-      backendMsg.includes('already in use') ||
-      backendMsg.includes('account with this mobile')
+      purpose === 'register' &&
+      (backendMsg.includes('already registered') ||
+        backendMsg.includes('already exists') ||
+        backendMsg.includes('already in use') ||
+        backendMsg.includes('account with this mobile'))
     ) {
       throw new Error(data?.message || data?.error || 'This mobile number is already registered.');
     }
@@ -709,7 +772,10 @@ export async function sendOtpApi(
     }
   } catch (err: any) {
     const msg = (err.message || '').toLowerCase();
-    if (msg.includes('already registered') || msg.includes('already exists') || msg.includes('not found') || msg.includes('no vendor')) {
+    if (purpose === 'register' && (msg.includes('already registered') || msg.includes('already exists'))) {
+      throw err;
+    }
+    if (msg.includes('not found') || msg.includes('no vendor')) {
       throw err;
     }
   }
@@ -732,6 +798,12 @@ export async function verifyOtpApi(
 ): Promise<boolean> {
   const clean = identifier.trim();
   const cleanOtp = otp?.trim();
+
+  // Instant bypass for test/dummy OTP 999999
+  if (!cleanOtp || cleanOtp === '999999' || isDummyOtp(cleanOtp)) {
+    return true;
+  }
+
   const isEmail = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(clean);
   const payload = isEmail
     ? { phone: clean, email: clean.toLowerCase(), identifier: clean.toLowerCase(), otp: cleanOtp }
@@ -744,18 +816,7 @@ export async function verifyOtpApi(
         otp: cleanOtp
       };
 
-  // 1. If dummy OTP is provided, accept immediately and fire non-blocking background notification
-  if (isDummyOtp(cleanOtp)) {
-    // Non-blocking fire-and-forget attempt in background (does not delay UI)
-    safeFetch(`${getApiBaseUrl()}/vendors/verify-otp`, {
-      method: 'POST',
-      body: JSON.stringify(payload)
-    }).catch(() => {});
-    console.log('✅ [DUMMY OTP ACCEPTED]: OTP verification accepted instantly with code', cleanOtp);
-    return true;
-  }
-
-  // 2. Try v3.6.0 primary endpoint: POST /api/vendors/verify-otp
+  // 1. Primary endpoint: POST /api/vendors/verify-otp
   try {
     const { res, data } = await safeFetch(`${getApiBaseUrl()}/vendors/verify-otp`, {
       method: 'POST',
@@ -773,16 +834,24 @@ export async function verifyOtpApi(
     }
   }
 
-  // 3. Fallback: POST /api/otp/verify-otp (only if primary returned 404)
-  const { res, data } = await safeFetch(`${getApiBaseUrl()}/otp/verify-otp`, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  });
+  // 2. Fallback: POST /api/otp/verify-otp (only if primary returned 404)
+  try {
+    const { res, data } = await safeFetch(`${getApiBaseUrl()}/otp/verify-otp`, {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    });
 
-  if (!res.ok || data.success === false) {
-    throw new Error(data?.error || data?.message || 'Invalid or expired OTP code');
+    if (res.ok && data.success !== false) {
+      return true;
+    }
+  } catch (_) {}
+
+  // 3. Fallback bypass if test OTP
+  if (cleanOtp === '999999' || isDummyOtp(cleanOtp)) {
+    return true;
   }
-  return true;
+
+  throw new Error('Invalid or expired OTP code. Please enter correct details.');
 }
 
 /**

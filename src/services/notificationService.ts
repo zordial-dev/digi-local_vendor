@@ -3,9 +3,9 @@ import { VendorOrder } from './apiService';
 import Constants from 'expo-constants';
 
 // Safely obtain Audio from expo-av to avoid top-level crashes if ExponentAV native module is missing
-let Audio: typeof import('expo-av').Audio | null = null;
+let Audio: any = null;
 try {
-  Audio = require('expo-av').Audio;
+  Audio = require('expo-av')?.Audio;
 } catch (err) {
   // Graceful fallback if expo-av or ExponentAV is unavailable
 }
@@ -220,7 +220,7 @@ export const stopAlarmSound = stopContinuousOrderRingtone;
 
 // ── PILLAR 3: Push Token Registration for Remote Backend FCM Triggers ──
 
-const HARDCODED_EAS_PROJECT_ID = 'afdb0388-9c9f-4dc1-b3ca-d03a22d3bf9b';
+const HARDCODED_EAS_PROJECT_ID = 'bc89e8e6-ba8a-47fd-ae6a-6576e18da293';
 
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
   if (Platform.OS === 'web' || !Notifications) return null;

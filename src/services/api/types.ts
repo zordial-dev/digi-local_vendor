@@ -417,3 +417,66 @@ export interface SupportTicket {
   reporter_email?: string;
   attachments?: SupportTicketAttachment[];
 }
+
+// ── Customer Reviews & Ratings Types (v2.1.0) ──────────────────
+
+export interface ReviewRatingBreakdown {
+  "1"?: number;
+  "2"?: number;
+  "3"?: number;
+  "4"?: number;
+  "5"?: number;
+  [key: string]: number | undefined;
+}
+
+export interface VendorReviewMetrics {
+  avg_rating: number;
+  rating_count: number;
+  total_reviews: number;
+  breakdown: ReviewRatingBreakdown;
+}
+
+export interface VendorReviewItem {
+  rating_id: number;
+  vendor_id: number;
+  user_id?: string;
+  user_name: string;
+  rating: number;
+  review_text?: string;
+  order_id?: string;
+  status?: string;
+  reply_text?: string | null;
+  replied_at?: string | null;
+  created_at?: string;
+}
+
+export interface VendorReviewsPagination {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface VendorReviewsResponseData {
+  vendor_id?: number;
+  store_name?: string;
+  metrics: VendorReviewMetrics;
+  pagination: VendorReviewsPagination;
+  reviews: VendorReviewItem[];
+  ratings?: VendorReviewItem[];
+}
+
+export interface VendorReviewsFetchParams {
+  vendor_id?: number;
+  page?: number;
+  limit?: number;
+  star?: number;
+}
+
+export interface SubmitReviewReplyResponse {
+  rating_id: number;
+  vendor_id: number;
+  reply_text: string;
+  replied_at: string;
+}
+

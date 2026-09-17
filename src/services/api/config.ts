@@ -15,7 +15,7 @@ const ENV_API_URL = process.env.EXPO_PUBLIC_API_URL
 const formatApiUrl = (url: string): string => {
   let clean = url.trim();
   if (!clean.startsWith('http://') && !clean.startsWith('https://')) {
-    clean = `http://${clean}`;
+    clean = `https://${clean}`;
   }
 
   // Fix missing slash typos like :5001api -> :5001/api
@@ -38,8 +38,12 @@ let currentApiUrl = formatApiUrl(ENV_API_URL);
 export const setApiBaseUrl = (url: string) => {
   if (url) {
     const clean = formatApiUrl(url);
-    currentApiUrl = clean;
-    saveApiBaseUrlStorage(clean);
+    if (Platform.OS !== 'web' && (clean.includes('localhost') || clean.includes('127.0.0.1'))) {
+      currentApiUrl = 'https://digi-local-backend.onrender.com/api';
+    } else {
+      currentApiUrl = clean;
+    }
+    saveApiBaseUrlStorage(currentApiUrl);
   }
 };
 
@@ -51,16 +55,50 @@ export const getApiHost = () => {
 
 export const formatMediaUrl = (url?: string): string => {
   if (!url) return '';
-  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  let clean = url.trim();
+  if (!clean) return '';
 
-  if (Platform.OS !== 'web') {
-    const host = getApiHost();
-    if (url.startsWith('/')) {
-      return `${host}${url}`;
-    }
-    return url.replace(/http:\/\/(localhost|127\.0\.0\.1):(5000|5005)/g, host);
+  // Auto-upgrade non-secure HTTP to HTTPS for remote assets
+  if (clean.startsWith('http://')) {
+    clean = clean.replace(/^http:\/\//i, 'https://');
   }
-  return url;
+
+  // Data URIs, Blobs, File URIs, Content URIs, Photo Library URIs, and HTTPS URLs
+  if (
+    clean.startsWith('data:') ||
+    clean.startsWith('blob:') ||
+    clean.startsWith('file:') ||
+    clean.startsWith('content:') ||
+    clean.startsWith('ph:') ||
+    clean.startsWith('assets-library:') ||
+    clean.startsWith('https://')
+  ) {
+    return clean;
+  }
+
+  // Preserve absolute native device file system paths (e.g., /data/user/0/..., /storage/..., /var/mobile/...)
+  if (/^\/(data|storage|var|private|Users|sdcard|emulated)\//i.test(clean)) {
+    return `file://${clean.replace(/^file:\/\//, '')}`;
+  }
+
+  const host = getApiHost();
+
+  // If path starts with a slash like /uploads/image.jpg
+  if (clean.startsWith('/')) {
+    return `${host}${clean}`;
+  }
+
+  // If path starts with relative directory name like uploads/, images/, media/, static/, files/, assets/
+  if (/^(uploads|images|media|static|files|assets|public)\//i.test(clean)) {
+    return `${host}/${clean}`;
+  }
+
+  // Replace localhost if present in relative/remote URL
+  if (clean.includes('localhost') || clean.includes('127.0.0.1')) {
+    return clean.replace(/http:\/\/(localhost|127\.0\.0\.1):(5000|5005)/g, host);
+  }
+
+  return clean;
 };
 
 // Lock flag for automatic token refresh
@@ -73,17 +111,24 @@ export const safeFetch = async (
   retryCount = 0
 ): Promise<{ res: Response; data: any }> => {
   const controller = new AbortController();
-  const timeoutMs = retryCount > 0 ? 5000 : 7000;
+  const timeoutMs = retryCount > 0 ? 30000 : 45000;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const accessToken = await getAccessToken();
+    const isFormData =
+      (typeof FormData !== 'undefined' && options.body instanceof FormData) ||
+      (options.body && typeof options.body === 'object' && '_parts' in (options.body as any));
 
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       'Accept': 'application/json',
       ...((options.headers as Record<string, string>) || {})
     };
+
+    if (isFormData && headers['Content-Type']) {
+      delete headers['Content-Type'];
+    }
 
     if (accessToken && !headers['Authorization'] && !headers['authorization']) {
       headers['Authorization'] = `Bearer ${accessToken}`;
@@ -152,7 +197,20 @@ export const safeFetch = async (
       try {
         data = JSON.parse(rawText);
       } catch (_) {
-        data = { message: rawText, error: rawText };
+        const isHtml = rawText.trim().startsWith('<') || rawText.includes('<!DOCTYPE') || rawText.includes('<html') || rawText.includes('<pre>');
+        if (isHtml) {
+          data = {
+            message: res.status === 404
+              ? 'Wrong email ID or mobile number. Please enter correct details.'
+              : 'Server returned an error. Please try again.',
+            error: res.status === 404
+              ? 'Wrong email ID or mobile number. Please enter correct details.'
+              : 'Server error',
+            rawHtml: rawText,
+          };
+        } else {
+          data = { message: rawText, error: rawText };
+        }
       }
     }
 
@@ -164,7 +222,9 @@ export const safeFetch = async (
     const cloudFallbackUrl = 'https://digi-local-backend.onrender.com/api';
     if (retryCount === 0 && !url.startsWith(cloudFallbackUrl)) {
       const currentHost = getApiBaseUrl();
-      const fallbackUrl = url.replace(currentHost, cloudFallbackUrl);
+      const fallbackUrl = url.startsWith(currentHost)
+        ? url.replace(currentHost, cloudFallbackUrl)
+        : `${cloudFallbackUrl}${url.replace(/^https?:\/\/[^\/]+(\/api)?/, '')}`;
       console.warn(`⚠️ [NETWORK FALLBACK]: Local server ${url} unreachable (${err.message}). Retrying on Render cloud: ${fallbackUrl}`);
       try {
         return await safeFetch(fallbackUrl, options, 1);
@@ -179,3 +239,17 @@ export const safeFetch = async (
     throw err;
   }
 };
+
+/**
+ * Fetches platform / backend configuration (branding, supported features, etc.)
+ * Calls GET /api/config with safe fallback.
+ */
+export async function fetchAppConfigApi(): Promise<any> {
+  try {
+    const { res, data } = await safeFetch(`${getApiBaseUrl()}/config`);
+    if (res.ok && data) {
+      return data;
+    }
+  } catch (_) {}
+  return { success: true, app_name: 'DigiLocal', version: '1.0.2' };
+}

@@ -37,6 +37,7 @@ import {
   ShieldAlert,
   CheckCircle2,
   Send,
+  Star,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { pickImageFromDevice, captureImageFromDevice, PickedImageResult } from '../utils/imagePickerHelper';
@@ -64,6 +65,8 @@ import {
   clearAllAppCache,
   logoutVendorApi,
   resubmitVendorApplicationApi,
+  loginVendorApi,
+  formatMediaUrl,
 } from '../services/apiService';
 import {
   clearSavedCredentials,
@@ -95,6 +98,7 @@ import { PayoutsScreenComponent } from '../components/PayoutsScreen';
 import { AlarmOverlay } from '../components/AlarmOverlay';
 import { StoreDigitalCardModal } from '../components/StoreDigitalCardModal';
 import { ResubmitModal } from '../components/ResubmitModal';
+import { ReviewsModal } from '../components/ReviewsModal';
 import { CustomAlertModal, CustomAlertState, AlertType } from '../components/CustomAlertModal';
 import { ToastContainer } from '../components/ToastNotification';
 import { isServiceCategory } from '../utils/translations';
@@ -102,7 +106,6 @@ import { isServiceCategory } from '../utils/translations';
 export default function App() {
   const rawInsets = useSafeAreaInsets();
   const insets = rawInsets || { top: 0, bottom: 0, left: 0, right: 0 };
-  const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [currentUser, setCurrentUser] = useState<VendorUser | null>(null);
   const [showLogin, setShowLogin] = useState(false);
   const [currentTab, setCurrentTab] = useState<'menu' | 'orders' | 'payouts' | 'settings'>('menu');
@@ -110,6 +113,7 @@ export default function App() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [showDigitalCard, setShowDigitalCard] = useState(false);
+  const [showReviewsModal, setShowReviewsModal] = useState(false);
   const [showLogoPickerModal, setShowLogoPickerModal] = useState(false);
   const [showDrawer, setShowDrawer] = useState(false);
   const drawerAnim = useRef(new Animated.Value(300)).current;
@@ -119,14 +123,11 @@ export default function App() {
   const [vendorRejectionReason, setVendorRejectionReason] = useState<string>('');
   const [vendorMessage, setVendorMessage] = useState<string>('');
   const [showResubmitModal, setShowResubmitModal] = useState<boolean>(false);
+  const [logoLoadFailed, setLogoLoadFailed] = useState<boolean>(false);
 
-  // Initial Splash Screen Display Timer
   useEffect(() => {
-    const splashTimer = setTimeout(() => {
-      setIsSplashVisible(false);
-    }, 800);
-    return () => clearTimeout(splashTimer);
-  }, []);
+    setLogoLoadFailed(false);
+  }, [currentUser?.logo_url, currentUser?.store_logo, currentUser?.logo, currentUser?.shop_image]);
 
   // Drawer animation helpers
   const openDrawer = () => {
@@ -288,20 +289,21 @@ export default function App() {
         } else if (liveStatus === 'hold') {
           setVendorApprovalStatus('hold');
         }
-        saveVendorUser(data.vendor);
-        setCurrentUser(prev => {
-          if (!prev) return data.vendor;
-          if (
-            prev.vendor_id === data.vendor.vendor_id &&
-            prev.store_name === data.vendor.store_name &&
-            prev.status === data.vendor.status &&
-            prev.logo_url === data.vendor.logo_url &&
-            prev.image_url === data.vendor.image_url
-          ) {
-            return prev;
-          }
-          return data.vendor;
-        });
+        const incomingLogo = data.vendor.logo_url || data.vendor.logo || data.vendor.store_logo || data.vendor.shop_image || data.vendor.image_url;
+        const currentLogo = currentUser?.logo_url || currentUser?.logo || currentUser?.store_logo || currentUser?.shop_image || currentUser?.image_url;
+        const finalLogo = incomingLogo || currentLogo || '';
+
+        const mergedVendor: VendorUser = {
+          ...data.vendor,
+          logo_url: finalLogo,
+          logo: finalLogo,
+          store_logo: finalLogo,
+          shop_image: finalLogo,
+          image_url: finalLogo,
+        };
+
+        saveVendorUser(mergedVendor);
+        setCurrentUser(mergedVendor);
       }
 
       if (Array.isArray(data.items)) {
@@ -354,18 +356,16 @@ export default function App() {
         if (savedUrl) {
           setApiBaseUrl(savedUrl);
         }
-        const token = await getAccessToken();
+
         const savedVendor = await getSavedVendorUser();
-        if (!token || !savedVendor || typeof savedVendor !== 'object') {
-          await clearSavedCredentials().catch(() => {});
+        if (!savedVendor || typeof savedVendor !== 'object') {
           setCurrentUser(null);
           setShowLogin(true);
           return;
         }
 
         const vendorData: VendorUser = savedVendor.vendor || savedVendor;
-        if (!vendorData || !vendorData.vendor_id || !vendorData.store_name) {
-          await clearSavedCredentials().catch(() => {});
+        if (!vendorData || !vendorData.vendor_id) {
           setCurrentUser(null);
           setShowLogin(true);
           return;
@@ -382,6 +382,13 @@ export default function App() {
           if (cached.subscription) setSubscription(cached.subscription);
           if (Array.isArray(cached.payments) && cached.payments.length > 0) setPayments(cached.payments);
         }
+
+        // Ensure valid access token is available
+        getAccessToken().then(async (token) => {
+          if (!token) {
+            console.log('ℹ️ No active access token found on launch. User may need to authenticate.');
+          }
+        }).catch(() => {});
 
         // 2. Fetch fresh status & dashboard in background without blocking initial screen render
         fetchVendorStatusApi(vendorData.vendor_id).then(statusRes => {
@@ -708,11 +715,6 @@ export default function App() {
     await playAlarmSound();
   };
 
-  // Render Splash Screen
-  if (isSplashVisible) {
-    return <SplashScreenComponent />;
-  }
-
   // Not logged in
   if (!currentUser) {
     if (!showLogin && !blockedAccountInfo) {
@@ -902,26 +904,36 @@ export default function App() {
   const processAndUploadLogo = async (picked: PickedImageResult) => {
     if (!currentUser || !picked.uri) return;
     try {
-      showAlert('Uploading Logo', 'Uploading and saving your custom store logo...', 'info');
-      const fileName = picked.fileName || `store_logo_${Date.now()}.jpg`;
+      showAlert('Uploading Image', 'Uploading and saving your shop image...', 'info');
+      const fileName = picked.fileName || `shop_image_${Date.now()}.jpg`;
       const mimeType = picked.mimeType || 'image/jpeg';
+      const base64DataUri = picked.base64 ? `data:${mimeType};base64,${picked.base64}` : '';
 
       const uploadResult = await uploadVendorLogoApi(
         currentUser.vendor_id,
-        picked.base64 ? `data:${mimeType};base64,${picked.base64}` : picked.uri,
+        picked.uri,
         fileName,
-        mimeType
+        mimeType,
+        picked.base64
       );
 
-      const logoUrl = uploadResult.logo_url;
+      const logoUrl = uploadResult.logo_url || base64DataUri || picked.uri;
       if (logoUrl) {
-        const updatedUser = { ...currentUser, logo_url: logoUrl, logo: logoUrl };
+        const updatedUser: VendorUser = {
+          ...currentUser,
+          logo_url: logoUrl,
+          logo: logoUrl,
+          store_logo: logoUrl,
+          shop_image: logoUrl,
+          image_url: logoUrl,
+        };
         setCurrentUser(updatedUser);
         await saveVendorUser(updatedUser);
-        showAlert('Logo Updated', 'Your custom store logo has been updated successfully!', 'success');
+        await loadDashboardData(currentUser.vendor_id, true);
+        showAlert('Shop Image Updated', 'Your shop image has been updated successfully!', 'success');
       }
     } catch (err: any) {
-      showAlert('Upload Failed', err.message || 'Failed to upload store logo', 'error');
+      showAlert('Upload Failed', err.message || 'Failed to upload shop image', 'error');
     }
   };
 
@@ -976,20 +988,27 @@ export default function App() {
           activeOpacity={0.8}
         >
           {(() => {
-            const storeLogoUri = (
-              currentUser?.logo_url && currentUser.logo_url !== currentUser.shop_image && currentUser.logo_url !== currentUser.image_url ? currentUser.logo_url :
-              currentUser?.logo && currentUser.logo !== currentUser.shop_image && currentUser.logo !== currentUser.image_url ? currentUser.logo :
-              currentUser?.store_logo && currentUser.store_logo !== currentUser.shop_image && currentUser.store_logo !== currentUser.image_url ? currentUser.store_logo :
-              ''
+            const isPlaceholder = (u?: string) => {
+              if (!u) return true;
+              return u.includes('unsplash.com') || u.includes('placeholder') || u.includes('default');
+            };
+            const rawLogoUri = (
+              (currentUser?.logo_url && !isPlaceholder(currentUser.logo_url) ? currentUser.logo_url : '') ||
+              (currentUser?.store_logo && !isPlaceholder(currentUser.store_logo) ? currentUser.store_logo : '') ||
+              (currentUser?.logo && !isPlaceholder(currentUser.logo) ? currentUser.logo : '') ||
+              (currentUser?.shop_image && !isPlaceholder(currentUser.shop_image) ? currentUser.shop_image : '') ||
+              (currentUser?.image_url && !isPlaceholder(currentUser.image_url) ? currentUser.image_url : '')
             );
-            return storeLogoUri ? (
+            const storeLogoUri = rawLogoUri ? formatMediaUrl(rawLogoUri) : '';
+            return storeLogoUri && !logoLoadFailed ? (
               <Image
                 source={{ uri: storeLogoUri }}
                 style={styles.vendorLogoImg}
+                onError={() => setLogoLoadFailed(true)}
               />
             ) : (
               <View style={styles.vendorLogoPlaceholder}>
-                <Store size={18} color={BrandTheme.forestGreen} />
+                <Store size={20} color="#541D26" />
                 <View style={styles.cameraIconBadge}>
                   <Camera size={9} color="#FFFFFF" />
                 </View>
@@ -1308,6 +1327,21 @@ export default function App() {
 
             <View style={styles.drawerDivider} />
 
+            {/* Customer Reviews */}
+            <TouchableOpacity
+              style={styles.drawerItem}
+              activeOpacity={0.8}
+              onPress={() => closeDrawer(() => setShowReviewsModal(true))}
+            >
+              <View style={[styles.drawerItemIcon, { backgroundColor: 'rgba(245,158,11,0.15)' }]}>
+                <Star size={17} color="#D97706" fill="#D97706" />
+              </View>
+              <Text style={styles.drawerItemText}>Customer Reviews</Text>
+              <ChevronRight size={16} color={BrandTheme.mutedSageText} />
+            </TouchableOpacity>
+
+            <View style={[styles.drawerDivider, { marginTop: 8 }]} />
+
             {/* Settings */}
             <TouchableOpacity
               style={styles.drawerItem}
@@ -1343,6 +1377,15 @@ export default function App() {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* Customer Reviews Modal */}
+      {currentUser && (
+        <ReviewsModal
+          visible={showReviewsModal}
+          vendor={currentUser}
+          onClose={() => setShowReviewsModal(false)}
+        />
+      )}
 
       {/* Alarm Overlay */}
       {activeAlarmOrder && (
@@ -1394,8 +1437,8 @@ export default function App() {
           onPress={() => setShowLogoPickerModal(false)}
         >
           <View style={styles.logoModalCard}>
-            <Text style={styles.logoModalTitle}>Select Store Logo</Text>
-            <Text style={styles.logoModalSubtitle}>Choose how you want to add or update your shop logo</Text>
+            <Text style={styles.logoModalTitle}>Select Shop Image</Text>
+            <Text style={styles.logoModalSubtitle}>Choose how you want to add or update your shop image</Text>
 
             <TouchableOpacity
               style={styles.logoModalOptionBtn}

@@ -89,7 +89,7 @@ export async function updateOrderStatusApi(
     if (res && res.ok) return true;
   } catch (_) {}
 
-  return true;
+  return false;
 }
 
 export async function placeOrderApi(order: {

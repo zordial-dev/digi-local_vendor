@@ -142,7 +142,7 @@ export const SupportTicketsModal: React.FC<SupportTicketsModalProps> = ({
   const handlePickAttachment = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        mediaTypes: ['images', 'videos'],
         allowsEditing: false,
         quality: 0.7,
       });

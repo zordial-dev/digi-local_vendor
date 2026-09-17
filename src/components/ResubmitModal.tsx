@@ -73,7 +73,7 @@ export const ResubmitModal: React.FC<ResubmitModalProps> = ({ visible, onClose, 
   const handlePickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: false,
         quality: 0.6,
         base64: true,
