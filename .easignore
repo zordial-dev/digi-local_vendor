@@ -7,8 +7,17 @@ web-build/
 .DS_Store
 Thumbs.db
 frontend/
+docs/
 
-# Exclude Android native build outputs
+# iOS native build outputs & pods
+ios/build/
+ios/Pods/
+ios/build.log
+ios/*.xcworkspace/xcuserdata
+ios/*.xcodeproj/xcuserdata
+ios/*.xcodeproj/project.xcworkspace/xcuserdata
+
+# Android native build outputs
 android/build/
 android/.gradle/
 android/app/build/
@@ -22,8 +31,10 @@ android/.cxx/
 *.apk
 *.aab
 *.ipa
+*.tar.gz
+*.zip
 app-release.apk
 
-# Keep google-services.json for Firebase FCM
+# Keep configuration files
 !google-services.json
 !GoogleService-Info.plist
