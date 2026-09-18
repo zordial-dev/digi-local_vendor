@@ -6,6 +6,7 @@ web-build/
 *.log
 .DS_Store
 Thumbs.db
+frontend/
 
 # Exclude Android native build outputs
 android/build/
@@ -13,15 +14,15 @@ android/.gradle/
 android/app/build/
 android/.idea/
 android/app/build/intermediates/
+android/app/.cxx/
+android/.cxx/
+.gradle/
 
-# Exclude binaries and nested modules
+# Exclude binaries and archive files
 *.apk
 *.aab
 *.ipa
 app-release.apk
-frontend/node_modules/
-frontend/android/build/
-frontend/android/.gradle/
 
 # Keep google-services.json for Firebase FCM
 !google-services.json
