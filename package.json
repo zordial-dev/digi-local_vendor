@@ -53,8 +53,10 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "postinstall": "node -e \"const fs=require('fs'),path=require('path');try{const src=path.join(__dirname,'node_modules/hermes-compiler/hermesc'),dest=path.join(__dirname,'node_modules/react-native/sdks/hermesc');if(fs.existsSync(src)&&!fs.existsSync(dest)){fs.mkdirSync(path.dirname(dest),{recursive:true});fs.cpSync(src,dest,{recursive:true});console.log('[postinstall] Linked hermesc to react-native/sdks');}}catch(e){}\"",
-    "build:apk": "eas build -p android --profile preview",
-    "build:aab": "eas build -p android --profile production"
+    "build:apk": "JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./android/gradlew -p android assembleRelease -x lint && cp android/app/build/outputs/apk/release/app-release.apk ./app-release.apk && echo '✅ APK successfully created at ./app-release.apk'",
+    "build:aab": "JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./android/gradlew -p android bundleRelease -x lint && cp android/app/build/outputs/bundle/release/app-release.aab ./app-release.aab && echo '✅ AAB successfully created at ./app-release.aab'",
+    "build:eas:apk": "npx eas-cli build --platform android --profile preview",
+    "build:eas:aab": "npx eas-cli build --platform android --profile production"
   },
   "private": true
 }
