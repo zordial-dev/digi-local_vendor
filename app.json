@@ -58,6 +58,9 @@
             "colorPrimary": "#541D26",
             "colorAccent": "#C8A878",
             "colorPrimaryDark": "#3D1219"
+          },
+          "ios": {
+            "deploymentTarget": "16.4"
           }
         }
       ],
@@ -82,9 +85,15 @@
     "owner": "lovelyjain24",
     "ios": {
       "bundleIdentifier": "com.digilocal.vendor",
+      "buildNumber": "3",
+      "supportsTablet": false,
       "infoPlist": {
-        "NSCameraUsageDescription": "This app needs access to your camera to take photos of your store and products.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select and upload store logo and product images."
+        "CFBundleDisplayName": "DigiLocal Vendor",
+        "NSCameraUsageDescription": "Allow DigiLocal Vendor to access your camera to take store, shop image, and product photos.",
+        "NSPhotoLibraryUsageDescription": "Allow DigiLocal Vendor to access your photo library to select and upload shop images and product photos.",
+        "NSPhotoLibraryAddUsageDescription": "Allow DigiLocal Vendor to save photos to your photo library.",
+        "NSMicrophoneUsageDescription": "Allow DigiLocal Vendor to access your microphone for voice-based search.",
+        "NSLocationWhenInUseUsageDescription": "Allow DigiLocal Vendor to access your location to discover nearby societies and service areas."
       }
     }
   }

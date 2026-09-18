@@ -2,12 +2,12 @@ import { Platform, Vibration } from 'react-native';
 import { VendorOrder } from './apiService';
 import Constants from 'expo-constants';
 
-// Safely obtain Audio from expo-av to avoid top-level crashes if ExponentAV native module is missing
-let Audio: any = null;
+// Safely obtain Audio from expo-audio or fallback to avoid top-level crashes
+let AudioModule: any = null;
 try {
-  Audio = require('expo-av')?.Audio;
+  AudioModule = require('expo-audio');
 } catch (err) {
-  // Graceful fallback if expo-av or ExponentAV is unavailable
+  // Graceful fallback if expo-audio is unavailable
 }
 
 // Detect if running inside Expo Go client (SDK 53+ removed remote push in Expo Go)
@@ -141,7 +141,9 @@ async function stopAllActiveSounds() {
 
   for (const s of soundsToStop) {
     try {
-      if (s && typeof s.stopAsync === 'function') {
+      if (s && typeof s.pause === 'function') {
+        s.pause();
+      } else if (s && typeof s.stopAsync === 'function') {
         await s.stopAsync();
         await s.unloadAsync();
       }
@@ -163,21 +165,40 @@ export async function startContinuousOrderRingtone(
   try {
     await stopAllActiveSounds();
 
-    if (!isRingtonePlaying || !Audio) {
+    if (!isRingtonePlaying) {
       isStartingRingtone = false;
       return;
     }
 
-    if (Platform.OS !== 'web' && Audio.setAudioModeAsync) {
-      await Audio.setAudioModeAsync({
+    if (Platform.OS !== 'web' && AudioModule?.setAudioModeAsync) {
+      await AudioModule.setAudioModeAsync({
         playsInSilentModeIOS: true,
         staysActiveInBackground: true,
         shouldDuckAndroid: false,
       }).catch(() => {});
     }
 
-    if (Audio.Sound) {
-      const { sound } = await Audio.Sound.createAsync(
+    if (AudioModule?.createAudioPlayer) {
+      try {
+        const player = AudioModule.createAudioPlayer(soundSource);
+        player.loop = true;
+        player.volume = volume;
+        player.play();
+
+        if (!isRingtonePlaying) {
+          try {
+            player.pause();
+          } catch (_) {}
+          isStartingRingtone = false;
+          return;
+        }
+
+        activeSoundObjects.add(player);
+      } catch (err) {
+        console.warn('AudioPlayer init note:', err);
+      }
+    } else if (AudioModule?.Audio?.Sound) {
+      const { sound } = await AudioModule.Audio.Sound.createAsync(
         typeof soundSource === 'string' ? { uri: soundSource } : soundSource,
         { shouldPlay: true, isLooping: true, volume }
       );
