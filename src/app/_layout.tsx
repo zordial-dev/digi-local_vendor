@@ -12,8 +12,10 @@ import {
   Poppins_700Bold,
   Poppins_800ExtraBold,
 } from '@expo-google-fonts/poppins';
+import { Platform, View, ActivityIndicator } from 'react-native';
 
-import { Platform } from 'react-native';
+// Instruct SplashScreen to stay visible until fonts and initial UI tree are fully ready
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 if (Platform.OS === 'web' && typeof document !== 'undefined') {
   const styleTagId = 'digilocal-global-focus-theme';
@@ -57,24 +59,34 @@ if (Platform.OS === 'web' && typeof document !== 'undefined') {
 }
 
 export default function Layout() {
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Poppins: Poppins_400Regular,
-    Poppins_400Regular,
-    Poppins_500Medium,
-    Poppins_600SemiBold,
-    Poppins_700Bold,
-    Poppins_800Bold: Poppins_800ExtraBold,
-    Poppins_800ExtraBold,
     'Poppins-Regular': Poppins_400Regular,
     'Poppins-Medium': Poppins_500Medium,
     'Poppins-SemiBold': Poppins_600SemiBold,
     'Poppins-Bold': Poppins_700Bold,
     'Poppins-ExtraBold': Poppins_800ExtraBold,
+    'Poppins_400Regular': Poppins_400Regular,
+    'Poppins_500Medium': Poppins_500Medium,
+    'Poppins_600SemiBold': Poppins_600SemiBold,
+    'Poppins_700Bold': Poppins_700Bold,
+    'Poppins_800Bold': Poppins_800ExtraBold,
+    'Poppins_800ExtraBold': Poppins_800ExtraBold,
   });
 
   useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-  }, [fontsLoaded]);
+    if (fontsLoaded || fontError) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [fontsLoaded, fontError]);
+
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={{ flex: 1, backgroundColor: '#F8F6F0', justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#541D26" />
+      </View>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
