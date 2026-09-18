@@ -2,41 +2,69 @@
 node_modules/
 .pnpm-store/
 
-# Environment and secret files
+# Environment and secrets
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 *.pem
-google-services.json
-GoogleService-Info.plist
-**/google-services.json
-
-# Expo & React Native
-.expo/
-dist/
-web-build/
-expo-env.d.ts
 *.jks
 *.p8
 *.p12
 *.key
 *.mobileprovision
+google-services.json
+GoogleService-Info.plist
+**/google-services.json
+
+# Expo & React Native outputs
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# iOS build artifacts & Pods
+ios/build/
+ios/Pods/
+ios/build.log
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+ios/*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcscmblueprint
+
+# Android build artifacts
+.gradle/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
+android/.cxx/
+android/kotlin/
+android/local.properties
+
+# Binaries and archives
+*.apk
+*.aab
+*.ipa
+*.tar.gz
+*.zip
+app-release.apk
+app-release.aab
+
+# Nested secondary repos & temporary folders
+frontend/
 
 # Database & SQLite files
 *.sqlite
 *.sqlite-journal
 *.db
-backend/digilocal.sqlite
 
 # User Uploads / Media
 uploads/
-backend/uploads/*
-!backend/uploads/.gitkeep
 
 # Logs
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -50,18 +78,6 @@ yarn-error.log*
 .Trashes
 ehthumbs.db
 Thumbs.db
-
-# Android build artifacts
-.gradle/
-android/.gradle/
-android/build/
-android/app/build/
-android/app/.cxx/
-android/kotlin/
-android/local.properties
-*.apk
-*.aab
-*.ipa
 
 # IDEs and Editors
 .idea/
