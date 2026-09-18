@@ -1,7 +1,7 @@
 {
   "name": "digi-local_vendor",
   "main": "expo-router/entry",
-  "version": "1.0.2",
+  "version": "1.0.0",
   "dependencies": {
     "@expo-google-fonts/poppins": "^0.4.1",
     "@expo/metro-runtime": "~57.0.15",
@@ -56,7 +56,8 @@
     "build:apk": "JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./android/gradlew -p android assembleRelease -x lint && cp android/app/build/outputs/apk/release/app-release.apk ./app-release.apk && echo '✅ APK successfully created at ./app-release.apk'",
     "build:aab": "JAVA_HOME=/opt/homebrew/opt/openjdk@17 ./android/gradlew -p android bundleRelease -x lint && cp android/app/build/outputs/bundle/release/app-release.aab ./app-release.aab && echo '✅ AAB successfully created at ./app-release.aab'",
     "build:eas:apk": "npx eas-cli build --platform android --profile preview",
-    "build:eas:aab": "npx eas-cli build --platform android --profile production"
+    "build:eas:aab": "npx eas-cli build --platform android --profile production",
+    "serve:apk": "python3 -m http.server 8080"
   },
   "private": true
 }
